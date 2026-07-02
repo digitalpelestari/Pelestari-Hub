@@ -42,12 +42,13 @@ export default function AccountSettingsPage() {
       
       // === DISINI KUNCI AKTIFNYA SINKRONISASI LAYAR ===
       // Memaksa cookie NextAuth di browser memperbarui state saat ini juga tanpa reload halaman
+      // Ditambahkan 'as any' agar parameter update tidak memicu error strict-type pada versi tertentu
       await update({
         user: {
           name: nama,
           email: email,
         }
-      });
+      } as any);
       
     } catch (err: any) {
       setStatusMsg({ type: "error", text: err.message });

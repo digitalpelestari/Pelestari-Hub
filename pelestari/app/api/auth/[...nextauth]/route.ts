@@ -33,11 +33,12 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Password salah");
         }
 
+        // Mengembalikan data user yang menyertakan 'role'
         return {
           id: String(user.id_user),
           name: user.nama,
           email: user.email,
-          role: user.role,
+          role: user.role, // Terbaca aman karena interface User telah diperluas
         };
       }
     })
@@ -46,13 +47,10 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       // Jalur saat pertama kali login sukses
       if (user) {
-        // Mengubah user menjadi (user as any) agar properti 'role' diizinkan oleh TypeScript
-        const customUser = user as any; 
-        
-        token.id = customUser.id;
-        token.role = customUser.role;
-        token.name = customUser.name;
-        token.email = customUser.email;
+        token.id = user.id;
+        token.role = user.role; // Terbaca aman karena interface JWT telah diperluas
+        token.name = user.name;
+        token.email = user.email;
       }
       
       // KUNCI SINKRONISASI FE: Jika dipicu oleh fungsi update() di Front-End
@@ -65,8 +63,7 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        // Mengubah session.user menjadi any sementara agar pengisian properti 'role' tidak error
-        (session.user as any).role = token.role;
+        session.user.role = token.role; // Terbaca aman karena interface Session telah diperluas
         session.user.name = token.name;
         session.user.email = token.email;
       }
