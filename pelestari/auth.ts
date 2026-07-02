@@ -25,6 +25,16 @@ const extendedOptions: any = {
         );
         const user = rows[0];
         
+        // ========================================================
+        // 🔍 SUNTIKAN BARIS DEBUG UNTUK VERCEL LOGS
+        // ========================================================
+        console.log("=== 🔍 DEBUG LOGIN VERCEL PRODUCTION ===");
+        console.log("1. User ketemu di DB?:", !!user);
+        console.log("2. Email yang diinput:", credentials.email);
+        console.log("3. String Hash dari DB:", user?.password);
+        console.log("4. Panjang karakter Hash DB:", user?.password?.length);
+        // ========================================================
+        
         if (!user) {
           throw new Error("Email tidak terdaftar");
         }
@@ -33,6 +43,10 @@ const extendedOptions: any = {
           credentials.password as string, 
           user.password
         );
+        
+        // Log hasil akhir kecocokan password sebelum dipotong NextAuth
+        console.log("5. Hasil Match Bcrypt:", isPasswordValid);
+        console.log("=========================================");
         
         if (!isPasswordValid) {
           throw new Error("Password salah");
