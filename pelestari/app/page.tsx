@@ -1,6 +1,4 @@
-import { redirect } from "next/navigation";
-
+// app/page.tsx
 export default function Page() {
-  // Begitu user mengakses localhost:3000, sistem langsung mengalihkan jalur ke halaman login
-  redirect("/login");
+  return null; // Tidak merender apa-apa, pengalihan dihandle oleh middleware
 }
