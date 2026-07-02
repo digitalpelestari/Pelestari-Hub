@@ -1,4 +1,6 @@
 // app/page.tsx
+import { redirect } from "next/navigation";
+
 export default function Page() {
-  return null; // Tidak merender apa-apa, pengalihan dihandle oleh middleware
+  redirect("/login");
 }
