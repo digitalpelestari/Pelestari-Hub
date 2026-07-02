@@ -1,81 +1,39 @@
-import NextAuth from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
+import { NextResponse } from "next/server";
+import { auth } from "@/auth"; // Ambil fungsi auth dari file konfigurasi baru
 import { db } from "@/lib/db";
 import bcrypt from "bcrypt";
 
-export const authConfig = {
-  providers: [
-    CredentialsProvider({
-      name: "Credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email dan password wajib diisi");
-        }
-
-        const [rows]: any = await db.execute(
-          "SELECT * FROM tb_login WHERE email = ? LIMIT 1",
-          [credentials.email]
-        );
-
-        const user = rows[0];
-
-        if (!user) {
-          throw new Error("Email tidak terdaftar");
-        }
-
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
-
-        if (!isPasswordValid) {
-          throw new Error("Password salah");
-        }
-
-        return {
-          id: String(user.id_user),
-          name: user.nama,
-          email: user.email,
-          role: user.role,
-        };
-      }
-    })
-  ],
-  callbacks: {
-    async jwt({ token, user, trigger, session }: any) {
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
-        token.name = user.name;
-        token.email = user.email;
-      }
-      
-      if (trigger === "update" && session?.user) {
-        token.name = session.user.name;
-        token.email = session.user.email;
-      }
-
-      return token;
-    },
-    async session({ session, token }: any) {
-      if (session.user) {
-        session.user.role = token.role;
-        session.user.name = token.name;
-        session.user.email = token.email;
-      }
-      return session;
+export async function PUT(req: Request) {
+  try {
+    // Panggil langsung fungsi auth() bawaan v5
+    const session = await auth();
+    
+    if (!session?.user) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-  },
-  pages: {
-    signIn: "/login",
-  },
-  session: {
-    strategy: "jwt" as const,
-  }
-};
 
-// --- PERBAIKAN UTAMA UNTUK VERSION 5 ---
-// NextAuth v5 mengembalikan objek handlers, bukan fungsi callable langsung.
-const { handlers } = NextAuth(authConfig);
-export const { GET, POST } = handlers;
+    const { nama, email, passwordBaru } = await req.json();
+    const userId = (session.user as any).id;
+
+    if (!nama || !email) {
+      return NextResponse.json({ message: "Nama dan Email wajib diisi" }, { status: 400 });
+    }
+
+    if (passwordBaru) {
+      const hashedPassword = await bcrypt.hash(passwordBaru, 10);
+      await (db as any).execute(
+        "UPDATE tb_login SET nama = ?, email = ?, password = ? WHERE id_user = ?",
+        [nama, email, hashedPassword, userId]
+      );
+    } else {
+      await (db as any).execute(
+        "UPDATE tb_login SET nama = ?, email = ? WHERE id_user = ?",
+        [nama, email, userId]
+      );
+    }
+
+    return NextResponse.json({ message: "Profil berhasil diperbarui!" }, { status: 200 });
+  } catch (error: any) {
+    return NextResponse.json({ message: error.message || "Internal Server Error" }, { status: 500 });
+  }
+}

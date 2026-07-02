@@ -11,7 +11,7 @@ export default function AccountSettingsPage() {
   const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
   const [loading, setLoading] = useState(false);
 
-  // Load data awal dari session login ke dalam form
+  // Ambil data session login awal ke dalam form
   useEffect(() => {
     if (session?.user) {
       setNama(session.user.name || "");
@@ -40,9 +40,7 @@ export default function AccountSettingsPage() {
       setStatusMsg({ type: "success", text: data.message });
       setPasswordBaru(""); 
       
-      // === DISINI KUNCI AKTIFNYA SINKRONISASI LAYAR ===
-      // Memaksa cookie NextAuth di browser memperbarui state saat ini juga tanpa reload halaman
-      // Ditambahkan 'as any' agar parameter update tidak memicu error strict-type pada versi tertentu
+      // Memicu sinkronisasi cookie NextAuth v5 di browser tanpa perlu reload halaman
       await update({
         user: {
           name: nama,
@@ -101,7 +99,7 @@ export default function AccountSettingsPage() {
             <input
               type="text"
               disabled
-              value={session?.user?.role || ""}
+              value={(session?.user as any)?.role || ""}
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-gray-500 text-sm cursor-not-allowed font-medium"
             />
           </div>
