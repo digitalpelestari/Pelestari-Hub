@@ -152,7 +152,10 @@ export default function DaftarAkunPage() {
         {/* Filter Tipe Akun */}
         <div className="space-y-2">
           <label className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Tipe Akun:</label>
-          <Select value={filterType} onValueChange={setFilterType}>
+         <Select 
+  value={filterType || ""} 
+  onValueChange={(val) => setFilterType(val as any)}
+>
             <SelectTrigger className="h-9 bg-zinc-800 border-none text-xs rounded-sm text-white focus:ring-0">
               <SelectValue placeholder="Semua Tipe" />
             </SelectTrigger>
@@ -313,7 +316,10 @@ export default function DaftarAkunPage() {
             {editId && (
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase italic text-zinc-500">Status Aktivasi</label>
-                <Select value={isAktif.toString()} onValueChange={(val) => setIsAktif(parseInt(val))}>
+                <Select 
+  value={isAktif?.toString() || ""} 
+  onValueChange={(val) => setIsAktif(parseInt(val || "0"))}
+>
                   <SelectTrigger className="h-9 bg-white border-zinc-300 rounded-sm font-bold text-xs focus:ring-0 text-black">
                     <SelectValue />
                   </SelectTrigger>

@@ -135,17 +135,18 @@ export default function PurchaseOrderPage() {
     setItems([...items, { transaksi: "", ukuran: "", quantity: 0, unit_price: 0, total: 0 }]);
   };
 
-  const handleItemChange = (index: number, field: keyof POItem, value: any) => {
-    const updatedItems = [...items];
-    if (field === "quantity" || field === "unit_price") {
-      const val = Number(value) || 0;
-      updatedItems[index][field] = val;
-      updatedItems[index].total = updatedItems[index].quantity * updatedItems[index].unit_price;
-    } else {
-      updatedItems[index][field] = value;
-    }
-    setItems(updatedItems);
-  };
+  const handleSomeChange = (index: number, field: string, value: any) => {
+  // Paksa updatedItems menjadi tipe array objek bebas (any[])
+  const updatedItems = [...items] as any[];
+
+  if (field === "quantity" || field === "unit_price") {
+    updatedItems[index][field] = value;
+    updatedItems[index].total = updatedItems[index].quantity * updatedItems[index].unit_price;
+  } else {
+    updatedItems[index][field] = value;
+  }
+  setItems(updatedItems);
+};
 
   const handleRemoveItemRow = (index: number) => {
     if (items.length > 1) {
@@ -534,18 +535,18 @@ export default function PurchaseOrderPage() {
                       <tr key={idx} className="align-middle">
                         <td className="p-2 border-r border-zinc-300 text-center font-bold text-zinc-500">{idx + 1}</td>
                         <td className="p-1 border-r border-zinc-300">
-                          <input type="text" required placeholder="Nama barang / jasa" value={item.transaksi} onChange={(e) => handleItemChange(idx, "transaksi", e.target.value)} className="w-full bg-transparent px-1 py-0.5 focus:outline-none placeholder-zinc-300" />
+                          <input type="text" required placeholder="Nama barang / jasa" value={item.transaksi} onChange={(e) => handleSomeChange(idx, "transaksi", e.target.value)} className="w-full bg-transparent px-1 py-0.5 focus:outline-none placeholder-zinc-300" />
                         </td>
                         <td className="p-1 border-r border-zinc-300">
-                          <input type="text" placeholder="S/M/L/Pcs" value={item.ukuran} onChange={(e) => handleItemChange(idx, "ukuran", e.target.value)} className="w-full text-center bg-transparent px-1 py-0.5 focus:outline-none placeholder-zinc-300" />
+                          <input type="text" placeholder="S/M/L/Pcs" value={item.ukuran} onChange={(e) => handleSomeChange(idx, "ukuran", e.target.value)} className="w-full text-center bg-transparent px-1 py-0.5 focus:outline-none placeholder-zinc-300" />
                         </td>
                         <td className="p-1 border-r border-zinc-300">
-                          <input type="number" required min={1} value={item.quantity || ""} onChange={(e) => handleItemChange(idx, "quantity", e.target.value)} className="w-full text-center bg-transparent px-1 py-0.5 focus:outline-none font-semibold" />
+                          <input type="number" required min={1} value={item.quantity || ""} onChange={(e) => handleSomeChange(idx, "quantity", e.target.value)} className="w-full text-center bg-transparent px-1 py-0.5 focus:outline-none font-semibold" />
                         </td>
                         <td className="p-1 border-r border-zinc-300 text-right">
                           <div className="flex justify-between items-center px-1">
                             <span className="text-zinc-400">Rp</span>
-                            <input type="number" required min={0} value={item.unit_price || ""} onChange={(e) => handleItemChange(idx, "unit_price", e.target.value)} className="w-28 text-right bg-transparent py-0.5 focus:outline-none font-semibold" />
+                            <input type="number" required min={0} value={item.unit_price || ""} onChange={(e) => handleSomeChange(idx, "unit_price", e.target.value)} className="w-28 text-right bg-transparent py-0.5 focus:outline-none font-semibold" />
                           </div>
                         </td>
                         <td className="p-2 border-r border-zinc-300 text-right font-semibold bg-zinc-50/50">Rp {item.total.toLocaleString("id-ID")}</td>

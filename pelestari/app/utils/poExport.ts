@@ -319,7 +319,13 @@ export const exportSinglePoToPdf = async (po: any, items: any[]) => {
     theme: "grid",
     headStyles: { fillColor: [180, 198, 231], textColor: [0, 0, 0], fontStyle: "bold", lineColor: [0, 0, 0], lineWidth: 0.2 },
     bodyStyles: { lineColor: [0, 0, 0], lineWidth: 0.2 },
-    columnStyles: { 0: { halign: "center", width: 10 }, 2: { halign: "center", width: 20 }, 3: { halign: "center", width: 18 }, 4: { halign: "right", width: 32 }, 5: { halign: "right", width: 35 } },
+    columnStyles: { 
+  0: { halign: "center", cellWidth: 10 }, 
+  2: { halign: "center", cellWidth: 20 }, 
+  3: { halign: "center", cellWidth: 18 }, 
+  4: { halign: "right", cellWidth: 32 }, 
+  5: { halign: "right", cellWidth: 35 } 
+},
     didDrawPage: (data: any) => { 
       finalY = data.cursor.y; 
     }

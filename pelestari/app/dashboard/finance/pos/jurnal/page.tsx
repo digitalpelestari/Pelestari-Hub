@@ -93,8 +93,9 @@ export default function JurnalUmumListPage() {
   }
 
   const handleHeaderChange = (field: string, value: string) => {
-    setEditHeaderForm(prev => ({ ...prev, [field]: value }))
-  }
+  // Tambahkan tanda kurung dan : any pada parameter prev
+  setEditHeaderForm((prev: any) => ({ ...prev, [field]: value }))
+}
 
   const handleItemChange = (itemIndex: number, field: string, value: any) => {
     setEditItemsForm((prev) => {

@@ -170,7 +170,10 @@ export default function EditInvoicePage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[11px] font-black uppercase italic">Ubah Status</Label>
-                  <Select value={formData.status} onValueChange={(val) => setFormData({...formData, status: val})}>
+                  <Select 
+  value={formData.status || ""} 
+  onValueChange={(val) => setFormData({ ...formData, status: val as string })}
+>
                     <SelectTrigger className="h-11 font-black bg-white">
                       <SelectValue />
                     </SelectTrigger>

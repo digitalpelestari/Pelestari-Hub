@@ -27,8 +27,8 @@ export default function Page() {
               Dashboard Manajemen Invoice
             </h1>
             <p className="text-xs text-zinc-500 mt-1">
-              Selamat datang kembali, <span className="font-bold text-black">{session?.user?.name || "Karyawan PT Pelestari"}</span> • Anda masuk sebagai <span className="px-1.5 py-0.5 bg-zinc-100 rounded text-[10px] font-bold uppercase text-zinc-700">{session?.user?.role || "Staff"}</span>
-            </p>
+  Selamat datang kembali, <span className="font-bold text-black">{session?.user?.name || "Karyawan PT Pelestari"}</span> • Anda masuk sebagai <span className="px-1.5 py-0.5 bg-zinc-100 rounded text-[10px] font-bold uppercase text-zinc-700">{(session?.user as any)?.role || "Staff"}</span>
+</p>
           </div>
 
           {/* === KUMPULAN DOKUMEN SOP (GRID MULTI-CARD) === */}

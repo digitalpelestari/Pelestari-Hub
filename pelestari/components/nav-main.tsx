@@ -59,13 +59,13 @@ export function NavMain({
           // sehingga tidak terjadi struktur ilegal <button> di dalam <button> milik SidebarMenuButton (Anti-Hydration Error)
           return (
             <Collapsible
-              key={item.title}
-              asChild
-              defaultOpen={item.isActive}
-              className="group/collapsible"
-            >
+  key={item.title}
+  // Hapus baris asChild di sini
+  defaultOpen={item.isActive}
+  className="group/collapsible"
+>
               <SidebarMenuItem>
-                <CollapsibleTrigger asChild>
+                <CollapsibleTrigger>
                   <SidebarMenuButton tooltip={item.title} className="w-full flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {item.icon}
@@ -79,7 +79,7 @@ export function NavMain({
                   <SidebarMenuSub>
                     {item.items?.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
-                        <SidebarMenuSubButton asChild>
+                        <SidebarMenuSubButton>
                           <a href={subItem.url} className="flex items-center w-full">
                             <span className="text-zinc-600 hover:text-black">{subItem.title}</span>
                           </a>

@@ -129,7 +129,10 @@ export default function KelompokBiayaPage() {
            </div>
            <div className="flex items-center gap-3">
               <label className="text-[10px] font-black uppercase italic text-zinc-400">Baris:</label>
-              <Select value={entriesPerPage} onValueChange={setEntriesPerPage}>
+          <Select 
+  value={entriesPerPage|| ""} 
+  onValueChange={(val) => setEntriesPerPage(val as any)}
+>
                 <SelectTrigger className="h-8 w-[80px] bg-zinc-100 border-none text-[10px] font-black rounded-sm shadow-none focus:ring-0">
                   <SelectValue />
                 </SelectTrigger>

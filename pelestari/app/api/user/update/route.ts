@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth"; // Ambil fungsi auth dari file konfigurasi baru
 import { db } from "@/lib/db";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 export async function PUT(req: Request) {
   try {

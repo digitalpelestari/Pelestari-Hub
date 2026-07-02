@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { FileSpreadsheet, RefreshCw, Landmark, ArrowRightLeft } from "lucide-react"
+import { Badge } from "@/components/ui/badge";
 
 export default function LabaRugiPage() {
   const [data, setData] = useState<LabaRugiData | null>(null)

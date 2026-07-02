@@ -44,8 +44,8 @@ export default function InvoiceListPage() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filterStatus, setFilterStatus] = useState("ALL")
-  const [filterBatch, setFilterBatch] = useState("ALL")
+  const [filterStatus, setFilterStatus] = useState("")
+  const [filterBatch, setFilterBatch] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [printData, setPrintData] = useState<any>(null)
@@ -335,7 +335,10 @@ export default function InvoiceListPage() {
                 />
               </div>
 
-              <Select value={filterBatch} onValueChange={setFilterBatch}>
+              <Select 
+  value={filterBatch || ""} 
+  onValueChange={(val) => setFilterBatch(val as any)}
+>
                 <SelectTrigger className="w-[150px] bg-white border-zinc-200 h-9 text-xs font-semibold rounded-sm focus:ring-1 focus:ring-black">
                   <div className="flex items-center gap-2">
                     <Layers className="h-3.5 w-3.5 text-zinc-400" />
@@ -350,7 +353,10 @@ export default function InvoiceListPage() {
                 </SelectContent>
               </Select>
 
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <Select 
+                  value={filterStatus || ""} 
+                  onValueChange={(val) => setFilterStatus(val as any)}
+                >
                 <SelectTrigger className="w-[150px] bg-white border-zinc-200 h-9 text-xs font-semibold rounded-sm focus:ring-1 focus:ring-black">
                   <div className="flex items-center gap-2">
                     <Clock className="h-3.5 w-3.5 text-zinc-400" />
@@ -548,11 +554,11 @@ export default function InvoiceListPage() {
                               </Button>
 
                               <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-red-600 rounded-sm">
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </AlertDialogTrigger>
+                               <AlertDialogTrigger>
+  <div className="flex h-8 w-8 items-center justify-center text-zinc-500 hover:text-red-600 rounded-sm cursor-pointer">
+    <Trash2 className="h-4 w-4" />
+  </div>
+</AlertDialogTrigger>
                                 <AlertDialogContent className="rounded-sm border-none shadow-2xl">
                                   <AlertDialogHeader>
                                     <AlertDialogTitle className="font-black uppercase italic tracking-tighter">Hapus Invoice?</AlertDialogTitle>

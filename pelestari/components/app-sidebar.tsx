@@ -26,7 +26,7 @@ import {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: session, status } = useSession()
-  const userRole = session?.user?.role?.toUpperCase()
+  const userRole = (session?.user as any)?.role?.toUpperCase()
 
   // === MENENTUKAN URL DASHBOARD SECARA DINAMIS BERDASARKAN ROLE ===
   let dashboardUrl = "/dashboard"
