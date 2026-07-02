@@ -1,10 +1,12 @@
+// auth.ts
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { authConfig } from "./auth.config"; // Import config ramah Edge
 
-// 1. Buat konfigurasi mentah sebagai objek murni 'any' agar tidak memicu error di properti dalam (seperti 'name')
-const authOptions: any = {
+const extendedOptions: any = {
+  ...authConfig,
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -44,38 +46,10 @@ const authOptions: any = {
         };
       }
     })
-  ],
-  callbacks: {
-    async jwt({ token, user, trigger, session }: any) {
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
-      }
-      if (trigger === "update" && session?.user) {
-        token.name = session.user.name;
-        token.email = session.user.email;
-      }
-      return token;
-    },
-    async session({ session, token }: any) {
-      if (session.user) {
-        session.user.role = token.role;
-        session.user.id = token.id;
-      }
-      return session;
-    }
-  },
-  pages: {
-    signIn: "/login",
-  },
-  session: { 
-    strategy: "jwt" 
-  }
+  ]
 };
 
-// 2. Gunakan satu-satunya penolak error TypeScript di baris eksekusi utama
 // @ts-ignore
-const authInstance = NextAuth(authOptions);
+const authInstance = NextAuth(extendedOptions);
 
-// 3. Destrukturisasi dari instance yang sudah di-bypass
 export const { handlers, auth, signIn, signOut, update } = authInstance as any;
