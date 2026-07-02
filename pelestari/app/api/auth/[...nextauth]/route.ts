@@ -1,9 +1,9 @@
-import NextAuth, { NextAuthOptions } from "next-auth";
+import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
 import bcrypt from "bcrypt";
 
-export const authOptions: NextAuthOptions = {
+export const authConfig = {
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -33,22 +33,21 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Password salah");
         }
 
-        // Mengembalikan data user yang menyertakan 'role'
         return {
           id: String(user.id_user),
           name: user.nama,
           email: user.email,
-          role: user.role, // Terbaca aman karena interface User telah diperluas
+          role: user.role,
         };
       }
     })
   ],
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user, trigger, session }: any) {
       // Jalur saat pertama kali login sukses
       if (user) {
         token.id = user.id;
-        token.role = user.role; // Terbaca aman karena interface JWT telah diperluas
+        token.role = user.role;
         token.name = user.name;
         token.email = user.email;
       }
@@ -61,9 +60,9 @@ export const authOptions: NextAuthOptions = {
 
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token }: any) {
       if (session.user) {
-        session.user.role = token.role; // Terbaca aman karena interface Session telah diperluas
+        session.user.role = token.role;
         session.user.name = token.name;
         session.user.email = token.email;
       }
@@ -74,9 +73,9 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   session: {
-    strategy: "jwt",
+    strategy: "jwt" as const,
   }
 };
 
-const handler = NextAuth(authOptions);
+const handler = NextAuth(authConfig);
 export { handler as GET, handler as POST };
