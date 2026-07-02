@@ -46,10 +46,13 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       // Jalur saat pertama kali login sukses
       if (user) {
-        token.id = user.id;
-        token.role = user.role as any;
-        token.name = user.name;
-        token.email = user.email;
+        // Mengubah user menjadi (user as any) agar properti 'role' diizinkan oleh TypeScript
+        const customUser = user as any; 
+        
+        token.id = customUser.id;
+        token.role = customUser.role;
+        token.name = customUser.name;
+        token.email = customUser.email;
       }
       
       // KUNCI SINKRONISASI FE: Jika dipicu oleh fungsi update() di Front-End
@@ -62,8 +65,8 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.role = token.role;
-        // Paksa session client selalu membaca data terbaru dari token JWT
+        // Mengubah session.user menjadi any sementara agar pengisian properti 'role' tidak error
+        (session.user as any).role = token.role;
         session.user.name = token.name;
         session.user.email = token.email;
       }
