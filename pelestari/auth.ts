@@ -15,48 +15,51 @@ const extendedOptions: any = {
         password: { label: "password", type: "password" }
       },
       async authorize(credentials: any) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email dan password wajib diisi");
-        }
-        
-        // Ambil data berdasarkan email (gunakan LOWER untuk cari aman)
-        const [rows]: any = await (db as any).execute(
-          "SELECT * FROM tb_login WHERE LOWER(email) = LOWER(?) LIMIT 1",
-          [credentials.email]
-        );
-        
-        const rawUser = rows[0];
-        if (!rawUser) {
-          throw new Error("Email tidak terdaftar");
-        }
+  try {
+    console.log("===== LOGIN =====");
 
-        // Koreksi Case-Insensitive: Memastikan properti terbaca baik huruf besar maupun kecil dari DB
-        const user = {
-          id_user: rawUser.id_user || rawUser.ID_USER,
-          nama: rawUser.nama || rawUser.NAMA,
-          email: rawUser.email || rawUser.EMAIL,
-          password: rawUser.password || rawUser.PASSWORD,
-          role: rawUser.role || rawUser.ROLE
-        };
-        
-        // Validasi Bcrypt menggunakan data yang sudah dikoreksi
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password as string, 
-          user.password
-        );
-        
-        if (!isPasswordValid) {
-  console.log("PASSWORD TIDAK MATCH DI SERVER VERCEL");
-  return null; // <-- WAJIB null, jangan throw error
+    const email = String(credentials?.email ?? "").trim();
+    const password = String(credentials?.password ?? "");
+
+    console.log("Email:", email);
+
+    const [rows]: any = await db.execute(
+      "SELECT * FROM tb_login WHERE LOWER(email)=LOWER(?) LIMIT 1",
+      [email]
+    );
+
+    console.log("Rows:", rows);
+
+    if (!rows.length) {
+      console.log("USER TIDAK DITEMUKAN");
+      return null;
+    }
+
+    const rawUser = rows[0];
+
+    console.log("Password Hash:", rawUser.password);
+
+    const valid = await bcrypt.compare(password, rawUser.password);
+
+    console.log("Password Valid:", valid);
+
+    if (!valid) {
+      return null;
+    }
+
+    console.log("LOGIN BERHASIL");
+
+    return {
+      id: String(rawUser.id_user),
+      name: rawUser.nama,
+      email: rawUser.email,
+      role: rawUser.role,
+    };
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
 }
-
-return {
-  id: String(user.id_user),
-  name: user.nama,
-  email: user.email,
-  role: user.role,
-};
-      }
     })
   ]
 };
