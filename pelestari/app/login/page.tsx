@@ -3,14 +3,18 @@
 
 import React, { useState } from "react";
 import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
+
+  // NextAuth otomatis mengirim parameter ?error=CredentialsSignin ke URL jika login gagal
+  const searchParams = useSearchParams();
+  const errorParam = searchParams.get("error");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -19,26 +23,17 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError("");
 
     try {
-      // Menggunakan redirect: false agar respon POST 200 bisa kita handle manual
-      const result = await signIn("credentials", {
-        redirect: false,
-        email: formData.email,
+      // Menggunakan strategi NextAuth v5 standar: redirect langsung dari server ke /dashboard
+      await signIn("credentials", {
+        redirect: true,
+        redirectTo: "/dashboard",
+        email: formData.email.trim(), // Membersihkan spasi gaib di ujung email
         password: formData.password,
       });
-
-      if (result?.error) {
-        // Jika backend mengembalikan error (misal password salah)
-        setError("Email atau password yang Anda masukkan salah.");
-        setLoading(false);
-      } else {
-        // JIKA SUKSES (POST 200), PAKSA BERPINDAH KE DASHBOARD REFRESH SESSION
-        window.location.href = "/dashboard";
-      }
     } catch (err) {
-      setError("Terjadi kesalahan jaringan. Silakan coba lagi.");
+      console.error("Login Client Error:", err);
       setLoading(false);
     }
   };
@@ -56,9 +51,12 @@ export default function LoginPage() {
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
+          {/* Menangkap sinyal error langsung dari URL callback NextAuth */}
+          {errorParam && (
             <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm text-center">
-              {error}
+              {errorParam === "CredentialsSignin"
+                ? "Email atau password yang Anda masukkan salah."
+                : "Terjadi kesalahan sistem. Silakan coba lagi."}
             </div>
           )}
 

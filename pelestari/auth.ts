@@ -11,8 +11,8 @@ const extendedOptions: any = {
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+        email: { label: "email", type: "email" },
+        password: { label: "password", type: "password" }
       },
       async authorize(credentials: any) {
         if (!credentials?.email || !credentials?.password) {
@@ -46,16 +46,16 @@ const extendedOptions: any = {
         );
         
         if (!isPasswordValid) {
-          throw new Error("Password salah");
-        }
+  console.log("PASSWORD TIDAK MATCH DI SERVER VERCEL");
+  return null; // <-- WAJIB null, jangan throw error
+}
 
-        // Return dengan format standar NextAuth yang aman
-        return {
-          id: String(user.id_user),
-          name: user.nama,
-          email: user.email,
-          role: user.role, // Disimpan untuk dikonsumsi jwt callback di auth.config.ts
-        };
+return {
+  id: String(user.id_user),
+  name: user.nama,
+  email: user.email,
+  role: user.role,
+};
       }
     })
   ]
