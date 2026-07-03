@@ -167,7 +167,7 @@ export default function KasirJurnalPage() {
             Double-Entry Accounting Input System
           </p>
         </div>
-        <Link href="/dashboard/pos/jurnal">
+        <Link href="/dashboard/finance/pos/jurnal">
           <Button variant="outline" size="sm" className="h-8 text-[10px] font-black rounded-sm border-zinc-300">
             <ArrowLeft className="mr-1 h-3 w-3" /> LIHAT RIWAYAT JURNAL
           </Button>
