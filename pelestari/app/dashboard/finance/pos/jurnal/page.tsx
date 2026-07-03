@@ -237,7 +237,7 @@ export default function JurnalUmumListPage() {
             <Download className="h-4 w-4" /> {isExporting ? "MENGONVERSI..." : "EKSPOR EXCEL"}
           </Button>
           
-          <Link href="/dashboard/pos/kasir">
+          <Link href="/dashboard/finance/pos/kasir">
             <Button className="h-9 bg-black text-white text-xs font-black italic rounded-sm transition-all px-4">
               <Plus className="mr-1 h-4 w-4" /> BUAT JURNAL BARU
             </Button>

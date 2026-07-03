@@ -259,7 +259,7 @@ export default function InvoiceListPage() {
 
           <ExportInvoiceButton data={filteredInvoices} />
 
-          <Link href="/dashboard/invoices/create">
+          <Link href="/dashboard/finance/invoices/create">
             <Button className="bg-black text-white hover:bg-zinc-800 shadow-sm h-9 text-xs font-semibold rounded-sm px-4">
               <Plus className="mr-1.5 h-4 w-4" /> Tambah Invoice
             </Button>
