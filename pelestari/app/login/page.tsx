@@ -1,3 +1,4 @@
+// app/login/page.tsx
 "use client";
 
 import { signIn } from "next-auth/react";
@@ -16,20 +17,27 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    // 1. Panggil fungsi login bawaan NextAuth
+    // 1. Panggil fungsi login bawaan NextAuth dengan email yang sudah di-trim
     const res = await signIn("credentials", {
-      email,
-      password,
+      email: email.trim(),
+      password: password,
       redirect: false, // Handle redirect manual agar transisinya smooth
     });
 
+    // MENANGKAP ERROR ASLI DARI BACKEND
     if (res?.error) {
-      setError("Email atau password salah!");
       setLoading(false);
+      
+      // Jika error berupa kode internal standar NextAuth, buat fallback yang ramah
+      if (res.error === "CredentialsSignin" || res.error.includes("CallbackRouteError")) {
+        setError("Email atau password yang Anda masukkan salah.");
+      } else {
+        // Menampilkan pesan spesifik yang dikirim lewat 'throw new Error' di auth.ts
+        setError(res.error);
+      }
     } else {
       try {
-        // 2. AMBIL DATA USER AKTIF: Karena login sukses, kita panggil session saat ini 
-        // untuk tahu role asli user yang baru saja masuk sebelum dilempar halaman.
+        // 2. AMBIL DATA USER AKTIF: Panggil session untuk tahu role user
         const sessionRes = await fetch("/api/auth/session");
         const sessionData = await sessionRes.json();
         
@@ -37,19 +45,16 @@ export default function LoginPage() {
 
         // 3. LOGIKA REDIRECT BERDASARKAN ROLE (RBAC LANDING)
         if (userRole === "GA") {
-          // Jika role-nya GA, langsung arahkan ke dashboard khusus purchase order
           router.push("/dashboard/ga");
         } else if (userRole === "FINANCE" || userRole === "MANAGER FINANCE") {
-          // Jika rumpun finance, arahkan ke manajemen invoice
           router.push("/dashboard/finance");
         } else {
-          // Fallback umum jika ada role lain atau admin biasa
           router.push("/dashboard");
         }
 
         router.refresh();
       } catch (err) {
-        // Jika ada kendala jaringan saat fetch session data
+        // Fallback jika ada gangguan fetch session data
         router.push("/dashboard");
         router.refresh();
       }
@@ -70,7 +75,7 @@ export default function LoginPage() {
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 font-medium border border-red-200">
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 font-medium border border-red-200 text-center">
               {error}
             </div>
           )}
@@ -81,9 +86,10 @@ export default function LoginPage() {
               <input
                 type="email"
                 required
+                disabled={loading}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="relative block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:z-10 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                className="relative block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:z-10 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
                 placeholder="nama@pelestari.id"
               />
             </div>
@@ -92,9 +98,10 @@ export default function LoginPage() {
               <input
                 type="password"
                 required
+                disabled={loading}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="relative block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:z-10 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                className="relative block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:z-10 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
                 placeholder="••••••••"
               />
             </div>
