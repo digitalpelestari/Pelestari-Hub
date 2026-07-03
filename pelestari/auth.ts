@@ -14,8 +14,12 @@ const extendedOptions: any = {
         email: { label: "email", type: "email" },
         password: { label: "password", type: "password" }
       },
+
+  
       async authorize(credentials: any) {
+         console.log("DB_HOST =", process.env.DB_HOST);
   try {
+     console.log("DB_HOST =", process.env.DB_HOST);
     console.log("===== LOGIN =====");
 
     const email = String(credentials?.email ?? "").trim();
