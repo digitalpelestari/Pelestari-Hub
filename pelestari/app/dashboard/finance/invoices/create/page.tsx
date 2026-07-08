@@ -106,7 +106,7 @@ export default function CreateInvoicePage() {
     
     if (res.success) {
       alert("Invoice Berhasil Disimpan Ke Database!");
-      router.push("/dashboard/invoices");
+      router.push("/dashboard/finance/invoices");
       router.refresh();
     } else {
       alert("GAGAL SIMPAN: " + res.message);
@@ -120,7 +120,7 @@ export default function CreateInvoicePage() {
       {/* HEADER ACTION */}
       <div className="flex items-center justify-between border-b border-zinc-200 pb-6">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard/invoices">
+          <Link href="/dashboard/finance/invoices">
             <Button variant="outline" size="icon" className="rounded-full shadow-sm bg-white hover:bg-zinc-100 transition-all">
               <ArrowLeft className="h-4 w-4" />
             </Button>

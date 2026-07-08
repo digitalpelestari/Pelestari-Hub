@@ -2,26 +2,30 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "crypto"; // Tambahkan generator UUID bawaan Node.js
 
-// --- FUNGSI BARU: AMBIL NOMOR URUT BERIKUTNYA ---
+// =========================================================================
+// 1. FUNGSI: IMPORT DATA EXCEL INVOICES BULK
+// =========================================================================
 export async function importInvoices(dataArray: any[]) {
   try {
-    // Opsional: Gunakan loop dengan pengecekan tipe data
     for (const item of dataArray) {
-      // PERBAIKAN: Menambahkan kolom 'jenis_kegiatan' agar selaras dengan total parameter VALUES (?)
+      const newInvoiceId = randomUUID(); // Generate UUID untuk setiap baris excel
+
       const query = `INSERT INTO tb_invoice (
-        nomor_invoice, batch, jenis_kegiatan, tanggal, tanggal_jatuhtempo, 
+        id, nomor_invoice, batch, jenis_kegiatan, tanggal, tanggal_jatuhtempo, 
         perusahaan_tujuan, npwp, alamat_perusahaan, keterangan, 
         jumlah_peserta, harga_peserta, keterangan_2, jumlah_peserta_2, 
         harga_peserta_2, is_pph23, is_ppn11, is_pnbp, nominal_pnbp, 
         total, status, bayar_1, bayar_2
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
       const values = [
+        newInvoiceId, // Suntikkan UUID manual
         item.nomor_invoice,
         item.batch || "N/A",
-        item.jenis_kegiatan || "-", // Dipetakan ke kolom jenis_kegiatan
-        item.tanggal, // Format harus YYYY-MM-DD
+        item.jenis_kegiatan || "-", 
+        item.tanggal, // Format wajib YYYY-MM-DD
         item.tanggal_jatuhtempo,
         item.perusahaan_tujuan,
         item.npwp || "-",
@@ -45,7 +49,7 @@ export async function importInvoices(dataArray: any[]) {
       await db.query(query, values);
     }
 
-    revalidatePath("/dashboard/invoices");
+    revalidatePath("/dashboard/finance/invoices");
     return { success: true, message: `${dataArray.length} data berhasil diimpor` };
   } catch (error: any) {
     console.error("IMPORT_ERROR:", error.message);
@@ -53,27 +57,34 @@ export async function importInvoices(dataArray: any[]) {
   }
 }
 
+// =========================================================================
+// 2. FUNGSI: AMBIL URUTAN (Dipertahankan jika aplikasi frontend membutuhkan)
+// =========================================================================
 export async function getNextInvoiceNumber() {
   try {
-    const [rows]: any = await db.query("SELECT id FROM tb_invoice ORDER BY id DESC LIMIT 1");
-    const lastId = rows.length > 0 ? rows[0].id : 0;
-    return lastId + 1;
+    const [rows]: any = await db.query("SELECT COUNT(id) as total FROM tb_invoice");
+    const count = rows.length > 0 ? rows[0].total : 0;
+    return count + 1;
   } catch (error) {
     console.error("Gagal mengambil urutan nomor:", error);
     return 1; 
   }
 }
 
+// =========================================================================
+// 3. FUNGSI: TAMBAH INVOICE FORM (SISI SERVER)
+// =========================================================================
 export async function createInvoice(formData: any) {
-  // Mengambil koneksi manual dari pool database untuk mengaktifkan transaction rollback
   const connection = await db.getConnection();
   
   try {
-    // 1. Mulai Transaksi Database
     await connection.beginTransaction();
 
-    // 2. Simpan Data Utama ke Tabel tb_invoice
+    const newInvoiceId = randomUUID(); // 1. Buat UUID string unik di sini
+
+    // 2. Simpan Data Utama ke Tabel tb_invoice (Tambahkan kolom id di insert query)
     const queryInvoice = `INSERT INTO tb_invoice (
+      id,
       nomor_invoice, 
       batch, 
       tanggal,
@@ -98,9 +109,10 @@ export async function createInvoice(formData: any) {
       bayar_2,
       tanggal_bayar_2,
       status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
     const valuesInvoice = [
+      newInvoiceId, // 3. Masukkan data UUID ke urutan parameter pertama (?)
       formData.nomor_invoice,
       formData.batch,
       formData.tanggal,
@@ -129,40 +141,34 @@ export async function createInvoice(formData: any) {
 
     await connection.query(queryInvoice, valuesInvoice);
 
-    // =========================================================================
-    // --- SINKRONISASI SALDO: HANYA UPDATE AKUN PIUTANG (TANPA JURNAL OTOMATIS)
-    // =========================================================================
+    // --- SINKRONISASI SALDO MASTER AKUN PIUTANG ---
     const akunPiutang = "6000"; 
-
-    // Langsung update menambah saldo riil akun Piutang di master tb_akun
     await connection.query(
       "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = ?", 
       [formData.total, akunPiutang]
     );
 
-    // 3. Jika proses insert invoice dan update saldo piutang aman, simpan permanen ke MySQL
     await connection.commit();
-    
-    // Refresh Cache Next.js agar data terbaru langsung muncul di dashboard
-    revalidatePath("/dashboard/invoices");
+    revalidatePath("/dashboard/finance/invoices");
 
     return { success: true };
   } catch (error: any) {
-    // Batalkan semua perubahan jika terjadi error dalam rangkaian di atas
     await connection.rollback();
     console.error("CREATE_INVOICE_ERROR:", error.message);
     return { success: false, message: "Gagal simpan invoice: " + error.message };
   } finally {
-    // Kembalikan koneksi ke pool database
     connection.release();
   }
 }
 
-export async function deleteInvoice(id: number) {
+// =========================================================================
+// 4. FUNGSI: HAPUS DATA INVOICE (id diubah bertipe data string)
+// =========================================================================
+export async function deleteInvoice(id: string) {
   try {
     const query = `DELETE FROM tb_invoice WHERE id = ?`;
     await db.query(query, [id]);
-    revalidatePath("/dashboard/invoices");
+    revalidatePath("/dashboard/finance/invoices");
     return { success: true, message: "Invoice berhasil dihapus" };
   } catch (error) {
     console.error("Gagal menghapus invoice:", error);
@@ -170,7 +176,10 @@ export async function deleteInvoice(id: number) {
   }
 }
 
-export async function updateInvoice(id: number, data: any) {
+// =========================================================================
+// 5. FUNGSI: UPDATE / EDIT INVOICE DATA (id diubah bertipe data string)
+// =========================================================================
+export async function updateInvoice(id: string, data: any) {
   try {
     const query = `
       UPDATE tb_invoice SET 
@@ -196,7 +205,7 @@ export async function updateInvoice(id: number, data: any) {
     ];
 
     await db.query(query, values);
-    revalidatePath("/dashboard/invoices");
+    revalidatePath("/dashboard/finance/invoices");
     return { success: true };
   } catch (error: any) {
     console.error("SQL_ERROR:", error.message);
@@ -204,7 +213,10 @@ export async function updateInvoice(id: number, data: any) {
   }
 }
 
-export async function getInvoiceById(id: number) {
+// =========================================================================
+// 6. FUNGSI: DETEKSI DETIL INVOICE BY ID (id diubah bertipe data string)
+// =========================================================================
+export async function getInvoiceById(id: string) {
   try {
     const [rows]: any = await db.query(
       "SELECT * FROM tb_invoice WHERE id = ?", 
@@ -216,6 +228,9 @@ export async function getInvoiceById(id: number) {
   }
 }
 
+// =========================================================================
+// 7. FUNGSI: AMBIL SEMUA LIST DATA INVOICE + HITUNG UMUR PIUTANG
+// =========================================================================
 export async function getInvoices() {
   try {
     const [rows]: any = await db.query("SELECT * FROM tb_invoice ORDER BY created_at DESC");
@@ -240,7 +255,10 @@ export async function getInvoices() {
   }
 }
 
-export async function updatePayment(id: number, data: any) {
+// =========================================================================
+// 8. FUNGSI: UPDATE DATA MANUAL PEMBAYARAN (id diubah bertipe data string)
+// =========================================================================
+export async function updatePayment(id: string, data: any) {
   try {
     const query = `
       UPDATE tb_invoice SET 
@@ -256,7 +274,7 @@ export async function updatePayment(id: number, data: any) {
       id
     ];
     await db.query(query, values);
-    revalidatePath("/dashboard/invoices");
+    revalidatePath("/dashboard/finance/invoices");
     return { success: true };
   } catch (error: any) {
     return { success: false, message: error.message };
@@ -264,25 +282,23 @@ export async function updatePayment(id: number, data: any) {
 }
 
 // =========================================================================
-// --- FUNGSI BARU: EKSEKUSI PEMBAYARAN DAN STRATEGI JURNAL OTOMATIS ---
+// 9. FUNGSI: EKSEKUSI PEMBAYARAN DAN OTOMATISASI JURNAL AKUNTANSI (invoiceId: string)
 // =========================================================================
 interface PembayaranOtomatisPayload {
-  invoiceId: number;
+  invoiceId: string; // Diubah ke string agar cocok dengan tipe UUID
   jumlahBayar: number;
   jenisPembayaran: "DP" | "Pelunasan";
-  rekeningBankAkun: string; // Masukkan nomor COA Bank tujuan (misal: "111.02")
-  piutangAkun: string;      // Masukkan nomor COA Piutang Usaha (misal: "112.01")
-  keteranganJurnal: string; // Deskripsi kustom untuk isi pembukuan jurnal umum
+  rekeningBankAkun: string; 
+  piutangAkun: string;      
+  keteranganJurnal: string; 
 }
 
 export async function prosesBayarDanJurnalOtomatis(payload: PembayaranOtomatisPayload) {
   const connection = await db.getConnection();
   
   try {
-    // 1. Mulai Rangkaian Transaksi Database Aman
     await connection.beginTransaction();
 
-    // 2. Ambil snapshot data invoice target
     const [invoiceRows]: any = await connection.query(
       "SELECT nomor_invoice, total, bayar_1, bayar_2 FROM tb_invoice WHERE id = ?", 
       [payload.invoiceId]
@@ -290,10 +306,9 @@ export async function prosesBayarDanJurnalOtomatis(payload: PembayaranOtomatisPa
     if (invoiceRows.length === 0) throw new Error("Target invoice tidak ditemukan.");
     const invoice = invoiceRows[0];
 
-    // 3. Hitung & Update Parameter Pembayaran di Tabel Invoice
     let updateInvoiceQuery = "";
     let updateParams = [];
-    const noRegJurnal = `BKM-${invoice.nomor_invoice}`; // Bukti Kas Masuk otomatis
+    const noRegJurnal = `BKM-${invoice.nomor_invoice}`; 
 
     if (payload.jenisPembayaran === "DP") {
       updateInvoiceQuery = `
@@ -305,7 +320,6 @@ export async function prosesBayarDanJurnalOtomatis(payload: PembayaranOtomatisPa
       `;
       updateParams = [payload.jumlahBayar, payload.invoiceId];
     } else {
-      // Jika pelunasan, isi bayar_2 dan kunci status ke 'Lunas'
       updateInvoiceQuery = `
         UPDATE tb_invoice SET 
           bayar_2 = ?, 
@@ -317,7 +331,6 @@ export async function prosesBayarDanJurnalOtomatis(payload: PembayaranOtomatisPa
     }
     await connection.query(updateInvoiceQuery, updateParams);
 
-    // 4. GENERATE JURNAL: Buat baris header baru di tb_jurnal
     const jurnalHeaderQuery = `
       INSERT INTO tb_jurnal (tanggal, no_registrasi, keterangan) 
       VALUES (CURDATE(), ?, ?)
@@ -328,44 +341,36 @@ export async function prosesBayarDanJurnalOtomatis(payload: PembayaranOtomatisPa
     ]);
     const jurnalId = jurnalResult.insertId;
 
-    // 5. GENERATE JURNAL ITEM: Insert sisi DEBIT (Uang bertambah masuk ke Rekening Bank)
     const itemQuery = `
       INSERT INTO tb_jurnal_item (jurnal_id, no_akun, debit, kredit) 
       VALUES (?, ?, ?, ?)
     `;
     await connection.query(itemQuery, [jurnalId, payload.rekeningBankAkun, payload.jumlahBayar, 0]);
     
-    // Sinkronisasi otomatis menambah Saldo Buku Besar Master Akun Bank
     await connection.query(
       "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = ?", 
       [payload.jumlahBayar, payload.rekeningBankAkun]
     );
 
-    // 6. GENERATE JURNAL ITEM: Insert sisi KREDIT (Piutang Usaha berkurang)
     await connection.query(itemQuery, [jurnalId, payload.piutangAkun, 0, payload.jumlahBayar]);
     
-    // Sinkronisasi otomatis mengurangi Saldo Buku Besar Master Akun Piutang
     await connection.query(
       "UPDATE tb_akun SET saldo = saldo - ? WHERE no_akun = ?", 
       [payload.jumlahBayar, payload.piutangAkun]
     );
 
-    // Jika seluruh rangkaian mutasi aman, commit permanen ke MySQL
     await connection.commit();
     
-    // Refresh Cache Next.js
-    revalidatePath("/dashboard/invoices");
-    revalidatePath("/dashboard/jurnal");
+    revalidatePath("/dashboard/finance/invoices");
+    revalidatePath("/dashboard/finance/jurnal");
     
     return { success: true, message: "Pembayaran diproses & Buku Besar otomatis dijurnal!" };
 
   } catch (error: any) {
-    // Batalkan seluruh rangkaian jika ada salah satu operasi query gagal
     await connection.rollback();
     console.error("PROSES_BAYAR_JURNAL_ERROR:", error.message);
     return { success: false, message: "Gagal memproses pembayaran otomatis: " + error.message };
   } finally {
-    // Kembalikan koneksi ke pool
     connection.release();
   }
 }

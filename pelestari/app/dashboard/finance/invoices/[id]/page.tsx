@@ -1,28 +1,37 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { 
-  ArrowLeft, Calculator, Hash, FileText, 
-  Building2, Printer, Loader2, List, Info 
+  ArrowLeft, Calculator, Hash, 
+  Building2, Printer, Loader2, List 
 } from "lucide-react"
 import Link from "next/link"
 import { getInvoiceById } from "@/app/actions/invoice"
 
 export default function InvoiceDetailPage() {
   const params = useParams()
+  
+  // Ambil ID secara aman sebagai string (mengatasi string | string[] dari Next.js)
+  const invoiceId = useMemo(() => {
+    if (!params?.id) return ""
+    return Array.isArray(params.id) ? params.id[0] : params.id
+  }, [params?.id])
+
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<any>(null)
 
   useEffect(() => {
     async function loadInvoice() {
+      if (!invoiceId) return
       try {
         setLoading(true)
-        const res = await getInvoiceById(Number(params.id))
+        // PERBAIKAN 1: Hapus fungsi Number(), langsung kirim invoiceId string UUID murni
+        const res = await getInvoiceById(invoiceId)
         setData(res)
       } catch (error) {
         console.error("Gagal memuat invoice:", error)
@@ -30,8 +39,8 @@ export default function InvoiceDetailPage() {
         setLoading(false)
       }
     }
-    if (params.id) loadInvoice()
-  }, [params.id])
+    loadInvoice()
+  }, [invoiceId])
 
   const formatIDR = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { 
@@ -59,7 +68,7 @@ export default function InvoiceDetailPage() {
   }
 
   // Hitung subtotal untuk ringkasan (Baris 1 + Baris 2 jika ada)
-  const subtotal1 = data.jumlah_peserta * data.harga_peserta;
+  const subtotal1 = (data.jumlah_peserta || 0) * (data.harga_peserta || 0);
   const subtotal2 = (data.jumlah_peserta_2 || 0) * (data.harga_peserta_2 || 0);
   const subtotalTotal = subtotal1 + subtotal2;
 
@@ -68,7 +77,8 @@ export default function InvoiceDetailPage() {
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-zinc-200 pb-8">
         <div className="flex items-center gap-5">
-          <Link href="/dashboard/invoices">
+          {/* PERBAIKAN 2: Sesuaikan rute kembali agar mengarah ke dashboard finance */}
+          <Link href="/dashboard/finance/invoices">
             <Button variant="outline" size="icon" className="rounded-full shadow-sm bg-white hover:bg-zinc-100 border-zinc-200 h-12 w-12">
               <ArrowLeft className="h-5 w-5" />
             </Button>
@@ -77,7 +87,7 @@ export default function InvoiceDetailPage() {
             <h1 className="text-4xl font-black uppercase tracking-tighter text-zinc-900 italic leading-none">Arsip Invoice</h1>
             <div className="flex items-center gap-3 mt-3">
                <Badge className={`rounded-lg px-4 py-1 text-[10px] font-black tracking-widest ${data.status === 'Lunas' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
-                  {data.status.toUpperCase()}
+                  {data.status ? data.status.toUpperCase() : "BELUM LUNAS"}
                </Badge>
                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] italic">System ID: {data.id}</span>
             </div>
@@ -113,12 +123,12 @@ export default function InvoiceDetailPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-[11px] font-black uppercase italic opacity-40">Tanggal Terbit</Label>
-                <p className="font-bold text-zinc-700">{new Date(data.tanggal).toLocaleDateString('id-ID', { dateStyle: 'long' })}</p>
+                <p className="font-bold text-zinc-700">{data.tanggal ? new Date(data.tanggal).toLocaleDateString('id-ID', { dateStyle: 'long' }) : "-"}</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-[11px] font-black uppercase italic text-rose-500">Batas Jatuh Tempo</Label>
                 <p className="font-black text-rose-600 underline decoration-2 underline-offset-4 decoration-rose-200">
-                  {new Date(data.tanggal_jatuhtempo).toLocaleDateString('id-ID', { dateStyle: 'long' })}
+                  {data.tanggal_jatuhtempo ? new Date(data.tanggal_jatuhtempo).toLocaleDateString('id-ID', { dateStyle: 'long' }) : "-"}
                 </p>
               </div>
             </CardContent>
@@ -141,7 +151,7 @@ export default function InvoiceDetailPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-[11px] font-black uppercase italic opacity-40">Alamat Korespondensi</Label>
-                  <p className="text-sm font-bold leading-relaxed text-zinc-500 uppercase italic">{data.alamat_perusahaan}</p>
+                  <p className="text-sm font-bold leading-relaxed text-zinc-500 uppercase italic">{data.alamat_perusahaan || "-"}</p>
                 </div>
               </div>
             </CardContent>
@@ -149,14 +159,14 @@ export default function InvoiceDetailPage() {
 
           {/* Section 3: Rincian Pekerjaan (Multi Baris) */}
           <Card className="border-none shadow-sm ring-1 ring-zinc-200 border-l-8 border-l-black rounded-[1.5rem] overflow-hidden">
-            <CardHeader className="bg-zinc-50/50 border-b py-4 font-black text-[10px] uppercase tracking-widest text-zinc-400 font-mono text-black flex items-center gap-2">
+            <CardHeader className="bg-zinc-50/50 border-b py-4 font-black text-[10px] uppercase tracking-widest text-zinc-400 font-mono flex items-center gap-2">
               <List className="h-4 w-4" /> Rincian Pekerjaan & Biaya Layanan
             </CardHeader>
             <CardContent className="p-8 space-y-8">
               
               {/* BARIS PERTAMA */}
               <div className="space-y-4 p-6 bg-zinc-50 rounded-[1.5rem] border border-zinc-200 relative">
-                <Badge className="bg-black text-[9px] font-black italic uppercase rounded-md px-3 absolute -top-3 left-6">Baris Utama</Badge>
+                <Badge className="bg-black text-[9px] font-black italic uppercase rounded-md px-3 absolute -top-3 left-6 text-white hover:bg-black">Baris Utama</Badge>
                 <div className="space-y-1">
                   <Label className="text-[11px] font-black uppercase italic opacity-40">Deskripsi Layanan 1</Label>
                   <p className="font-black text-xl leading-tight uppercase italic text-zinc-800">{data.keterangan}</p>
@@ -174,7 +184,7 @@ export default function InvoiceDetailPage() {
               </div>
 
               {/* BARIS KEDUA (Hanya Muncul Jika Keterangan 2 Diisi) */}
-              {data.keterangan_2 && (
+              {data.keterangan_2 && data.keterangan_2 !== "-" && (
                 <div className="space-y-4 p-6 bg-zinc-50/50 rounded-[1.5rem] border border-dashed border-zinc-300 relative">
                   <Badge variant="outline" className="text-[9px] font-black italic uppercase rounded-md px-3 text-zinc-400 absolute -top-3 left-6 bg-white">Baris Tambahan</Badge>
                   <div className="space-y-1">
@@ -197,9 +207,9 @@ export default function InvoiceDetailPage() {
               {/* Status Pajak yang Aktif */}
               <div className="flex flex-wrap gap-3 pt-4 border-t border-dashed border-zinc-200">
                 <div className="text-[10px] font-black uppercase opacity-30 w-full mb-1 italic">Status Perpajakan Terpilih:</div>
-                {data.is_pph23 === 1 && <Badge className="bg-rose-50 text-rose-700 border-rose-200 font-black uppercase text-[10px] px-4 py-1">PPH 23 (2%) AKTIF</Badge>}
-                {data.is_ppn11 === 1 && <Badge className="bg-blue-50 text-blue-700 border-blue-200 font-black uppercase text-[10px] px-4 py-1">PPN 11% AKTIF</Badge>}
-                {data.is_pnbp === 1 && <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-black uppercase text-[10px] px-4 py-1">PNBP AKTIF</Badge>}
+                {data.is_pph23 === 1 && <Badge className="bg-rose-50 text-rose-700 border-rose-200 font-black uppercase text-[10px] px-4 py-1 hover:bg-rose-50">PPH 23 (2%) AKTIF</Badge>}
+                {data.is_ppn11 === 1 && <Badge className="bg-blue-50 text-blue-700 border-blue-200 font-black uppercase text-[10px] px-4 py-1 hover:bg-blue-50">PPN 11% AKTIF</Badge>}
+                {data.is_pnbp === 1 && <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-black uppercase text-[10px] px-4 py-1 hover:bg-emerald-50">PNBP AKTIF</Badge>}
               </div>
             </CardContent>
           </Card>
@@ -250,7 +260,7 @@ export default function InvoiceDetailPage() {
 
               <div className="pt-10 border-t border-zinc-800 flex flex-col gap-3 leading-none">
                 <span className="text-[11px] font-black text-emerald-500 uppercase tracking-[0.3em] italic">Total Tagihan Bersih</span>
-                <h2 className="text-4xl font-black tabular-nums tracking-tighter leading-none italic italic underline underline-offset-8 decoration-emerald-500/20">
+                <h2 className="text-4xl font-black tabular-nums tracking-tighter leading-none italic underline underline-offset-8 decoration-emerald-500/20 text-white">
                   {formatIDR(data.total)}
                 </h2>
               </div>

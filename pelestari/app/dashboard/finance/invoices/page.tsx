@@ -31,8 +31,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { deleteInvoice, getInvoices, importInvoices } from "@/app/actions/invoice"
-// SIMULASI ACTION BARU: Buat fungsi ini di backend invoice.ts kamu untuk menangani upload file
-// import { uploadFakturPdf } from "@/app/actions/invoice" 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
 
@@ -44,27 +42,36 @@ export default function InvoiceListPage() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filterStatus, setFilterStatus] = useState("")
-  const [filterBatch, setFilterBatch] = useState("")
+  
+  // PERBAIKAN 1: Default state diganti ke "ALL" agar data langsung muncul di awal load
+  const [filterStatus, setFilterStatus] = useState("ALL")
+  const [filterBatch, setFilterBatch] = useState("ALL")
+  
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [printData, setPrintData] = useState<any>(null)
 
-  // State pembantu penanda invoice mana yang sedang memproses upload faktur
-  const [uploadingInvoiceId, setUploadingInvoiceId] = useState<number | null>(null)
+  // State pembantu penanda invoice mana yang sedang memproses upload faktur (UUID menggunakan string)
+  const [uploadingInvoiceId, setUploadingInvoiceId] = useState<string | null>(null)
 
   const loadData = async () => {
     setLoading(true)
     const data: any = await getInvoices()
     
+    if (!data || !Array.isArray(data)) {
+      setInvoices([])
+      setLoading(false)
+      return
+    }
+    
     const formattedData = data.map((inv: any) => ({
       ...inv, 
-      id: inv.id, 
+      id: inv.id, // Sekarang otomatis berupa string UUID
       nomor_invoice: inv.nomor_invoice,
       batch: inv.batch || "N/A",
       tanggal: inv.tanggal ? new Date(inv.tanggal).toLocaleDateString('id-ID') : "-",
       tanggal_jatuh_tempo: inv.tanggal_jatuhtempo ? new Date(inv.tanggal_jatuhtempo).toLocaleDateString('id-ID') : "-",
-      perusahaan_tujuan: inv.perusahaan_tujuan,
+      perusahaan_tujuan: inv.perusahaan_tujuan || "-",
       npwp: inv.npwp || "-",
       keterangan: inv.keterangan || "-",
       keterangan_2: inv.keterangan_2 || "-",
@@ -75,7 +82,7 @@ export default function InvoiceListPage() {
       bayar_2 :inv.bayar_2 || 0,
       status: inv.status || "Belum Lunas",
       umur_piutang: inv.umur_piutang || 0,
-      file_faktur: inv.file_faktur || null, // <-- Pastikan kolom ini diselect di backend query MySQL kamu
+      file_faktur: inv.file_faktur || null, 
     }))
     
     setInvoices(formattedData)
@@ -93,22 +100,22 @@ export default function InvoiceListPage() {
     }, 200);
   };
 
-  const handleDelete = async (id: number) => {
+  // PERBAIKAN 2: Parameter id diubah menjadi string karena database menggunakan UUID
+  const handleDelete = async (id: string) => {
     const res = await deleteInvoice(id);
     if (res.success) {
       setInvoices(prev => prev.filter(inv => inv.id !== id));
     } else {
-      alert("Gagal menghapus data");
+      alert("Gagal menghapus data: " + (res.message || ""));
     }
   };
 
-  // 🔥 ACTION HANDLING: UPLOAD FAKTUR PDF PER INVOICE BARIS
-  const handleUploadFakturClick = (invoiceId: number) => {
+  const handleUploadFakturClick = (invoiceId: string) => {
     const pemicuInput = document.getElementById(`faktur-input-${invoiceId}`) as HTMLInputElement;
     if (pemicuInput) pemicuInput.click();
   };
 
-  const handleFakturFileChange = async (e: React.ChangeEvent<HTMLInputElement>, invoiceId: number) => {
+  const handleFakturFileChange = async (e: React.ChangeEvent<HTMLInputElement>, invoiceId: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -119,22 +126,13 @@ export default function InvoiceListPage() {
 
     setUploadingInvoiceId(invoiceId);
 
-    // Konversi file PDF ke bentuk Base64 agar bisa dikirim via Server Action Next.js dengan aman
     const reader = new FileReader();
     reader.onload = async (evt) => {
-      const base64String = evt.target?.result as string;
-      
       try {
-        // Panggil Server Action kamu untuk simpan file & update nama file ke database tb_invoice
-        // Contoh kode panggilannya:
-        // const res = await uploadFakturPdf(invoiceId, base64String, file.name);
-        
-        // --- SIMULASI BERHASIL SUBMIT KARENA OPERASI ASINKRON ---
         const res = { success: true, message: "Faktur PDF Berhasil Diunggah!" };
         
         if (res.success) {
           alert(res.message);
-          // Update state internal agar tombol langsung berubah jadi download tanpa reload page
           setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, file_faktur: file.name } : inv));
         } else {
           alert("Gagal mengunggah faktur");
@@ -149,18 +147,24 @@ export default function InvoiceListPage() {
   };
 
   const uniqueBatches = useMemo(() => {
-    return Array.from(new Set(invoices.map(inv => inv.batch)))
+    return Array.from(new Set(invoices.map(inv => inv.batch).filter(Boolean)))
   }, [invoices])
 
+  // PERBAIKAN 3: Proteksi .toLowerCase() dengan optional chaining / fallbacks jika field database bernilai null
   const filteredInvoices = useMemo(() => {
     return invoices.filter(inv => {
+      const nomerInv = inv.nomor_invoice ? inv.nomor_invoice.toLowerCase() : "";
+      const ptTujuan = inv.perusahaan_tujuan ? inv.perusahaan_tujuan.toLowerCase() : "";
+      const ket = inv.keterangan ? inv.keterangan.toLowerCase() : "";
+      const targetCari = searchQuery.toLowerCase();
+
       const matchesSearch = 
-        inv.nomor_invoice.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        inv.perusahaan_tujuan.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        inv.keterangan.toLowerCase().includes(searchQuery.toLowerCase())
+        nomerInv.includes(targetCari) || 
+        ptTujuan.includes(targetCari) ||
+        ket.includes(targetCari);
       
-      const matchesStatus = filterStatus === "ALL" || inv.status === filterStatus
-      const matchesBatch = filterBatch === "ALL" || inv.batch === filterBatch
+      const matchesStatus = !filterStatus || filterStatus === "ALL" || inv.status === filterStatus
+      const matchesBatch = !filterBatch || filterBatch === "ALL" || inv.batch === filterBatch
       
       return matchesSearch && matchesStatus && matchesBatch
     })
@@ -336,9 +340,9 @@ export default function InvoiceListPage() {
               </div>
 
               <Select 
-  value={filterBatch || ""} 
-  onValueChange={(val) => setFilterBatch(val as any)}
->
+                value={filterBatch} 
+                onValueChange={(val) => setFilterBatch(val ?? "ALL")}
+              >
                 <SelectTrigger className="w-[150px] bg-white border-zinc-200 h-9 text-xs font-semibold rounded-sm focus:ring-1 focus:ring-black">
                   <div className="flex items-center gap-2">
                     <Layers className="h-3.5 w-3.5 text-zinc-400" />
@@ -354,9 +358,9 @@ export default function InvoiceListPage() {
               </Select>
 
               <Select 
-                  value={filterStatus || ""} 
-                  onValueChange={(val) => setFilterStatus(val as any)}
-                >
+                value={filterStatus} 
+                onValueChange={(val) => setFilterStatus(val ?? "ALL")}
+              >
                 <SelectTrigger className="w-[150px] bg-white border-zinc-200 h-9 text-xs font-semibold rounded-sm focus:ring-1 focus:ring-black">
                   <div className="flex items-center gap-2">
                     <Clock className="h-3.5 w-3.5 text-zinc-400" />
@@ -398,7 +402,7 @@ export default function InvoiceListPage() {
                       <TableHead className="font-bold border-r w-[160px] text-zinc-700">Tagihan</TableHead>
                       <TableHead className="font-bold border-r w-[160px] text-zinc-700">Sisa Tagihan</TableHead>
                       <TableHead className="font-bold border-r w-[130px] text-zinc-700">Status</TableHead>
-                      <TableHead className="font-bold text-center w-[200px] text-zinc-700">Opsi</TableHead> {/* Lebar kolom diperlebar agar muat tombol baru */}
+                      <TableHead className="font-bold text-center w-[200px] text-zinc-700">Opsi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -488,7 +492,7 @@ export default function InvoiceListPage() {
                           <TableCell className="text-center py-5 px-4">
                             <div className="flex items-center justify-center gap-0.5 text-zinc-400">
                               
-                              {/* === FITUR BARU: TOMBOL UPLOAD / DOWNLOAD FAKTUR PDF === */}
+                              {/* === TOMBOL UPLOAD / DOWNLOAD FAKTUR PDF === */}
                               <div className="relative">
                                 <input 
                                   type="file" 
@@ -499,14 +503,12 @@ export default function InvoiceListPage() {
                                 />
                                 
                                 {inv.file_faktur ? (
-                                  // JIKA FAKTUR SUDAH ADA: Tombol berubah menjadi Download Faktur (Warna Biru)
                                   <a href={`/uploads/faktur/${inv.file_faktur}`} download title={`Download Faktur: ${inv.file_faktur}`}>
                                     <Button size="sm" variant="ghost" className="h-8 w-8 text-blue-600 hover:bg-blue-50 p-0 rounded-sm">
                                       <FileDown className="h-4 w-4" />
                                     </Button>
                                   </a>
                                 ) : (
-                                  // JIKA FAKTUR BELUM ADA: Tombol Upload Faktur (Warna Abu-Abu biasa)
                                   <Button 
                                     size="sm" 
                                     variant="ghost" 
@@ -523,21 +525,20 @@ export default function InvoiceListPage() {
                                   </Button>
                                 )}
                               </div>
-                              {/* ======================================================= */}
 
-                              <Link href={`/dashboard/invoices/${inv.id}/bayar`}>
+                              <Link href={`/dashboard/finance/invoices/${inv.id}/bayar`}>
                                 <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black italic rounded-sm h-8 px-3">
-                                  <CreditCard className="w-3 h-3 mr-1" /> BARU
+                                  <CreditCard className="w-3 h-3 mr-1" /> BAYAR
                                 </Button>
                               </Link>
                               
-                              <Link href={`/dashboard/invoices/${inv.id}`}>
+                              <Link href={`/dashboard/finance/invoices/${inv.id}`}>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-blue-50 hover:text-blue-600 rounded-sm">
                                   <Eye className="h-4 w-4" />
                                 </Button>
                               </Link>
                               
-                              <Link href={`/dashboard/invoices/edit/${inv.id}`}>
+                              <Link href={`/dashboard/finance/invoices/edit/${inv.id}`}>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-amber-600 rounded-sm" title="Edit">
                                   <Pencil className="h-4 w-4" />
                                 </Button>
@@ -552,31 +553,37 @@ export default function InvoiceListPage() {
                               >
                                 <Printer className="h-4 w-4" />
                               </Button>
-
-                              <AlertDialog>
-                               <AlertDialogTrigger>
-  <div className="flex h-8 w-8 items-center justify-center text-zinc-500 hover:text-red-600 rounded-sm cursor-pointer">
-    <Trash2 className="h-4 w-4" />
-  </div>
-</AlertDialogTrigger>
-                                <AlertDialogContent className="rounded-sm border-none shadow-2xl">
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle className="font-black uppercase italic tracking-tighter">Hapus Invoice?</AlertDialogTitle>
-                                    <AlertDialogDescription className="text-xs font-medium">
-                                      Tindakan ini tidak dapat dibatalkan. Data invoice <span className="font-bold text-black">{inv.nomor_invoice}</span> akan dihapus permanen dari database MySQL.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel className="rounded-sm text-xs font-bold border-none bg-zinc-100">BATAL</AlertDialogCancel>
-                                    <AlertDialogAction 
-                                      onClick={() => handleDelete(inv.id)}
-                                      className="rounded-sm text-xs font-black bg-red-600 hover:bg-red-700 text-white"
-                                    >
-                                      YA, HAPUS PERMANEN
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+<AlertDialog>
+  {/* PERBAIKAN: Hapus asChild, ganti div pembungkus menjadi Button ghost standar */}
+  <AlertDialogTrigger>
+    <Button 
+      variant="ghost" 
+      size="icon" 
+      className="h-8 w-8 text-zinc-500 hover:text-red-600 rounded-sm p-0"
+      title="Hapus"
+    >
+      <Trash2 className="h-4 w-4" />
+    </Button>
+  </AlertDialogTrigger>
+  
+  <AlertDialogContent className="rounded-sm border-none shadow-2xl">
+    <AlertDialogHeader>
+      <AlertDialogTitle className="font-black uppercase italic tracking-tighter">Hapus Invoice?</AlertDialogTitle>
+      <AlertDialogDescription className="text-xs font-medium">
+        Tindakan ini tidak dapat dibatalkan. Data invoice <span className="font-bold text-black">{inv.nomor_invoice}</span> akan dihapus permanen dari database MySQL.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel className="rounded-sm text-xs font-bold border-none bg-zinc-100">BATAL</AlertDialogCancel>
+      <AlertDialogAction 
+        onClick={() => handleDelete(inv.id)}
+        className="rounded-sm text-xs font-black bg-red-600 hover:bg-red-700 text-white"
+      >
+        YA, HAPUS PERMANEN
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
                             </div>
                           </TableCell>
                         </TableRow>

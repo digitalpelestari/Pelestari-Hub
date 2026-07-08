@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge" 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Save, Loader2, Calculator, Hash, List, Building2 } from "lucide-react"
 import Link from "next/link"
@@ -17,6 +17,13 @@ import { getInvoiceById, updateInvoice } from "@/app/actions/invoice"
 export default function EditInvoicePage() {
   const router = useRouter()
   const params = useParams()
+  
+  // Ambil ID secara aman sebagai string (mengatasi string | string[] dari Next.js)
+  const invoiceId = useMemo(() => {
+    if (!params?.id) return ""
+    return Array.isArray(params.id) ? params.id[0] : params.id
+  }, [params?.id])
+
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   
@@ -46,8 +53,10 @@ export default function EditInvoicePage() {
   // 1. Load Data dari Database saat halaman dibuka
   useEffect(() => {
     async function loadInvoice() {
+      if (!invoiceId) return
       try {
-        const res = await getInvoiceById(Number(params.id))
+        setLoading(true)
+        const res = await getInvoiceById(invoiceId)
         if (res) {
           setFormData({
             ...res,
@@ -57,6 +66,7 @@ export default function EditInvoicePage() {
             is_pph23: res.is_pph23 === 1,
             is_ppn11: res.is_ppn11 === 1,
             is_pnbp: res.is_pnbp === 1,
+            status: res.status ?? "Belum Lunas",
           })
         }
       } catch (error) {
@@ -66,14 +76,14 @@ export default function EditInvoicePage() {
       }
     }
     loadInvoice()
-  }, [params.id])
+  }, [invoiceId])
 
   // 2. Kalkulasi Otomatis Berdasarkan Perubahan (Baris 1 + Baris 2)
   const calculation = useMemo(() => {
-    const sub1 = formData.jumlah_peserta * formData.harga_peserta;
-    const sub2 = formData.jumlah_peserta_2 * formData.harga_peserta_2;
+    const sub1 = (formData.jumlah_peserta || 0) * (formData.harga_peserta || 0);
+    const sub2 = (formData.jumlah_peserta_2 || 0) * (formData.harga_peserta_2 || 0);
     const subtotalDasar = sub1 + sub2;
-    const totalPesertaAll = formData.jumlah_peserta + formData.jumlah_peserta_2;
+    const totalPesertaAll = (formData.jumlah_peserta || 0) + (formData.jumlah_peserta_2 || 0);
 
     let pph = formData.is_pph23 ? subtotalDasar * 0.02 : 0;
     let ppn = formData.is_ppn11 ? subtotalDasar * 0.11 : 0;
@@ -95,9 +105,16 @@ export default function EditInvoicePage() {
     setFormData({ ...formData, [key]: val === "" ? 0 : parseInt(val) });
   };
 
+  // PERBAIKAN UTAMA: Handler khusus untuk memanipulasi perubahan status select secara aman dari TS-Check
+  const handleStatusChange = (val: string) => {
+    setFormData((prev) => ({ ...prev, status: val as any }));
+  };
+
   // 3. Update Data ke Server
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdate = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!invoiceId) return
+
     setUpdating(true);
     
     const payload = {
@@ -106,10 +123,10 @@ export default function EditInvoicePage() {
       total: calculation.totalAkhir
     };
 
-    const res = await updateInvoice(Number(params.id), payload);
+    const res = await updateInvoice(invoiceId, payload);
     if (res.success) {
       alert("Invoice berhasil diperbarui!");
-      router.push("/dashboard/invoices");
+      router.push("/dashboard/finance/invoices");
       router.refresh();
     } else {
       alert(res.message || "Gagal memperbarui invoice.");
@@ -130,7 +147,7 @@ export default function EditInvoicePage() {
       {/* HEADER SECTION */}
       <div className="flex items-center justify-between border-b border-zinc-200 pb-6">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard/invoices">
+          <Link href="/dashboard/finance/invoices">
             <Button variant="outline" size="icon" className="rounded-full shadow-sm bg-white hover:bg-zinc-100">
               <ArrowLeft className="h-4 w-4" />
             </Button>
@@ -143,7 +160,7 @@ export default function EditInvoicePage() {
           </div>
         </div>
         <Button 
-          onClick={handleUpdate} 
+          onClick={() => handleUpdate()} 
           disabled={updating} 
           className="bg-black text-white hover:bg-zinc-800 shadow-2xl px-12 h-14 rounded-2xl font-black transition-all active:scale-95 italic"
         >
@@ -170,18 +187,22 @@ export default function EditInvoicePage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[11px] font-black uppercase italic">Ubah Status</Label>
-                  <Select 
-  value={formData.status || ""} 
-  onValueChange={(val) => setFormData({ ...formData, status: val as string })}
+                  
+                  {/* PERBAIKAN: Menggunakan handleStatusChange untuk meloloskan validasi type-check */}
+                 <Select 
+  value={formData.status || "Belum Lunas"} 
+  // PERBAIKAN INLINE: Terima parameter string | null, lalu gunakan operator ??
+  onValueChange={(val: string | null) => setFormData({ ...formData, status: (val ?? "Belum Lunas") as any })}
 >
-                    <SelectTrigger className="h-11 font-black bg-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="font-sans font-bold">
-                      <SelectItem value="Belum Lunas">🔴 BELUM LUNAS</SelectItem>
-                      <SelectItem value="Lunas">🟢 LUNAS</SelectItem>
-                    </SelectContent>
-                  </Select>
+  <SelectTrigger className="h-11 font-black bg-white">
+    <SelectValue />
+  </SelectTrigger>
+  <SelectContent className="font-sans font-bold">
+    <SelectItem value="Belum Lunas">🔴 BELUM LUNAS</SelectItem>
+    <SelectItem value="Lunas">🟢 LUNAS</SelectItem>
+  </SelectContent>
+</Select>
+
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-5">
@@ -227,7 +248,7 @@ export default function EditInvoicePage() {
               
               {/* ITEM 1 */}
               <div className="space-y-4 p-5 bg-zinc-50 rounded-[1.5rem] border border-zinc-200 relative">
-                <Badge className="bg-black text-[9px] font-black italic uppercase rounded-md px-3">Baris Utama</Badge>
+                <Badge className="bg-black text-[9px] font-black italic uppercase rounded-md px-3 text-white hover:bg-black">Baris Utama</Badge>
                 <Input placeholder="Layanan 1" value={formData.keterangan} onChange={(e) => setFormData({...formData, keterangan: e.target.value})} className="h-12 font-bold italic uppercase" />
                 <div className="grid grid-cols-2 gap-5">
                   <div className="space-y-1">
@@ -243,7 +264,7 @@ export default function EditInvoicePage() {
 
               {/* ITEM 2 */}
               <div className="space-y-4 p-5 bg-zinc-50/50 rounded-[1.5rem] border border-dashed border-zinc-300 relative">
-                <Badge variant="outline" className="text-[9px] font-black italic uppercase rounded-md px-3 text-zinc-400">Baris Tambahan</Badge>
+                <Badge variant="outline" className="text-[9px] font-black italic uppercase rounded-md px-3 text-zinc-400 bg-white">Baris Tambahan</Badge>
                 <Input placeholder="Layanan 2 (Opsional)" value={formData.keterangan_2} onChange={(e) => setFormData({...formData, keterangan_2: e.target.value})} className="h-12 font-bold italic uppercase" />
                 <div className="grid grid-cols-2 gap-5">
                   <div className="space-y-1">
@@ -299,11 +320,11 @@ export default function EditInvoicePage() {
 
               <div className="pt-10 border-t border-zinc-800 leading-none">
                 <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest italic">Grand Total Rekalkulasi</span>
-                <h2 className="text-4xl font-black tabular-nums tracking-tighter mt-2 italic">{formatIDR(calculation.totalAkhir)}</h2>
+                <h2 className="text-4xl font-black tabular-nums tracking-tighter mt-2 italic text-white">{formatIDR(calculation.totalAkhir)}</h2>
               </div>
 
               <Button 
-                onClick={handleUpdate} 
+                onClick={() => handleUpdate()} 
                 disabled={updating} 
                 className="w-full bg-emerald-500 text-black hover:bg-emerald-400 h-20 text-2xl font-black rounded-3xl mt-6 active:scale-95 transition-all shadow-xl italic"
               >
