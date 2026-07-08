@@ -18,12 +18,14 @@ const { auth } = NextAuth(authConfig);
 export default auth(async function middleware(req: NextRequest & { auth: any }) {
   const { nextUrl } = req;
   
-  // Pastikan session beneran ada dan punya user valid
-  const isLoggedIn = !!req.auth && !!req.auth.user; 
+  // PERBAIKAN: Pastikan memeriksa properti di dalam user (misal: email atau id)
+  // Ini menjamin jika session expired/kosong, isLoggedIn akan bernilai FALSE
+  const isLoggedIn = !!req.auth?.user?.email; 
   const urlPath = nextUrl.pathname;
 
   // 1. PROTEKSI AREA DASHBOARD: JIKA BELUM LOGIN
   if (urlPath.startsWith('/dashboard') && !isLoggedIn) {
+    // Gunakan nextUrl.clone() atau bersihkan response agar redirect bersih
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
@@ -41,7 +43,7 @@ export default auth(async function middleware(req: NextRequest & { auth: any }) 
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  // 4. VALIDASI ROLE UNTUK SUB-DASHBOARD (Hanya dicek jika sudah di area dashboard)
+  // 4. VALIDASI ROLE UNTUK SUB-DASHBOARD
   if (urlPath.startsWith('/dashboard') && isLoggedIn) {
     const userRole = req.auth?.user?.role?.toUpperCase();
     const matchedRoute = Object.keys(routePermissions).find((route) =>
