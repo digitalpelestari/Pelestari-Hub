@@ -13,7 +13,7 @@ interface JurnalItemPayload {
 interface JurnalPayload {
   tanggal: string;
   noRegistrasi: string;
-  noReferensi: string; // <-- Tambahan field interface payload
+  noReferensi: string; 
   keterangan: string;
   items: JurnalItemPayload[];
 }
@@ -51,7 +51,7 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
     // 2. Struktur Baru: Menjadi 10 Kolom dengan adanya No Referensi
     const tableHeaders = [
       "NO Register", 
-      "No Referensi", // <-- Kolom baru disisipkan di sini
+      "No Referensi", 
       "Tanggal", 
       "Kelompok Biaya", 
       "Total", 
@@ -90,7 +90,7 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
           isFirstInJurnal: idx === 0, 
           jurnalItemsCount: itemsToUse.length,
           no_registrasi: jurnal.no_registrasi || "-",
-          no_referensi: jurnal.no_referensi || "-", // <-- Dimasukkan ke flattening list
+          no_referensi: jurnal.no_referensi || "-", 
           tanggal: jurnal.tanggal,
           kelompok_biaya: (item.nama_kelompok || "BIAYA OPERASIONAL").toUpperCase(),
           jenis_biaya: (item.nama_akun || "-").toUpperCase(),
@@ -150,7 +150,7 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
 
       row.values = [
         flatRow.isFirstInJurnal ? flatRow.no_registrasi : "",
-        flatRow.isFirstInJurnal ? flatRow.no_referensi : "", // <-- Tulis data No Referensi
+        flatRow.isFirstInJurnal ? flatRow.no_referensi : "", 
         flatRow.isFirstInJurnal ? new Date(flatRow.tanggal).toLocaleDateString("id-ID") : "",
         flatRow.kelompok_biaya,
         flatRow.total_kelompok_value,
@@ -174,7 +174,6 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
           right: { style: "thin", color: { argb: "E4E4E7" } }
         };
 
-        // Format kolom 1, 2, 3 (Register, Referensi, Tanggal) jadi rata tengah
         if (colIdx === 1 || colIdx === 2 || colIdx === 3) {
           cell.alignment = { vertical: "middle", horizontal: "center" };
           if (colIdx === 1 || colIdx === 2) {
@@ -200,7 +199,6 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
       const kEnd = flatRow.kelompokEnd;
       const kKey = `${kStart}-${kEnd}`;
 
-      // Geser index kolom ke kanan akibat adanya kolom baru (Kelompok=Kolom D, Total=Kolom E)
       if (kEnd > kStart && !processedKelompok.has(kKey)) {
         worksheet.mergeCells(`D${kStart}:D${kEnd}`);
         worksheet.mergeCells(`E${kStart}:E${kEnd}`);
@@ -211,7 +209,6 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
       const jEnd = flatRow.jenisEnd;
       const jKey = `${jStart}-${jEnd}`;
 
-      // Geser index kolom jenis biaya ke kanan (Jenis=Kolom F, Nominal=Kolom G)
       if (jEnd > jStart && !processedJenis.has(jKey)) {
         worksheet.mergeCells(`F${jStart}:F${jEnd}`);
         worksheet.mergeCells(`G${jStart}:G${jEnd}`);
@@ -261,7 +258,7 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
     labelCell.font = { name: "Segoe UI", size: 10, bold: true };
     labelCell.alignment = { vertical: "middle", horizontal: "right" };
 
-    const totalFormulaCell = footerRow.getCell(10); // Pindah ke kolom 10 (J)
+    const totalFormulaCell = footerRow.getCell(10); 
     totalFormulaCell.value = { formula: `=SUM(J5:J${currentRowIdx - 1})`, date1904: false }; 
     totalFormulaCell.font = { name: "Segoe UI", size: 10, bold: true };
     totalFormulaCell.numFmt = "#,##0;(#,##0);\"-\"";
@@ -279,7 +276,7 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
     // 8. Skala Lebar Kolom Presisi (10 Kolom)
     worksheet.columns = [
       { width: 16 }, // A: NO register
-      { width: 16 }, // B: No Referensi (Tambahan)
+      { width: 16 }, // B: No Referensi 
       { width: 14 }, // C: Tanggal
       { width: 28 }, // D: Kelompok Biaya
       { width: 16 }, // E: Total Kelompok
@@ -306,44 +303,57 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
 }
 
 /**
- * 🛠️ ACTION: AMBIL DATA JURNAL (SELECT FIELD NO_REFERENSI)
+ * 🛠️ ACTION: FIX - AMBIL DATA JURNAL (MENGGUNAKAN NODE-MAPPING UNTUK MENGHINDARI BUG JSON RE-FORMAT)
  */
 export async function getJurnalList(startDate?: string, endDate?: string) {
   try {
-    let query = `
-      SELECT 
-        j.id, 
-        j.tanggal, 
-        j.no_registrasi, 
-        j.no_referensi, -- <-- Ditambahkan ke selector database
-        j.keterangan,
-        JSON_ARRAYAGG(
-          JSON_OBJECT(
-            'id', i.id,  
-            'no_akun', i.no_akun,
-            'nama_akun', a.nama_akun,
-            'nama_kelompok', k.kelompok_biaya, 
-            'debit', i.debit,
-            'kredit', i.kredit
-          )
-        ) AS items
-      FROM tb_jurnal j
-      LEFT JOIN tb_jurnal_item i ON j.id = i.jurnal_id
-      LEFT JOIN tb_akun a ON i.no_akun = a.no_akun
-      LEFT JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id 
+    // 1. Tarik data dari tb_jurnal (Header) secara mandiri
+    let headerQuery = `
+      SELECT id, tanggal, no_registrasi, no_referensi, keterangan 
+      FROM tb_jurnal
     `;
-
     const queryParams: any[] = [];
 
-    if (startDate && endDate && startDate !== "" && endDate !== "") {
-      query += ` WHERE DATE(j.tanggal) BETWEEN ? AND ? `;
+    if (startDate && endDate && startDate.trim() !== "" && endDate.trim() !== "") {
+      headerQuery += ` WHERE DATE(tanggal) BETWEEN ? AND ? `;
       queryParams.push(startDate, endDate);
     }
 
-    query += ` GROUP BY j.id ORDER BY j.tanggal DESC, j.id DESC `;
+    headerQuery += ` ORDER BY tanggal DESC, id DESC `;
+    const [headers]: any = await db.query(headerQuery, queryParams);
 
-    const [rows]: any = await db.query(query, queryParams);
-    return rows;
+    if (!headers || headers.length === 0) return [];
+
+    // 2. Tarik seluruh data detail items se-database secara flat
+    const [allItems]: any = await db.query(`
+      SELECT 
+        i.id, 
+        i.jurnal_id,
+        i.no_akun, 
+        a.nama_akun, 
+        k.kelompok_biaya AS nama_kelompok, 
+        i.debit, 
+        i.kredit
+      FROM tb_jurnal_item i
+      LEFT JOIN tb_akun a ON i.no_akun = a.no_akun
+      LEFT JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
+    `);
+
+    // 3. Lakukan mapping manual di Node.js. 
+    // Menggunakan perbandingan eksplisit Number() agar ID besar (30001 dsb) dipetakan dengan tepat tanpa bug pengetikan objek.
+    const structuredJurnal = headers.map((jurnal: any) => {
+      const detailItems = allItems.filter((item: any) => Number(item.jurnal_id) === Number(jurnal.id));
+      return {
+        id: jurnal.id,
+        tanggal: jurnal.tanggal,
+        no_registrasi: jurnal.no_registrasi,
+        no_referensi: jurnal.no_referensi,
+        keterangan: jurnal.keterangan,
+        items: detailItems
+      };
+    });
+
+    return structuredJurnal;
   } catch (error: any) {
     console.error("GET_JURNAL_LIST_ERROR:", error.message);
     return [];
@@ -357,7 +367,7 @@ export async function updateJurnalItem(itemId: number, payload: {
   jurnal_id: number;
   tanggal: string;
   no_registrasi: string;
-  no_referensi: string; // <-- Ditambahkan ke type payload
+  no_referensi: string; 
   keterangan_umum: string;
   no_akun: string;
   debit: number;
@@ -368,12 +378,11 @@ export async function updateJurnalItem(itemId: number, payload: {
   try {
     await connection.beginTransaction();
 
-    // Injeksi update pada tb_jurnal dengan no_referensi
     await connection.query(
       `UPDATE tb_jurnal SET 
         tanggal = ?, 
         no_registrasi = ?, 
-        no_referensi = ?, -- <-- Ditambahkan ke query UPDATE
+        no_referensi = ?, 
         keterangan = ? 
        WHERE id = ?`,
       [payload.tanggal, payload.no_registrasi, payload.no_referensi, payload.keterangan_umum, payload.jurnal_id]
@@ -478,7 +487,7 @@ export async function createJurnalUmum(payload: JurnalPayload) {
     const [headerResult]: any = await connection.query(headerQuery, [
       payload.tanggal,
       payload.noRegistrasi, 
-      payload.noReferensi, // <-- Disimpan masuk ke database tb_jurnal
+      payload.noReferensi, 
       payload.keterangan
     ]);
 
@@ -525,14 +534,16 @@ export async function createJurnalUmum(payload: JurnalPayload) {
   }
 }
 
+/**
+ * 🛠️ ACTION: GENERATE NO REGISTRASI OTOMATIS 
+ */
 export async function generateNoRegistrasiOtomatis(type: "BK" | "BD") {
   try {
     const sekarang = new Date();
-    const bulan = String(sekarang.getMonth() + 1).padStart(2, "0"); // Hasil: "06"
-    const tahunFull = sekarang.getFullYear(); // Hasil: 2026
-    const tahunShort = String(tahunFull).slice(-2); // Hasil: "26"
+    const bulan = String(sekarang.getMonth() + 1).padStart(2, "0"); 
+    const tahunFull = sekarang.getFullYear(); 
+    const tahunShort = String(tahunFull).slice(-2); 
 
-    // Pola pencarian berdasarkan tipe, bulan, dan tahun saat ini (Contoh: 'BK_%/06/26')
     const pattern = `${type}_%/${bulan}/${tahunShort}`;
 
     const query = `
@@ -548,19 +559,15 @@ export async function generateNoRegistrasiOtomatis(type: "BK" | "BD") {
     let nomorUrutBaru = 1;
 
     if (rows.length > 0) {
-      const noRegTerakhir = rows[0].no_registrasi; // Contoh: "BK_001/06/26"
+      const noRegTerakhir = rows[0].no_registrasi; 
       
-      // Ambil bagian angka urutnya (di antara '_' dan '/')
       const match = noRegTerakhir.match(new RegExp(`${type}_(\\d+)\\/`));
       if (match && match[1]) {
-        nomorUrutBaru = parseInt(match[1], 10) + 1;
+        nomorUrutBaru = (parseInt(match[1], 10) || 0) + 1;
       }
     }
 
-    // Format urutan menjadi 3 digit (Contoh: 1 menjadi "001")
     const stringNomorUrut = String(nomorUrutBaru).padStart(3, "0");
-
-    // Satukan sesuai format target: BK_002/06/26
     const noRegistrasiOtomatis = `${type}_${stringNomorUrut}/${bulan}/${tahunShort}`;
 
     return { success: true, code: noRegistrasiOtomatis };

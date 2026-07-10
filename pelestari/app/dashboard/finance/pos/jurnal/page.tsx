@@ -38,8 +38,13 @@ export default function JurnalUmumListPage() {
       const dataJurnal = await getJurnalList(startParam, endParam)
       const dataAkun = await getAkunList()
       
-      setJurnalList(dataJurnal)
-      setAkunList(dataAkun)
+      // DEBUGGING: Untuk memantau apakah data dari MySQL benar-benar masuk atau tidak
+      console.log("Raw Data Jurnal dari Server Action:", dataJurnal)
+      console.log("Data Akun COA:", dataAkun)
+      
+      // Pastikan dataJurnal berbentuk array sebelum disimpan ke state
+      setJurnalList(Array.isArray(dataJurnal) ? dataJurnal : [])
+      setAkunList(Array.isArray(dataAkun) ? dataAkun : [])
     } catch (error) {
       console.error("Gagal memuat data pembukuan:", error)
     } finally {
@@ -64,7 +69,7 @@ export default function JurnalUmumListPage() {
     let debit = 0
     let kredit = 0
     filteredJurnal.forEach((jurnal) => {
-      if (jurnal.items) {
+      if (jurnal.items && Array.isArray(jurnal.items)) {
         jurnal.items.forEach((item: any) => {
           debit += Number(item.debit) || 0
           kredit += Number(item.kredit) || 0
@@ -80,7 +85,7 @@ export default function JurnalUmumListPage() {
     setEditHeaderForm({
       tanggal: jurnal.tanggal ? new Date(jurnal.tanggal).toISOString().split('T')[0] : "",
       no_registrasi: jurnal.no_registrasi || "",
-      no_referensi: jurnal.no_referensi || "", // <-- Menyimpan no_referensi lama ke form edit
+      no_referensi: jurnal.no_referensi || "",
       keterangan: jurnal.keterangan || ""
     })
     setEditItemsForm(JSON.parse(JSON.stringify(jurnal.items || [])))
@@ -93,13 +98,15 @@ export default function JurnalUmumListPage() {
   }
 
   const handleHeaderChange = (field: string, value: string) => {
-  // Tambahkan tanda kurung dan : any pada parameter prev
-  setEditHeaderForm((prev: any) => ({ ...prev, [field]: value }))
-}
+    setEditHeaderForm((prev: any) => ({ ...prev, [field]: value }))
+  }
 
   const handleItemChange = (itemIndex: number, field: string, value: any) => {
     setEditItemsForm((prev) => {
       const updated = [...prev]
+      
+      // Lakukan deep copy pada objek item agar React mengenali perubahan properti objek
+      updated[itemIndex] = { ...updated[itemIndex] }
       
       if (field === "no_akun") {
         updated[itemIndex].no_akun = value
@@ -108,7 +115,7 @@ export default function JurnalUmumListPage() {
         updated[itemIndex].nama_akun = targetAkun ? targetAkun.nama_akun : ""
         updated[itemIndex].nama_kelompok = targetAkun ? (targetAkun.kelompok_biaya || targetAkun.nama_kelompok || "General Parameter") : ""
       } else {
-        updated[itemIndex] = { ...updated[itemIndex], [field]: value }
+        updated[itemIndex][field] = value
       }
       
       if (field === "debit" && Number(value) > 0) updated[itemIndex].kredit = 0
@@ -139,12 +146,11 @@ export default function JurnalUmumListPage() {
           throw new Error("ID baris transaksi hilang. Pastikan query backend getJurnalList mengambil kolom i.id!");
         }
 
-        // Mengirim parameter lengkap beserta no_referensi ke backend update action
         await updateJurnalItem(item.id, {
           jurnal_id: jurnalId,
           tanggal: editHeaderForm.tanggal,
           no_registrasi: editHeaderForm.no_registrasi,
-          no_referensi: editHeaderForm.no_referensi, // <-- Terkirim ke database mysql
+          no_referensi: editHeaderForm.no_referensi,
           keterangan_umum: editHeaderForm.keterangan,
           no_akun: item.no_akun,
           debit: Number(item.debit) || 0,
@@ -280,14 +286,14 @@ export default function JurnalUmumListPage() {
         </div>
       </div>
 
-      {/* DATA RIWAYAT JURNAL TABLE - SEKARANG MENJADI 10 KOLOM TOTALNYA */}
+      {/* DATA RIWAYAT JURNAL TABLE */}
       <div className="border border-zinc-300 rounded-sm overflow-hidden bg-white shadow-sm">
         <Table>
           <TableHeader className="bg-zinc-100">
             <TableRow className="hover:bg-zinc-100 border-b border-zinc-300 text-[10px] font-black uppercase">
               <TableHead className="w-[110px] text-zinc-800 border-r py-3 px-3 font-black">Tanggal</TableHead>
               <TableHead className="w-[130px] text-zinc-800 border-r px-3 font-black">No. Registrasi</TableHead>
-              <TableHead className="w-[130px] text-zinc-800 border-r px-3 font-black">No. Referensi</TableHead> {/* <-- Header Kolom Baru */}
+              <TableHead className="w-[130px] text-zinc-800 border-r px-3 font-black">No. Referensi</TableHead> 
               <TableHead className="w-[170px] text-zinc-800 border-r px-3 font-black">Keterangan Jurnal (Memo)</TableHead>
               <TableHead className="w-[90px] text-zinc-800 border-r px-3 font-black">Kode Akun</TableHead>
               <TableHead className="w-[130px] text-zinc-800 border-r px-3 font-black">Nama Akun</TableHead>
@@ -302,14 +308,19 @@ export default function JurnalUmumListPage() {
               <TableRow><TableCell colSpan={10} className="h-32 text-center text-zinc-400 italic">Menarik log data berdasarkan rentang waktu dari MySQL...</TableCell></TableRow>
             ) : filteredJurnal.length > 0 ? (
               filteredJurnal.map((jurnal) => {
-                const totalItems = jurnal.items ? jurnal.items.length : 1;
+                // FALLBACK CHECK: Jika backend tidak me-return .items / bukan array, bypass agar tidak blank screen
+                const itemsArray = Array.isArray(jurnal.items) ? jurnal.items : [];
+                const totalItems = itemsArray.length > 0 ? itemsArray.length : 1;
                 const isJurnalEditing = editingJurnalId === jurnal.id;
 
-                return jurnal.items && jurnal.items.map((item: any, idx: number) => {
+                // Jika items kosong, buat baris kosong buatan agar record header tetap terlihat di dashboard
+                const itemsToRender = itemsArray.length > 0 ? itemsArray : [{ no_akun: "-", nama_akun: "Item detail kosong dari backend", debit: 0, kredit: 0 }];
+
+                return itemsToRender.map((item: any, idx: number) => {
                   return (
                     <TableRow key={`${jurnal.id}-${idx}`} className="border-b border-zinc-200 hover:bg-zinc-50/20 transition-colors last:border-0">
                       
-                      {/* === GABUNGAN ROWSPAN KOLOM KIRI (TANGGAL, NO REGIS, NO REFERENSI, MEMO) === */}
+                      {/* === GABUNGAN ROWSPAN KOLOM KIRI === */}
                       {idx === 0 && (
                         <>
                           <TableCell rowSpan={totalItems} className="py-3 px-2 border-r font-mono bg-zinc-50/50 align-top">
@@ -323,7 +334,7 @@ export default function JurnalUmumListPage() {
                             ) : (
                               <div className="flex items-center gap-1 mt-1 text-zinc-600">
                                 <Calendar className="h-3 w-3 text-zinc-400" />
-                                {new Date(jurnal.tanggal).toLocaleDateString('id-ID')}
+                                {jurnal.tanggal ? new Date(jurnal.tanggal).toLocaleDateString('id-ID') : "-"}
                               </div>
                             )}
                           </TableCell>
@@ -344,7 +355,6 @@ export default function JurnalUmumListPage() {
                             )}
                           </TableCell>
 
-                          {/* === FIELD RENDERING BARU: NO REFERENSI DENGAN ROWSPAN === */}
                           <TableCell rowSpan={totalItems} className="px-2 border-r font-mono bg-zinc-50/50 align-top">
                             {isJurnalEditing ? (
                               <Input 
@@ -373,7 +383,7 @@ export default function JurnalUmumListPage() {
                               <div className="flex items-center gap-1 mt-1 text-zinc-500 font-medium uppercase tracking-tight">
                                 <FileText className="h-3 w-3 text-zinc-400 flex-shrink-0" />
                                 <span className="break-all max-w-[150px]" title={jurnal.keterangan}>
-                                  {jurnal.keterangan}
+                                  {jurnal.keterangan || "-"}
                                 </span>
                               </div>
                             )}
