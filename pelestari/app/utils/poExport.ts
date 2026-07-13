@@ -311,7 +311,6 @@ export const exportSinglePoToPdf = async (po: any, items: any[]) => {
 
   let finalY = 120;
   
-  // Panggil constructor secara langsung agar aman dari error as not a function
   autoTable(doc, {
     startY: 69,
     head: [["No", "Transaksi", "Ukuran", "Quantity", "Unit Price", "Total"]],
@@ -320,12 +319,12 @@ export const exportSinglePoToPdf = async (po: any, items: any[]) => {
     headStyles: { fillColor: [180, 198, 231], textColor: [0, 0, 0], fontStyle: "bold", lineColor: [0, 0, 0], lineWidth: 0.2 },
     bodyStyles: { lineColor: [0, 0, 0], lineWidth: 0.2 },
     columnStyles: { 
-  0: { halign: "center", cellWidth: 10 }, 
-  2: { halign: "center", cellWidth: 20 }, 
-  3: { halign: "center", cellWidth: 18 }, 
-  4: { halign: "right", cellWidth: 32 }, 
-  5: { halign: "right", cellWidth: 35 } 
-},
+      0: { halign: "center", cellWidth: 10 }, 
+      2: { halign: "center", cellWidth: 20 }, 
+      3: { halign: "center", cellWidth: 18 }, 
+      4: { halign: "right", cellWidth: 32 }, 
+      5: { halign: "right", cellWidth: 35 } 
+    },
     didDrawPage: (data: any) => { 
       finalY = data.cursor.y; 
     }
@@ -351,9 +350,50 @@ export const exportSinglePoToPdf = async (po: any, items: any[]) => {
   doc.setFont("helvetica", "normal");
   doc.text(`PT Peduli Lestari Indonesia\n${po.alamat_pengantaran}\nPenerima: ${po.penerima_nama}`, 14, bottomY + 5);
 
+  // Bagian Tanda Tangan
   doc.text(`Bogor, ${new Date().toLocaleDateString("id-ID")}\nHormat Kami,`, 145, bottomY + 5);
-  doc.setFont("helvetica", "bold"); doc.text("Anisa", 145, bottomY + 25);
-  doc.setFont("helvetica", "normal"); doc.text("General Affair", 145, bottomY + 29);
+
+// =========================================================================
+// LOGIK TTD DIGITAL PROPORSIONAL & RAPI (PRESISI)
+// =========================================================================
+try {
+  // 1. Load Base64 Gambar TTD
+  const ttdBase64 = await loadImageAsBase64("/ttd-anisa.png");
+  
+  // 2. Hitung rasio asli gambar menggunakan Promise agar nilainya valid
+  const imgProps = await new Promise<{ width: number; height: number }>((resolve) => {
+    const img = new Image();
+    img.src = ttdBase64;
+    img.onload = () => resolve({ width: img.width, height: img.height });
+    img.onerror = () => resolve({ width: 100, height: 50 }); // fallback ratio
+  });
+
+  // 3. Tentukan Lebar ideal TTD (28mm). Tinggi dihitung proporsional otomatis
+  const targetWidth = 28; 
+  const targetHeight = (imgProps.height / imgProps.width) * targetWidth;
+
+  // 4. Posisi Y TTD ditaruh di bottomY + 9 (Pas di tengah antara "Hormat Kami" & "Anisa")
+  // Posisi X di 145 (Rata kiri sejajar dengan teks "Anisa")
+  doc.addImage(ttdBase64, "PNG", 145, bottomY + 4, targetWidth, targetHeight);
+
+} catch (error) {
+  console.warn("Gagal load scan TTD, menggunakan fallback box digital signature");
+  doc.setDrawColor(31, 78, 120);
+  doc.setLineWidth(0.3);
+  doc.rect(145, bottomY + 4, 35, 12);
+  doc.setTextColor(31, 78, 120);
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "italic");
+  doc.text("Digitally Signed by Anisa\nVerified HRGA Dept.", 147, bottomY + 13.5);
+}
+
+// 5. Teks Nama "Anisa" diturunkan ke bottomY + 28 agar tidak tertabrak TTD
+doc.setTextColor(0, 0, 0);
+doc.setFontSize(9);
+doc.setFont("helvetica", "bold"); 
+doc.text("Anisa", 145, bottomY + 34); 
+doc.setFont("helvetica", "normal"); 
+doc.text("General Affair", 145, bottomY + 38);
 
   doc.save(`PO_${po.nomor_po.replace(/\//g, "-")}.pdf`);
 };
