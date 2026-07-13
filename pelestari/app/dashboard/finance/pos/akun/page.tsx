@@ -12,7 +12,7 @@ import {
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter 
 } from "@/components/ui/dialog"
-import { Trash2, Edit2, Plus, Save, X, Search } from "lucide-react"
+import { Trash2, Edit2, Plus, Search, ChevronDown, ChevronRight, Folder } from "lucide-react"
 import { getAkunList, createAkun, updateAkun, deleteAkun } from "@/app/actions/akun"
 import { getKelompokBiaya } from "@/app/actions/kelompok-biaya"
 
@@ -22,10 +22,13 @@ export default function DaftarAkunPage() {
   const [loading, setLoading] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
+  // State untuk menyimpan kelompok biaya mana saja yang sedang terbuka/di-expand
+  const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({})
+
   // State Form Input
   const [noAkun, setNoAkun] = useState("")
   const [namaAkun, setNamaAkun] = useState("")
-  const [categoryInput, setCategoryInput] = useState("") // State teks yang diketik user
+  const [categoryInput, setCategoryInput] = useState("") 
   const [saldo, setSaldo] = useState("0")
   const [isAktif, setIsAktif] = useState(1)
   const [editId, setEditId] = useState<number | null>(null)
@@ -45,7 +48,7 @@ export default function DaftarAkunPage() {
 
   useEffect(() => { loadInitialData() }, [])
 
-  // LOGIKA FILTERING DATA TABLE
+  // LOGIKA FILTERING DATA AKUN SEBELUM DIGROUPING
   const filteredList = useMemo(() => {
     return list.filter((item) => {
       const matchesSearch = 
@@ -62,6 +65,34 @@ export default function DaftarAkunPage() {
       return matchesSearch && matchesType && matchesStatus
     })
   }, [list, searchQuery, filterType, filterAktif])
+
+  // === PENGELOMPOKKAN (GROUPING) DATA AKUN BERDASARKAN TIPE AKUN ===
+  const groupedData = useMemo(() => {
+    const groups: { [key: string]: { namaGroup: string; totalSaldo: number; items: any[] } } = {}
+
+    filteredList.forEach((item) => {
+      const groupName = item.nama_kelompok || "Tanpa Kategori"
+      if (!groups[groupName]) {
+        groups[groupName] = {
+          namaGroup: groupName,
+          totalSaldo: 0,
+          items: []
+        }
+      }
+      groups[groupName].items.push(item)
+      groups[groupName].totalSaldo += parseFloat(item.saldo || 0)
+    })
+
+    return Object.values(groups)
+  }, [filteredList])
+
+  // Fungsi toggle buka-tutup kelompok akun
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupName]: !prev[groupName]
+    }))
+  }
 
   // MENCARI ID BERDASARKAN TEKS YANG DIKETIK/DIPILIH USER
   const selectedCatId = useMemo(() => {
@@ -83,7 +114,6 @@ export default function DaftarAkunPage() {
     setSaldo(item.saldo.toString())
     setIsAktif(item.is_aktif)
     
-    // Cari nama teks kelompok biaya berdasarkan ID untuk ditampilkan di input ketik
     const currentCat = categories.find((cat) => cat.id === item.kelompok_biaya_id)
     setCategoryInput(currentCat ? currentCat.kelompok_biaya : "")
     
@@ -104,7 +134,7 @@ export default function DaftarAkunPage() {
     const payload = {
       no_akun: noAkun,
       nama_akun: namaAkun,
-      kelompok_biaya_id: selectedCatId, // Mengirimkan ID asli (integer) hasil convert text
+      kelompok_biaya_id: selectedCatId, 
       saldo: parseFloat(saldo) || 0,
       is_aktif: isAktif
     }
@@ -152,10 +182,10 @@ export default function DaftarAkunPage() {
         {/* Filter Tipe Akun */}
         <div className="space-y-2">
           <label className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Tipe Akun:</label>
-         <Select 
-  value={filterType || ""} 
-  onValueChange={(val) => setFilterType(val as any)}
->
+          <Select 
+            value={filterType || ""} 
+            onValueChange={(val) => setFilterType(val as any)}
+          >
             <SelectTrigger className="h-9 bg-zinc-800 border-none text-xs rounded-sm text-white focus:ring-0">
               <SelectValue placeholder="Semua Tipe" />
             </SelectTrigger>
@@ -187,7 +217,7 @@ export default function DaftarAkunPage() {
           </div>
         </div>
 
-        <Button variant="outline" size="sm" onClick={() => { setFilterType("ALL"); setFilterAktif("1"); setSearchQuery(""); }} className="w-full h-8 text-[10px] font-black border-zinc-700 bg-transparent text-zinc-400 hover:bg-zinc-800 rounded-sm">
+        <Button variant="outline" size="sm" onClick={() => { setFilterType("ALL"); setFilterAktif("1"); setSearchQuery(""); setExpandedGroups({}); }} className="w-full h-8 text-[10px] font-black border-zinc-700 bg-transparent text-zinc-400 hover:bg-zinc-800 rounded-sm">
           RESET FILTER
         </Button>
       </div>
@@ -217,13 +247,13 @@ export default function DaftarAkunPage() {
           </div>
         </div>
 
-        {/* COMPACT DATA TABLE */}
+        {/* BUNDLED GROUPING DATA TABLE */}
         <div className="border border-zinc-300 rounded-sm overflow-hidden bg-white shadow-sm">
           <Table>
             <TableHeader className="bg-zinc-100">
               <TableRow className="hover:bg-zinc-100 border-b border-zinc-300 text-[10px] font-black uppercase">
-                <TableHead className="w-[120px] text-zinc-800 border-r py-3 px-3 font-black">No. Akun</TableHead>
-                <TableHead className="text-zinc-800 border-r px-3 font-black">Nama Akun</TableHead>
+                <TableHead className="w-[140px] text-zinc-800 border-r py-3 px-3 font-black">No. Akun</TableHead>
+                <TableHead className="text-zinc-800 border-r px-3 font-black">Nama Akun / Klasifikasi Kelompok</TableHead>
                 <TableHead className="w-[180px] text-zinc-800 border-r px-3 font-black">Tipe Akun</TableHead>
                 <TableHead className="w-[160px] text-zinc-800 text-right border-r px-3 font-black">Saldo</TableHead>
                 <TableHead className="w-[80px] text-zinc-800 text-center border-r font-black">Status</TableHead>
@@ -233,30 +263,73 @@ export default function DaftarAkunPage() {
             <TableBody className="text-[11px] font-bold">
               {loading && list.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="h-32 text-center text-zinc-400 italic">Memproses database...</TableCell></TableRow>
-              ) : filteredList.length > 0 ? (
-                filteredList.map((item) => (
-                  <TableRow key={item.id} className={`border-b border-zinc-100 last:border-0 hover:bg-zinc-50/70 transition-colors ${item.is_aktif === 0 ? "opacity-50 bg-zinc-50 italic" : ""}`}>
-                    <TableCell className="font-mono text-zinc-600 py-2.5 px-3 border-r">{item.no_akun}</TableCell>
-                    <TableCell className="text-zinc-800 uppercase px-3 border-r">{item.nama_akun}</TableCell>
-                    <TableCell className="text-zinc-500 uppercase px-3 border-r">{item.nama_kelompok || "Tanpa Kategori"}</TableCell>
-                    <TableCell className="text-right font-mono text-zinc-900 px-3 border-r">{formatIDR(item.saldo)}</TableCell>
-                    <TableCell className="text-center border-r">
-                      <span className={`px-1.5 py-0.5 rounded-[3px] text-[9px] font-black uppercase tracking-wider ${item.is_aktif === 1 ? "bg-emerald-100 text-emerald-800" : "bg-zinc-200 text-zinc-600"}`}>
-                        {item.is_aktif === 1 ? "Aktif" : "Non-Aktif"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="py-2 px-1 text-center">
-                      <div className="flex justify-center gap-0.5">
-                        <Button size="icon" variant="ghost" className="h-7 w-7 rounded-sm hover:bg-zinc-100" onClick={() => handleOpenEditModal(item)}>
-                          <Edit2 className="h-3 w-3 text-zinc-600" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 rounded-sm hover:bg-red-50 hover:text-red-600" onClick={async () => { if(confirm(`Hapus akun ${item.nama_akun}?`)) { await deleteAkun(item.id); loadInitialData(); }}}>
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+              ) : groupedData.length > 0 ? (
+                groupedData.map((group) => {
+                  const isExpanded = !!expandedGroups[group.namaGroup]
+
+                  return (
+                    <React.Fragment key={group.namaGroup}>
+                      {/* BARIS INDUK (HEADER KELOMPOK AKUN) */}
+                      <TableRow 
+                        onClick={() => toggleGroup(group.namaGroup)} 
+                        className="bg-zinc-50 hover:bg-zinc-100/80 cursor-pointer border-b border-zinc-200 select-none transition-colors"
+                      >
+                        <TableCell colSpan={2} className="py-3 px-3 border-r text-black font-black uppercase text-[11px]">
+                          <div className="flex items-center gap-2">
+                            {isExpanded ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
+                            <Folder className="h-3.5 w-3.5 text-blue-600 fill-blue-50" />
+                            <span>{group.namaGroup}</span>
+                            <span className="text-[10px] text-zinc-400 font-normal lowercase ml-1">
+                              ({group.items.length} akun)
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-zinc-400 font-normal px-3 border-r">Akumulasi Saldo</TableCell>
+                        <TableCell className="text-right font-mono font-black text-blue-700 bg-blue-50/30 px-3 border-r">
+                          Rp {formatIDR(group.totalSaldo)}
+                        </TableCell>
+                        <TableCell className="border-r"></TableCell>
+                        <TableCell></TableCell>
+                      </TableRow>
+
+                      {/* BARIS ANAK (DAFTAR UTUH COA) - MUNCUL KONDISIONAL */}
+                      {isExpanded && group.items.map((item) => (
+                        <TableRow 
+                          key={item.id} 
+                          className={`border-b border-zinc-100 last:border-0 hover:bg-zinc-50/50 transition-colors animate-fade-in ${item.is_aktif === 0 ? "opacity-50 bg-zinc-50 italic" : ""}`}
+                        >
+                          <TableCell className="font-mono text-zinc-500 py-2.5 pl-10 pr-3 border-r bg-white">
+                            {item.no_akun}
+                          </TableCell>
+                          <TableCell className="text-zinc-800 uppercase px-3 border-r bg-white font-semibold">
+                            {item.nama_akun}
+                          </TableCell>
+                          <TableCell className="text-zinc-400 uppercase px-3 border-r bg-white font-normal">
+                            {item.nama_kelompok || "Tanpa Kategori"}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-zinc-900 px-3 border-r bg-white">
+                            {formatIDR(item.saldo)}
+                          </TableCell>
+                          <TableCell className="text-center border-r bg-white">
+                            <span className={`px-1.5 py-0.5 rounded-[3px] text-[9px] font-black uppercase tracking-wider ${item.is_aktif === 1 ? "bg-emerald-100 text-emerald-800" : "bg-zinc-200 text-zinc-600"}`}>
+                              {item.is_aktif === 1 ? "Aktif" : "Non-Aktif"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-2 px-1 text-center bg-white">
+                            <div className="flex justify-center gap-0.5">
+                              <Button size="icon" variant="ghost" className="h-7 w-7 rounded-sm hover:bg-zinc-100" onClick={() => handleOpenEditModal(item)}>
+                                <Edit2 className="h-3 w-3 text-zinc-600" />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 rounded-sm hover:bg-red-50 hover:text-red-600" onClick={async () => { if(confirm(`Hapus akun ${item.nama_akun}?`)) { await deleteAkun(item.id); loadInitialData(); }}}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </React.Fragment>
+                  )
+                })
               ) : (
                 <TableRow><TableCell colSpan={6} className="h-32 text-center text-zinc-400 italic">Tidak ada data akun yang sesuai filter.</TableCell></TableRow>
               )}
@@ -285,17 +358,15 @@ export default function DaftarAkunPage() {
               <Input placeholder="Nama akun keuangan..." value={namaAkun} onChange={(e) => setNamaAkun(e.target.value)} className="h-9 font-bold rounded-sm border-zinc-300 focus:ring-1 focus:ring-black" />
             </div>
             
-            {/* PERBAIKAN: SEKARANG BISA DIKETIK DAN OTOMATIS SEARCH */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black uppercase italic text-zinc-500">Tipe (Kelompok Biaya) *</label>
               <Input 
-                list="categories-list" // Menghubungkan input dengan elemen datalist di bawah
+                list="categories-list" 
                 placeholder="Ketik untuk mencari tipe akun..." 
                 value={categoryInput} 
                 onChange={(e) => setCategoryInput(e.target.value)}
                 className="h-9 font-bold rounded-sm border-zinc-300 focus:ring-1 focus:ring-black text-xs text-black"
               />
-              {/* Wadah Opsi Pencarian */}
               <datalist id="categories-list">
                 {categories.map((cat) => (
                   <option key={cat.id} value={cat.kelompok_biaya} />
@@ -317,9 +388,9 @@ export default function DaftarAkunPage() {
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase italic text-zinc-500">Status Aktivasi</label>
                 <Select 
-  value={isAktif?.toString() || ""} 
-  onValueChange={(val) => setIsAktif(parseInt(val || "0"))}
->
+                  value={isAktif?.toString() || ""} 
+                  onValueChange={(val) => setIsAktif(parseInt(val || "0"))}
+                >
                   <SelectTrigger className="h-9 bg-white border-zinc-300 rounded-sm font-bold text-xs focus:ring-0 text-black">
                     <SelectValue />
                   </SelectTrigger>

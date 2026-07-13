@@ -21,7 +21,10 @@ import {
   Settings2Icon, 
   CommandIcon,
   FolderIcon,
-  ShoppingCartIcon 
+  ShoppingCartIcon, 
+  FileText,
+  Package,
+  Wrench
 } from "lucide-react"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -93,7 +96,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     {
       title: "Purchase Order",
       url: "#",
-      icon: <ShoppingCartIcon />,
+      icon: <FileText />,
       roles: ["ADMIN", "GA"], 
       items: [
         { title: "Purchase Order", url: "/dashboard/ga/purchase-order" },
@@ -102,10 +105,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
      {
       title: "Asset",
       url: "#",
-      icon: <ShoppingCartIcon />,
+      icon: <Package />,
       roles: ["ADMIN", "GA"], 
       items: [
         { title: "Asset", url: "/dashboard/ga/asset" },
+      ],
+    },
+    {
+      title: "Utilities",
+      url: "#",
+      icon: <Wrench />,
+      roles: ["ADMIN", "GA"], 
+      items: [
+        { title: "Utilities", url: "/dashboard/ga/utilities" },
       ],
     },
   ]
