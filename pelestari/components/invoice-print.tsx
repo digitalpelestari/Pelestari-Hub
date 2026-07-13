@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import React from "react"
+import React from "react";
 
 export const InvoicePrint = ({ data }: { data: any }) => {
   if (!data) return null;
@@ -50,15 +50,24 @@ export const InvoicePrint = ({ data }: { data: any }) => {
           </div>
         </div>
 
-        {/* INFO ATAS */}
+        {/* INFO ATAS (DINAMIS KEPADA PERUSAHAAN TUJUAN & NPWP-NYA) */}
         <div className="grid grid-cols-12 border border-black mb-4 mx-10 shadow-sm">
           {/* Bagian Kiri */}
-          <div className="col-span-7 p-3 min-h-[100px] border-r border-black">
-            <p className="font-bold mb-1 text-[8.5pt]">Kepada Yth,</p>
-            <p className="font-bold uppercase text-[9.5pt]">{data.perusahaan_tujuan}</p>
-            <div className="mt-4 text-[8.5pt]">
-              <p className="whitespace-pre-wrap uppercase leading-tight">{data.alamat_perusahaan}</p>
+          <div className="col-span-7 p-3 min-h-[100px] border-r border-black flex flex-col justify-between">
+            <div>
+              <p className="font-bold mb-1 text-[8.5pt]">Kepada Yth,</p>
+              <p className="font-bold uppercase text-[9.5pt] text-zinc-900">{data.perusahaan_tujuan}</p>
+              {data.npwp && data.npwp !== "-" && (
+              <div className="pt-2 border-t border-zinc-100 text-[8.5pt]">
+                <p className="font-bold text-zinc-800">NPWP : <span className="font-mono font-medium">{data.npwp}</span></p>
+              </div>
+            )}
+              <div className="mt-3 text-[8.5pt] text-zinc-700">
+                <p className="whitespace-pre-wrap uppercase leading-tight">{data.alamat_perusahaan}</p>
+              </div>
             </div>
+            {/* AMBIL DATA NPWP SECARA DINAMIS DARI DATABASE */}
+            
           </div>
 
           {/* Bagian Kanan */}
@@ -85,19 +94,17 @@ export const InvoicePrint = ({ data }: { data: any }) => {
         </div>
 
         <div className="px-10 mb-6 mt-6">
-  <p className="text-[8pt]">
-    Dengan hormat, bersama ini kami sampaikan tagihan atas 
-    {data.jenis_kegiatan === 'konsultan' ? (
-      // Jika KONSULTAN: Tampilkan nama keterangan 1 & 2
-      <span>
-        {` ${data.keterangan}${data.keterangan_2 && data.keterangan_2 !== "-" ? ` dan ${data.keterangan_2}` : ""}`}
-      </span>
-    ) : (
-      // Jika PELATIHAN: Tampilkan teks standar
-      " pelaksanaan kegiatan pelatihan"
-    )} yang diselenggarakan oleh PT Peduli Lestari Indonesia, sebagai rincian dibawah ini:
-  </p>
-</div>
+          <p className="text-[8pt]">
+            Dengan hormat, bersama ini kami sampaikan tagihan atas 
+            {data.jenis_kegiatan === 'konsultan' ? (
+              <span>
+                {` ${data.keterangan}${data.keterangan_2 && data.keterangan_2 !== "-" ? ` dan ${data.keterangan_2}` : ""}`}
+              </span>
+            ) : (
+              " pelaksanaan kegiatan pelatihan"
+            )} yang diselenggarakan oleh PT Peduli Lestari Indonesia, sebagai rincian dibawah ini:
+          </p>
+        </div>
 
         {/* TABEL */}
         <div className="px-10 mb-6">
@@ -136,7 +143,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                 </tr>
               )}
 
-              {/* PNBP */}
+              {/* PPH */}
               {data.is_pph23 === 1 && (
                 <tr className=" border-blue-600">
                   <td className="py-2 text-center border-r border-blue-600">{currentNo++}</td>
@@ -146,7 +153,6 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   <td className="py-2 px-3 flex justify-between"><span>Rp</span> ({formatNumber(nilaiPPH)})</td>
                 </tr>
               )}
-              
 
               {/* PPN */}
               {data.is_ppn11 === 1 && (
@@ -159,18 +165,15 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                 </tr>
               )}
 
-              {/* PPH */}
-              
-
+              {/* PNBP */}
               {data.is_pnbp === 1 && (
                 <tr className="border-b border-blue-600">
                   <td className="py-2 text-center border-r border-blue-600">{currentNo++}</td>
                   <td className="py-2 px-3 font-medium uppercase border-r border-blue-600">PNBP</td>
                   <td className="py-2 text-center border-r border-blue-600">{data.jumlah_peserta + (data.jumlah_peserta_2 || 0)}</td>
-                 
                   <td className="py-2 px-3 border-r border-blue-600">
-                  <div className="flex justify-between"><span>Rp</span><span>600.000</span></div>
-                </td>
+                    <div className="flex justify-between"><span>Rp</span><span>600.000</span></div>
+                  </td>
                   <td className="py-2 px-3 flex justify-between"><span>Rp</span> {formatNumber(nilaiPNBP)}</td>
                 </tr>
               )}
@@ -187,20 +190,18 @@ export const InvoicePrint = ({ data }: { data: any }) => {
         {/* FOOTER */}
         <div className="px-10 text-[8pt] mb-6 ">
           {data.jenis_kegiatan === 'pelatihan' && data.is_ppn11 === 0 && (
-    <p className="mb-4 text-[8pt]">
-      Transaksi ini tidak dikenakan PPN karena termasuk jasa pendidikan sesuai pasal 4A ayat (3b) UU PPN
-    </p>
-  )}
-        
-          
+            <p className="mb-4 text-[8pt]">
+              Transaksi ini tidak dikenakan PPN karena termasuk jasa pendidikan sesuai pasal 4A ayat (3b) UU PPN
+            </p>
+          )}
         </div>
-          <div className="px-10 text-[8pt] mb-6 ">
-        <p className="mb-0.5">Pembayaran dilakukan dengan transfer ke :</p>
+
+        <div className="px-10 text-[8pt] mb-6 ">
+          <p className="mb-0.5">Pembayaran dilakukan dengan transfer ke :</p>
           <p className="leading-none">Bank BCA KCP Raya Baru</p>
           <p className="mt-0.5">PT Peduli Lestari Indonesia</p>
           <p className="mt-0.5">Nomor rekening : 8720792894</p>
-
-          </div>
+        </div>
 
         <div className="px-10 text-[8pt] mb-4 leading-normal">
           <p>Demikian <span className="italic">invoice</span> ini kami sampaikan. Besar harapan kami agar pembayaran dapat diproses pada kesempatan pertama sebelum jatuh tempo. Mohon dapat melakukan konfirmasi setelah melakukan pembayaran. Atas perhatian dan kerja sama Bapak/Ibu, kami ucapkan terimakasih</p>
