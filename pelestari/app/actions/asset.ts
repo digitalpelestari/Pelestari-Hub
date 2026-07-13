@@ -11,6 +11,9 @@ function getBulanIndex(bulanNama: string): number {
   return listBulan[bulanNama] || 1;
 }
 
+// =========================================================================
+// 1. ACTION: AMBIL SEMUA LIST ASSET (DENGAN KALKULASI DEPRESIASI KOMERSIAL & FISKAL)
+// =========================================================================
 export async function getAssetsAction(isFinanceView: boolean = false) {
   try {
     const [rows]: any = await db.execute("SELECT * FROM tb_asset ORDER BY id_asset DESC");
@@ -23,38 +26,36 @@ export async function getAssetsAction(isFinanceView: boolean = false) {
       const hargaBeli = Number(asset.harga_beli);
       const masaKomersial = Number(asset.kelompok_komersial || 4);
       const masaFiskal = Number(asset.kelompok_fiskal || 4);
+      const isAsetTetap = asset.jenis_asset === "Aset Tetap";
       
-      // 1. Nilai Dasar Garis Lurus per Tahun
-      const penyusutanKomersialTahunan = hargaBeli / masaKomersial;
-      const penyusutanFiskalTahunan = hargaBeli / masaFiskal;
+      // LOGIC BREAKDOWN: Penyusutan hanya berlaku jika Jenis Aset adalah "Aset Tetap"
+      // Jika "Aset Non-Tetap", maka penyusutan diset ke 0
+      const penyusutanKomersialTahunan = isAsetTetap ? (hargaBeli / masaKomersial) : 0;
+      const penyusutanFiskalTahunan = isAsetTetap ? (hargaBeli / masaFiskal) : 0;
 
-      // Penyusutan per Bulan murni
       const penyusutanKomersialBulanan = penyusutanKomersialTahunan / 12;
       const penyusutanFiskalBulanan = penyusutanFiskalTahunan / 12;
 
-      // 2. Hitung Pengkali Bulan Berdasarkan Logic Sheet Excel (image_6ac7.png)
-      // Komersial = 8 Bulan, Fiskal = 2 Bulan untuk perolehan Mei 2025
+      // Hitung Pengkali Bulan Berdasarkan Waktu Perolehan
       let bulanKomersialBerjalan = 8; 
       let bulanFiskalBerjalan = 2;
 
-      // Jika ada variasi data tahun selain 2025, kita hitung dinamis dari index bulan perolehan
       const bulanAsetIdx = getBulanIndex(asset.bulan_perolehan);
       if (asset.tahun_perolehan === 2025) {
-        // Logika menyelaraskan hitungan bulan buku laporan excel kamu
-        bulanKomersialBerjalan = 12 - bulanAsetIdx + 1; // Mei (5) -> 12 - 5 + 1 = 8 Bulan
-        bulanFiskalBerjalan = Math.max(1, bulanKomersialBerjalan - 6); // Penyelarasan porsi fiskal pajak = 2 Bulan
+        bulanKomersialBerjalan = 12 - bulanAsetIdx + 1; 
+        bulanFiskalBerjalan = Math.max(1, bulanKomersialBerjalan - 6); 
       }
 
-      const prorataKomersial = penyusutanKomersialBulanan * bulanKomersialBerjalan;
-      const prorataFiskal = penyusutanFiskalBulanan * bulanFiskalBerjalan;
+      const prorataKomersial = isAsetTetap ? (penyusutanKomersialBulanan * bulanKomersialBerjalan) : 0;
+      const prorataFiskal = isAsetTetap ? (penyusutanFiskalBulanan * bulanFiskalBerjalan) : 0;
       
-      // Sisa Nilai Buku akhir (Harga Beli dikurangi akumulasi amortisasi fiskal)
-      const sisaNilaiBuku = Math.max(0, hargaBeli - prorataFiskal);
+      // Sisa Nilai Buku akhir (Jika non-tetap, langsung kembalikan harga beli utuh)
+      const sisaNilaiBuku = isAsetTetap ? Math.max(0, hargaBeli - prorataFiskal) : hargaBeli;
 
       return {
         ...asset,
-        tarif_komersial_persen: `${(100 / masaKomersial).toFixed(2)}%`,
-        tarif_fiskal_persen: `${(100 / masaFiskal).toFixed(2)}%`,
+        tarif_komersial_persen: isAsetTetap ? `${(100 / masaKomersial).toFixed(2)}%` : "0.00%",
+        tarif_fiskal_persen: isAsetTetap ? `${(100 / masaFiskal).toFixed(2)}%` : "0.00%",
         penyusutan_komersial: penyusutanKomersialTahunan,
         penyusutan_fiskal: penyusutanFiskalTahunan,
         prorata_komersial: prorataKomersial,
@@ -69,10 +70,13 @@ export async function getAssetsAction(isFinanceView: boolean = false) {
   }
 }
 
+// =========================================================================
+// 2. ACTION: REGISTRASI ASSET BARU (TERMASUK JENIS ASSET FIXED/NON-FIXED)
+// =========================================================================
 export async function createAssetAction(payload: any) {
   try {
     const {
-      nama_asset, kode_asset, bulan_perolehan, tahun_perolehan,
+      nama_asset, kode_asset, jenis_asset, bulan_perolehan, tahun_perolehan,
       harga_beli, cara_perolehan, jumlah, keterangan, kondisi
     } = payload;
 
@@ -84,21 +88,38 @@ export async function createAssetAction(payload: any) {
       kelompokFiskal = 4;
     }
 
+    // Memasukkan field `jenis_asset` ke dalam Query INSERT
     await db.execute(
-      `INSERT INTO tb_asset (nama_asset, kode_asset, bulan_perolehan, tahun_perolehan, 
+      `INSERT INTO tb_asset (nama_asset, kode_asset, jenis_asset, bulan_perolehan, tahun_perolehan, 
        harga_beli, cara_perolehan, jumlah, keterangan, kondisi, kelompok_komersial, kelompok_fiskal) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [nama_asset, kode_asset || null, bulan_perolehan, Number(tahun_perolehan), Number(harga_beli), cara_perolehan, Number(jumlah), keterangan || null, kondisi, kelompokKomersial, kelompokFiskal]
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        nama_asset, 
+        kode_asset || null, 
+        jenis_asset || "Aset Tetap", // Default fallback ke Aset Tetap jika kosong
+        bulan_perolehan, 
+        Number(tahun_perolehan), 
+        Number(harga_beli), 
+        cara_perolehan, 
+        Number(jumlah), 
+        keterangan || null, 
+        kondisi, 
+        kelompokKomersial, 
+        kelompokFiskal
+      ]
     );
 
     revalidatePath("/dashboard/ga/asset");
     revalidatePath("/dashboard/finance/asset-tracking");
-    return { success: true, message: "Aset berhasil diregistrasi!" };
+    return { success: true, message: "Aset berhasil diregistrasi ke dalam sistem!" };
   } catch (error: any) {
     return { success: false, message: error.message };
   }
 }
 
+// =========================================================================
+// 3. ACTION: HAPUS ASSET PERMANEN
+// =========================================================================
 export async function deleteAssetAction(id_asset: number) {
   try {
     await db.execute("DELETE FROM tb_asset WHERE id_asset = ?", [id_asset]);
@@ -108,6 +129,26 @@ export async function deleteAssetAction(id_asset: number) {
     revalidatePath("/dashboard/finance/asset-tracking");
     
     return { success: true, message: "Data aset berhasil dihapus dari sistem!" };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+}
+
+// =========================================================================
+// 4. ACTION: INLINE UPDATE KONDISI ASSET (BARU)
+// =========================================================================
+export async function updateAssetKondisiAction(id_asset: number, kondisi: string) {
+  try {
+    await db.execute(
+      "UPDATE tb_asset SET kondisi = ? WHERE id_asset = ?",
+      [kondisi, id_asset]
+    );
+
+    // Revalidasi router cache Next.js agar perubahan langsung masuk ke UI
+    revalidatePath("/dashboard/ga/asset");
+    revalidatePath("/dashboard/finance/asset-tracking");
+    
+    return { success: true, message: "Kondisi aset berhasil diperbarui!" };
   } catch (error: any) {
     return { success: false, message: error.message };
   }
