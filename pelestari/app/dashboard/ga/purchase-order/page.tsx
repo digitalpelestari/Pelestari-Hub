@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, Eye, FileText, X, Download, Printer, CalendarClock, CheckCircle, AlertCircle, Edit2 } from "lucide-react";
+import { Plus, Trash2, Eye, FileText, X, Download, Printer, CalendarClock, CheckCircle, AlertCircle, Edit2, Calendar } from "lucide-react";
 
 // Import Server Actions Lengkap
 import { 
@@ -27,6 +27,10 @@ export default function PurchaseOrderPage() {
   const [poList, setPoList] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // === STATE FILTER TANGGAL ===
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   // === STATE MODAL EDIT REMINDER ===
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -67,6 +71,24 @@ export default function PurchaseOrderPage() {
     if (res.success) {
       setPoList(res.data);
     }
+  };
+
+  // === LOGIC FILTERING DATA PO ===
+  const filteredPoList = poList.filter((po) => {
+    if (!po.tanggal_po) return true;
+    
+    // Normalisasi format tanggal PO (mengambil YYYY-MM-DD)
+    const poDateStr = new Date(po.tanggal_po).toISOString().split("T")[0];
+
+    if (startDate && poDateStr < startDate) return false;
+    if (endDate && poDateStr > endDate) return false;
+    
+    return true;
+  });
+
+  const handleResetFilter = () => {
+    setStartDate("");
+    setEndDate("");
   };
 
   const handleOpenDetailModal = async (po: any) => {
@@ -136,17 +158,16 @@ export default function PurchaseOrderPage() {
   };
 
   const handleSomeChange = (index: number, field: string, value: any) => {
-  // Paksa updatedItems menjadi tipe array objek bebas (any[])
-  const updatedItems = [...items] as any[];
+    const updatedItems = [...items] as any[];
 
-  if (field === "quantity" || field === "unit_price") {
-    updatedItems[index][field] = value;
-    updatedItems[index].total = updatedItems[index].quantity * updatedItems[index].unit_price;
-  } else {
-    updatedItems[index][field] = value;
-  }
-  setItems(updatedItems);
-};
+    if (field === "quantity" || field === "unit_price") {
+      updatedItems[index][field] = value;
+      updatedItems[index].total = updatedItems[index].quantity * updatedItems[index].unit_price;
+    } else {
+      updatedItems[index][field] = value;
+    }
+    setItems(updatedItems);
+  };
 
   const handleRemoveItemRow = (index: number) => {
     if (items.length > 1) {
@@ -165,7 +186,6 @@ export default function PurchaseOrderPage() {
 
     setLoading(true);
 
-    // Payload dikirim bersih tanpa status_pembayaran karena ditangani default di backend
     const payload = {
       nomor_po: nomorPo,
       tanggal_po: tanggalPo,
@@ -204,17 +224,60 @@ export default function PurchaseOrderPage() {
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => exportToExcel(poList)} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-xs font-bold uppercase tracking-wider rounded transition-colors shadow">
+          {/* Aksi Cetak Menggunakan `filteredPoList` */}
+          <button onClick={() => exportToExcel(filteredPoList)} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-xs font-bold uppercase tracking-wider rounded transition-colors shadow">
             <Download className="h-3.5 w-3.5" /> Excel Rekap
           </button>
           
-          <button onClick={() => exportToPdf(poList)} className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-2 text-xs font-bold uppercase tracking-wider rounded transition-colors shadow">
+          <button onClick={() => exportToPdf(filteredPoList)} className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-2 text-xs font-bold uppercase tracking-wider rounded transition-colors shadow">
             <Printer className="h-3.5 w-3.5" /> PDF Rekap
           </button>
 
           <button onClick={() => { resetFormFields(); setIsModalOpen(true); }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider rounded transition-colors shadow-sm ml-0 md:ml-2">
             <Plus className="h-4 w-4" /> Buat PO Baru
           </button>
+        </div>
+      </div>
+
+      {/* PANEL FILTER RANGE TANGGAL */}
+      <div className="bg-zinc-50 border border-zinc-200 p-4 rounded mb-6 flex flex-col sm:flex-row sm:items-end gap-4 shadow-sm">
+        <div className="flex-1 max-w-xs">
+          <label className="block text-zinc-600 text-[11px] font-bold uppercase mb-1.5 flex items-center gap-1">
+            <Calendar className="h-3 w-3 text-zinc-400" /> Dari Tanggal
+          </label>
+          <input 
+            type="date" 
+            value={startDate} 
+            onChange={(e) => setStartDate(e.target.value)} 
+            className="w-full border border-zinc-300 p-2 text-xs rounded bg-white text-zinc-800 focus:outline-zinc-400"
+          />
+        </div>
+
+        <div className="flex-1 max-w-xs">
+          <label className="block text-zinc-600 text-[11px] font-bold uppercase mb-1.5 flex items-center gap-1">
+            <Calendar className="h-3 w-3 text-zinc-400" /> Sampai Tanggal
+          </label>
+          <input 
+            type="date" 
+            value={endDate} 
+            onChange={(e) => setEndDate(e.target.value)} 
+            className="w-full border border-zinc-300 p-2 text-xs rounded bg-white text-zinc-800 focus:outline-zinc-400"
+          />
+        </div>
+
+        {(startDate || endDate) && (
+          <button 
+            type="button" 
+            onClick={handleResetFilter} 
+            className="text-xs font-bold text-zinc-500 hover:text-zinc-800 border border-zinc-300 px-3 py-2 rounded bg-white hover:bg-zinc-100 transition-colors h-fit self-start sm:self-auto"
+          >
+            Bersihkan Filter
+          </button>
+        )}
+
+        {/* Informasi Jumlah Data Terfilter */}
+        <div className="ml-auto text-[11px] text-zinc-500 font-medium self-center">
+          Menampilkan <span className="font-bold text-zinc-800">{filteredPoList.length}</span> dari {poList.length} total PO
         </div>
       </div>
 
@@ -232,12 +295,14 @@ export default function PurchaseOrderPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {poList.length === 0 ? (
+            {filteredPoList.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-zinc-400 font-medium">Belum ada dokumen PO yang tersimpan.</td>
+                <td colSpan={6} className="p-8 text-center text-zinc-400 font-medium">
+                  {poList.length === 0 ? "Belum ada dokumen PO yang tersimpan." : "Tidak ada dokumen PO pada rentang tanggal ini."}
+                </td>
               </tr>
             ) : (
-              poList.map((po) => (
+              filteredPoList.map((po) => (
                 <tr key={po.id_po} className="hover:bg-zinc-50/80 transition-colors align-middle">
                   <td className="p-3 font-semibold text-zinc-900">
                     <span className="text-blue-600 block">{po.nomor_po}</span>
@@ -420,7 +485,7 @@ export default function PurchaseOrderPage() {
         </div>
       )}
 
-      {/* MODAL EDIT REMINDER TEMPO */}
+      {/* ================= MODAL EDIT REMINDER TEMPO ================= */}
       {isEditModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded shadow-xl border border-zinc-300 overflow-hidden">
@@ -461,7 +526,7 @@ export default function PurchaseOrderPage() {
         </div>
       )}
 
-      {/* MODAL INPUT FORM (BUAT PO BARU) */}
+      {/* ================= MODAL INPUT FORM (BUAT PO BARU) ================= */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-4xl rounded shadow-xl border border-zinc-300 overflow-hidden my-auto">
