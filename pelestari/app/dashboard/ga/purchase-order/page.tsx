@@ -32,11 +32,12 @@ export default function PurchaseOrderPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  // === STATE MODAL EDIT REMINDER ===
+  // === STATE MODAL EDIT REMINDER & PEMBAYARAN ===
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedPoId, setSelectedPoId] = useState<number | null>(null);
   const [editTempoHari, setEditTempoHari] = useState(0);
   const [editStatusPembayaran, setEditStatusPembayaran] = useState("Belum Bayar");
+  const [editTanggalBayar, setEditTanggalBayar] = useState(new Date().toISOString().split("T")[0]);
 
   // === STATE MODAL DETAIL READ-ONLY ===
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -106,6 +107,14 @@ export default function PurchaseOrderPage() {
     setSelectedPoId(po.id_po);
     setEditTempoHari(po.tempo_hari || 0);
     setEditStatusPembayaran(po.status_pembayaran || "Belum Bayar");
+    
+    // Jika data dari database sudah memiliki tanggal_bayar, gunakan data tersebut. Jika tidak, set ke hari ini.
+    if (po.tanggal_bayar) {
+      setEditTanggalBayar(new Date(po.tanggal_bayar).toISOString().split("T")[0]);
+    } else {
+      setEditTanggalBayar(new Date().toISOString().split("T")[0]);
+    }
+    
     setIsEditModalOpen(true);
   };
 
@@ -114,10 +123,20 @@ export default function PurchaseOrderPage() {
     if (!selectedPoId) return;
 
     setLoading(true);
-    const res = await updatePaymentStatusAction(selectedPoId, editStatusPembayaran, Number(editTempoHari));
+    
+    // Mengirimkan parameter tambahan berupa tanggal pembayaran jika statusnya 'SUDAH BAYAR'
+    const tglBayarPayload = editStatusPembayaran === "SUDAH BAYAR" ? editTanggalBayar : null;
+    
+    // Catatan: Pastikan updatePaymentStatusAction di file backend Anda menerima parameter tanggal ini (baik sebagai argumen ke-4 atau dalam objek payload)
+    const res = await updatePaymentStatusAction(
+      selectedPoId, 
+      editStatusPembayaran, 
+      Number(editTempoHari),
+      tglBayarPayload
+    );
 
     if (res.success) {
-      alert("Pengingat tempo dan status pembayaran berhasil diperbarui!");
+      alert("Status pembayaran dan tanggal berhasil diperbarui!");
       setIsEditModalOpen(false);
       fetchPO();
     } else {
@@ -290,7 +309,7 @@ export default function PurchaseOrderPage() {
               <th className="p-3">Vendor Target</th>
               <th className="p-3 text-right">Total Akhir</th>
               <th className="p-3 text-center">Status Bayar</th>
-              <th className="p-3 text-center">Reminder Tempo</th>
+              <th className="p-3 text-center">Reminder Tempo / Tgl Bayar</th>
               <th className="p-3 text-center">Aksi</th>
             </tr>
           </thead>
@@ -324,8 +343,18 @@ export default function PurchaseOrderPage() {
                   </td>
 
                   <td className="p-3 text-center">
+                    {/* TAMPILAN DINAMIS: Jika LUNAS, tampilkan tanggal pembayarannya */}
                     {po.status_pembayaran === "SUDAH BAYAR" ? (
-                      <span className="text-zinc-400 text-[11px] flex items-center justify-center gap-1"><CheckCircle className="h-3.5 w-3.5 text-green-500" /> Lunas</span>
+                      <div className="text-center">
+                        <span className="text-green-700 font-bold text-[11px] bg-green-50 px-2 py-0.5 rounded border border-green-200 flex items-center justify-center gap-1 w-fit mx-auto">
+                          <CheckCircle className="h-3.5 w-3.5 text-green-500" /> Lunas
+                        </span>
+                        {po.tanggal_bayar && (
+                          <span className="block text-[10px] text-zinc-500 font-medium mt-1">
+                            Pd: {new Date(po.tanggal_bayar).toLocaleDateString("id-ID")}
+                          </span>
+                        )}
+                      </div>
                     ) : po.tempo_hari === 0 ? (
                       <span className="text-zinc-400 italic text-[11px]">Belum di-set tempo</span>
                     ) : po.sisa_hari < 0 ? (
@@ -424,6 +453,9 @@ export default function PurchaseOrderPage() {
                     <p><span className="font-semibold">PIC Hub:</span> {detailPo.vendor_pic || "-"}</p>
                     <p><span className="font-semibold">Email:</span> {detailPo.vendor_email || "-"}</p>
                     <p><span className="font-semibold">PO Date:</span> {new Date(detailPo.tanggal_po).toLocaleDateString("id-ID")}</p>
+                    {detailPo.status_pembayaran === "SUDAH BAYAR" && detailPo.tanggal_bayar && (
+                      <p className="text-green-600 font-bold"><span className="font-semibold text-zinc-600">Payment Date:</span> {new Date(detailPo.tanggal_bayar).toLocaleDateString("id-ID")}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -485,19 +517,52 @@ export default function PurchaseOrderPage() {
         </div>
       )}
 
-      {/* ================= MODAL EDIT REMINDER TEMPO ================= */}
+      {/* ================= MODAL EDIT REMINDER & PEMBAYARAN ================= */}
       {isEditModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded shadow-xl border border-zinc-300 overflow-hidden">
             <div className="bg-zinc-900 text-white px-4 py-2.5 flex justify-between items-center text-xs font-bold uppercase tracking-wider">
-              <span>Atur Pengingat Pembayaran</span>
+              <span>Atur Pengingat & Pembayaran</span>
               <button type="button" onClick={() => setIsEditModalOpen(false)} className="text-zinc-400 hover:text-white"><X className="h-4 w-4" /></button>
             </div>
             
             <form onSubmit={handleSaveReminder} className="p-4 text-xs space-y-4">
               <div>
+                <label className="block text-zinc-700 font-bold mb-1">Status Pembayaran Saat Ini</label>
+                <select 
+                  value={editStatusPembayaran} 
+                  onChange={(e) => setEditStatusPembayaran(e.target.value)} 
+                  className="w-full border border-zinc-300 bg-white p-2 rounded text-zinc-800 font-semibold focus:outline-none cursor-pointer" 
+                >
+                  <option value="Belum Bayar">Belum Bayar</option>
+                  <option value="SUDAH BAYAR">SUDAH BAYAR</option>
+                </select>
+              </div>
+
+              {/* FITUR KALENDER: Muncul secara bersyarat ketika status diset ke 'SUDAH BAYAR' */}
+              {editStatusPembayaran === "SUDAH BAYAR" && (
+                <div className="p-3 bg-green-50/60 border border-green-200 rounded transition-all">
+                  <label className="block text-green-900 font-bold mb-1 flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5 text-green-600" /> Tanggal Realisasi Pembayaran
+                  </label>
+                  <input 
+                    type="date" 
+                    required 
+                    value={editTanggalBayar} 
+                    onChange={(e) => setEditTanggalBayar(e.target.value)} 
+                    className="w-full border border-green-300 p-2 text-xs rounded bg-white text-zinc-800 focus:outline-green-500 font-semibold"
+                  />
+                </div>
+              )}
+
+              <div>
                 <label className="block text-zinc-700 font-bold mb-1">Jumlah Hari Reminder Tempo</label>
-                <select value={editTempoHari} onChange={(e) => setEditTempoHari(Number(e.target.value))} className="w-full border border-zinc-300 bg-white p-2 rounded text-zinc-800 font-semibold focus:outline-none cursor-pointer" >
+                <select 
+                  value={editTempoHari} 
+                  onChange={(e) => setEditTempoHari(Number(e.target.value))} 
+                  className="w-full border border-zinc-300 bg-white p-2 rounded text-zinc-800 font-semibold focus:outline-none cursor-pointer"
+                  disabled={editStatusPembayaran === "SUDAH BAYAR"} // Nonaktifkan jika sudah lunas
+                >
                   <option value={0}>Cash Langsung (Hari H)</option>
                   <option value={7}>7 Hari Kalender</option>
                   <option value={14}>14 Hari Kalender</option>
@@ -507,18 +572,10 @@ export default function PurchaseOrderPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-zinc-700 font-bold mb-1">Status Pembayaran Saat Ini</label>
-                <select value={editStatusPembayaran} onChange={(e) => setEditStatusPembayaran(e.target.value)} className="w-full border border-zinc-300 bg-white p-2 rounded text-zinc-800 font-semibold focus:outline-none cursor-pointer" >
-                  <option value="Belum Bayar">Belum Bayar</option>
-                  <option value="SUDAH BAYAR">SUDAH BAYAR</option>
-                </select>
-              </div>
-
               <div className="flex justify-end gap-2 pt-2 border-t border-zinc-100">
                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-3 py-1.5 border border-zinc-300 text-zinc-700 rounded font-semibold">Batal</button>
                 <button type="submit" disabled={loading} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded shadow disabled:bg-blue-400">
-                  {loading ? "Menyimpan..." : "Update Reminder"}
+                  {loading ? "Menyimpan..." : "Update Status"}
                 </button>
               </div>
             </form>
