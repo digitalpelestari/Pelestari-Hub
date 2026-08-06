@@ -21,7 +21,7 @@ export async function getPurchaseOrdersAction() {
 }
 
 // =========================================================================
-// 2. ACTION: SIMPAN PO BARU (Otomatis Tambah Saldo Utang Usaha 21100)
+// 2. ACTION: SIMPAN PO BARU (Murni Catatan GA, Tanpa Sentuh Saldo Akun)
 // =========================================================================
 export async function createPurchaseOrderAction(payload: any) {
   const connection = await db.getConnection();
@@ -44,7 +44,7 @@ export async function createPurchaseOrderAction(payload: any) {
 
     await connection.beginTransaction();
 
-    // A. Simpan data ke tabel induk (tb_po) - Kunci Status 'Belum Bayar'
+    // A. Simpan data ke tabel induk (tb_po)
     const [poResult]: any = await connection.execute(
       `INSERT INTO tb_po (nomor_po, tanggal_po, vendor_nama, vendor_pic, vendor_email, 
        alamat_pengantaran, penerima_nama, sub_total, ppn, total_harga, status_pembayaran, tempo_hari, jatuh_tempo, tanggal_bayar) 
@@ -66,31 +66,23 @@ export async function createPurchaseOrderAction(payload: any) {
       );
     }
 
-    // C. OTOMATISASI UTANG: Tambahkan total_harga langsung ke saldo tb_akun Utang Usaha (21100)
-    const [updateAccount]: any = await connection.execute(
-      `UPDATE tb_akun 
-       SET saldo = saldo + ? 
-       WHERE no_akun = '21100'`,
-      [Number(total_harga)]
-    );
-
-    if (updateAccount.affectedRows === 0) {
-      throw new Error("Gagal otomatisasi! Akun kode 21100 (Utang Usaha) tidak ditemukan di tb_akun.");
-    }
+    // (Logika otomatisasi penambahan saldo tb_akun 21100 telah dihapus total di sini)
 
     await connection.commit();
     revalidatePath("/dashboard/purchase-order"); 
-    return { success: true, message: "Purchase Order berhasil disimpan & saldo Utang Usaha otomatis bertambah!" };
+    return { success: true, message: "Purchase Order berhasil disimpan sebagai catatan GA!" };
   } catch (error: any) {
-    await connection.rollback();
+    if (connection) {
+      try { await connection.rollback(); } catch (e) {}
+    }
     return { success: false, message: error.message };
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
 }
 
 // =========================================================================
-// 3. ACTION: UPDATE STATUS BAYAR (Tanpa Mengurangi Saldo Utang di Akuntansi)
+// 3. ACTION: UPDATE STATUS BAYAR (Hanya Ubah Status di Modul GA)
 // =========================================================================
 export async function updatePaymentStatusAction(
   id_po: number, 
@@ -98,14 +90,17 @@ export async function updatePaymentStatusAction(
   tempo_hari_baru: number,
   tanggal_bayar_baru: string | null
 ) {
-  const connection = await db.getConnection();
+  let connection;
   try {
+    connection = await db.getConnection();
+    
     const [poRows]: any = await connection.execute(
       "SELECT tanggal_po, total_harga, status_pembayaran FROM tb_po WHERE id_po = ?", 
       [id_po]
     );
     
     if (poRows.length === 0) {
+      connection.release();
       return { success: false, message: "Data Purchase Order tidak ditemukan!" };
     }
     
@@ -136,7 +131,7 @@ export async function updatePaymentStatusAction(
 
     await connection.beginTransaction();
 
-    // UPDATE HANYA KE TABEL PO (Status GA), TANPA MENGURANGI SALDO tb_akun NERACA
+    // UPDATE HANYA KE TABEL PO (Murni Status Catatan GA)
     await connection.execute(
       `UPDATE tb_po 
        SET status_pembayaran = ?, 
@@ -151,13 +146,15 @@ export async function updatePaymentStatusAction(
     revalidatePath("/dashboard/ga/purchase-order");
     return { 
       success: true, 
-      message: "Status pembayaran dan tanggal realisasi berhasil diperbarui di PO! (Saldo Utang menunggu jurnal Finance)" 
+      message: "Status pembayaran berhasil diperbarui di catatan GA!" 
     };
   } catch (error: any) {
-    await connection.rollback();
+    if (connection) {
+      try { await connection.rollback(); } catch (e) {}
+    }
     return { success: false, message: error.message };
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
 }
 
@@ -177,44 +174,38 @@ export async function getPoItemsAction(id_po: number) {
 }
 
 // =========================================================================
-// 5. ACTION: HAPUS PO SECARA PERMANEN (Otomatis Potong Saldo Akun Utang)
+// 5. ACTION: HAPUS PO SECARA PERMANEN (Tanpa Sentuh Saldo Akun)
 // =========================================================================
 export async function deletePurchaseOrderAction(id_po: number) {
-  const connection = await db.getConnection();
+  let connection;
   try {
+    connection = await db.getConnection();
+    
     const [poRows]: any = await connection.execute(
-      "SELECT total_harga, status_pembayaran FROM tb_po WHERE id_po = ?",
+      "SELECT id_po FROM tb_po WHERE id_po = ?",
       [id_po]
     );
 
     if (poRows.length === 0) {
+      connection.release();
       return { success: false, message: "Data PO tidak ditemukan!" };
     }
 
-    const { total_harga, status_pembayaran } = poRows[0];
-
     await connection.beginTransaction();
 
-    // Jika dihapus saat statusnya masih Belum Bayar, kurangi saldo utang agar laporan klop 
-    // (Karena Finance belum menjurnal pelunasannya)
-    if (status_pembayaran === "Belum Bayar" || status_pembayaran === "BELUM BAYAR") {
-      await connection.execute(
-        "UPDATE tb_akun SET saldo = saldo - ? WHERE no_akun = '21100'",
-        [Number(total_harga)]
-      );
-    }
-
-    // Hapus data anak (items) baru data induk (po)
+    // Hapus data anak (items) baru data induk (po) tanpa mengubah tb_akun
     await connection.execute("DELETE FROM tb_po_item WHERE id_po = ?", [id_po]);
     await connection.execute("DELETE FROM tb_po WHERE id_po = ?", [id_po]);
 
     await connection.commit();
     revalidatePath("/dashboard/purchase-order");
-    return { success: true, message: "Dokumen PO berhasil dihapus dan saldo utang otomatis dikurangi!" };
+    return { success: true, message: "Dokumen PO berhasil dihapus dari catatan GA." };
   } catch (error: any) {
-    await connection.rollback();
+    if (connection) {
+      try { await connection.rollback(); } catch (e) {}
+    }
     return { success: false, message: error.message };
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
 }
