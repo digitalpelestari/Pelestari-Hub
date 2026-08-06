@@ -29,11 +29,14 @@ export default function NeracaPage() {
   }, [currentYear])
 
   const formatRupiah = (num: number) => {
-    return new Intl.NumberFormat("id-ID", {
+    const isNegative = num < 0
+    const formatted = new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
       minimumFractionDigits: 0
-    }).format(num)
+    }).format(Math.abs(num))
+
+    return isNegative ? `(${formatted})` : formatted
   }
 
   if (loading) {
@@ -48,7 +51,7 @@ export default function NeracaPage() {
   return (
     <div className="p-6 w-full space-y-6 font-sans text-zinc-900">
       
-      {/* 1. BAR ACTION ATAS (FULL WIDTH) */}
+      {/* 1. BAR ACTION ATAS */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 pb-4 w-full">
         <div>
           <h1 className="text-2xl font-black uppercase tracking-tighter italic text-black flex items-center gap-2">
@@ -79,7 +82,7 @@ export default function NeracaPage() {
         </div>
       </div>
 
-      {/* 2. AREA KERTAS DATA NERACA (LAYOUT T-ACCOUNT DUA KOLOM MELEBAR) */}
+      {/* 2. AREA KERTAS DATA NERACA */}
       <Card className="border border-zinc-200 shadow-none rounded-sm bg-white w-full overflow-hidden">
         <CardHeader className="text-left border-b border-zinc-200 bg-zinc-50/50 py-5 px-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -101,9 +104,7 @@ export default function NeracaPage() {
         <CardContent className="p-0 w-full">
           <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-zinc-200 w-full">
             
-            {/* ======================================================== */}
-            {/* SEKSI KIRI: AKTIVA (ASET / KEKAYAAN PERUSAHAAN) */}
-            {/* ======================================================== */}
+            {/* SEKSI KIRI: AKTIVA */}
             <div className="w-full">
               <Table className="w-full">
                 <TableBody className="text-xs font-bold text-zinc-800">
@@ -113,39 +114,17 @@ export default function NeracaPage() {
                     </TableCell>
                   </TableRow>
 
-                  {/* Bagian Aset Lancar */}
+                  {/* A. ASET LANCAR */}
                   <TableRow className="hover:bg-transparent border-none">
                     <TableCell className="pl-6 pt-3 text-zinc-900 font-extrabold uppercase text-[10px] tracking-wide" colSpan={2}>
                       A. ASET LANCAR
                     </TableCell>
                   </TableRow>
                   
-                  {data?.aktivaLancar.map((item) => (
-                    <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
-                      <TableCell className="pl-12 py-2.5 text-zinc-600 font-medium flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1 rounded-sm">{item.no_akun}</span>
-                        <span>{item.nama_akun}</span>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">{formatRupiah(item.saldo)}</TableCell>
-                    </TableRow>
-                  ))}
-                  
-                  <TableRow className="border-b border-zinc-100 bg-zinc-50/30">
-                    <TableCell className="pl-8 py-2.5 text-zinc-500 italic font-medium">Total Aset Lancar</TableCell>
-                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">{formatRupiah(data?.totalAktivaLancar || 0)}</TableCell>
-                  </TableRow>
-
-                  {/* Bagian Aset Tetap */}
-                  <TableRow className="hover:bg-transparent border-none">
-                    <TableCell className="pl-6 pt-4 text-zinc-900 font-extrabold uppercase text-[10px] tracking-wide" colSpan={2}>
-                      B. ASET TETAP
-                    </TableCell>
-                  </TableRow>
-                  {data && data.aktivaTetap.length > 0 ? (
-                    data.aktivaTetap.map((item) => (
+                  {data?.aktivaLancar && data.aktivaLancar.length > 0 ? (
+                    data.aktivaLancar.map((item) => (
                       <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
-                        <TableCell className="pl-12 py-2.5 text-zinc-600 font-medium flex items-center gap-2">
-                          <span className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1 rounded-sm">{item.no_akun}</span>
+                        <TableCell className="pl-12 py-2.5 text-zinc-700 font-medium">
                           <span>{item.nama_akun}</span>
                         </TableCell>
                         <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">{formatRupiah(item.saldo)}</TableCell>
@@ -153,20 +132,46 @@ export default function NeracaPage() {
                     ))
                   ) : (
                     <TableRow className="border-none hover:bg-transparent">
-                      <TableCell className="pl-12 py-3 text-zinc-400 italic font-medium" colSpan={2}>Tidak ada data inventaris/aset tetap terdaftar.</TableCell>
+                      <TableCell className="pl-12 py-3 text-zinc-400 italic font-medium" colSpan={2}>
+                        Tidak ada data aset lancar.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  
+                  <TableRow className="border-b border-zinc-100 bg-zinc-50/30">
+                    <TableCell className="pl-8 py-2.5 text-zinc-500 italic font-medium">Total Aset Lancar</TableCell>
+                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">{formatRupiah(data?.totalAktivaLancar || 0)}</TableCell>
+                  </TableRow>
+
+                  {/* B. HARTA TETAP */}
+                  <TableRow className="hover:bg-transparent border-none">
+                    <TableCell className="pl-6 pt-4 text-zinc-900 font-extrabold uppercase text-[10px] tracking-wide" colSpan={2}>
+                      B. HARTA TETAP
+                    </TableCell>
+                  </TableRow>
+                  {data && data.hartaTetap.length > 0 ? (
+                    data.hartaTetap.map((item) => (
+                      <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
+                        <TableCell className="pl-12 py-2.5 text-zinc-700 font-medium">
+                          <span>{item.nama_akun}</span>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">{formatRupiah(item.saldo)}</TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow className="border-none hover:bg-transparent">
+                      <TableCell className="pl-12 py-3 text-zinc-400 italic font-medium" colSpan={2}>Tidak ada data harta tetap terdaftar.</TableCell>
                     </TableRow>
                   )}
                   <TableRow className="border-b border-zinc-200 bg-zinc-50/30">
-                    <TableCell className="pl-8 py-2.5 text-zinc-500 italic font-medium">Total Aset Tetap</TableCell>
-                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">{formatRupiah(data?.totalAktivaTetap || 0)}</TableCell>
+                    <TableCell className="pl-8 py-2.5 text-zinc-500 italic font-medium">Total Harta Tetap</TableCell>
+                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">{formatRupiah(data?.totalHartaTetap || 0)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
             </div>
 
-            {/* ======================================================== */}
-            {/* SEKSI KANAN: PASIVA (KEWAJIBAN & EKUITAS / MODAL) */}
-            {/* ======================================================== */}
+            {/* SEKSI KANAN: PASIVA */}
             <div className="w-full">
               <Table className="w-full">
                 <TableBody className="text-xs font-bold text-zinc-800">
@@ -176,7 +181,7 @@ export default function NeracaPage() {
                     </TableCell>
                   </TableRow>
 
-                  {/* Bagian Kewajiban / Hutang */}
+                  {/* KEWAJIBAN */}
                   <TableRow className="hover:bg-transparent border-none">
                     <TableCell className="pl-6 pt-3 text-zinc-900 font-extrabold uppercase text-[10px] tracking-wide" colSpan={2}>
                       A. KEWAJIBAN / HUTANG
@@ -185,8 +190,7 @@ export default function NeracaPage() {
                   {data && data.kewajiban.length > 0 ? (
                     data.kewajiban.map((item) => (
                       <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
-                        <TableCell className="pl-12 py-2.5 text-zinc-600 font-medium flex items-center gap-2">
-                          <span className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1 rounded-sm">{item.no_akun}</span>
+                        <TableCell className="pl-12 py-2.5 text-zinc-700 font-medium">
                           <span>{item.nama_akun}</span>
                         </TableCell>
                         <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">{formatRupiah(item.saldo)}</TableCell>
@@ -202,7 +206,7 @@ export default function NeracaPage() {
                     <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">{formatRupiah(data?.totalKewajiban || 0)}</TableCell>
                   </TableRow>
 
-                  {/* Bagian Ekuitas / Modal */}
+                  {/* EKUITAS */}
                   <TableRow className="hover:bg-transparent border-none">
                     <TableCell className="pl-6 pt-4 text-zinc-900 font-extrabold uppercase text-[10px] tracking-wide" colSpan={2}>
                       B. EKUITAS (MODAL & LABA)
@@ -210,8 +214,7 @@ export default function NeracaPage() {
                   </TableRow>
                   {data?.ekuitas.map((item) => (
                     <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
-                      <TableCell className="pl-12 py-2.5 text-zinc-600 font-medium flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1 rounded-sm">{item.no_akun}</span>
+                      <TableCell className="pl-12 py-2.5 text-zinc-700 font-medium">
                         <span>{item.nama_akun}</span>
                       </TableCell>
                       <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">
@@ -229,9 +232,7 @@ export default function NeracaPage() {
 
           </div>
 
-          {/* ======================================================== */}
-          {/* BARIS FOOTER TOTAL: WAJIB BALANCE SEIMBANG KANAN-KIRI    */}
-          {/* ======================================================== */}
+          {/* TOTAL BALANCE FOOTER */}
           <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-zinc-800 border-t border-zinc-800 bg-zinc-900 text-white font-black text-xs">
             <div className="flex items-center justify-between py-4 px-6">
               <span className="uppercase tracking-widest text-[10px]">TOTAL AKTIVA (JUMLAH ASET)</span>
@@ -251,7 +252,7 @@ export default function NeracaPage() {
 
       {/* FOOTER TIMESTAMPS */}
       <div className="text-[9px] font-bold text-zinc-400 flex justify-between px-2 uppercase italic tracking-wider">
-        <p>* Sistem Neraca Terintegrasi: Omset Invoice Otomatis Menyeimbangkan Sisi Piutang & Laba Bersih.</p>
+        <p>* Sistem Neraca Terintegrasi</p>
         <p>Status Neraca: Balanced Statement</p>
       </div>
     </div>

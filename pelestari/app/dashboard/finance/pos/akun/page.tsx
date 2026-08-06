@@ -12,9 +12,10 @@ import {
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter 
 } from "@/components/ui/dialog"
-import { Trash2, Edit2, Plus, Search, ChevronDown, ChevronRight, Folder } from "lucide-react"
+import { Trash2, Edit2, Plus, Search, ChevronDown, ChevronRight, Folder, FileSpreadsheet } from "lucide-react"
 import { getAkunList, createAkun, updateAkun, deleteAkun } from "@/app/actions/akun"
 import { getKelompokBiaya } from "@/app/actions/kelompok-biaya"
+import * as XLSX from "xlsx" // Import library xlsx
 
 export default function DaftarAkunPage() {
   const [list, setList] = useState<any[]>([])
@@ -170,6 +171,31 @@ export default function DaftarAkunPage() {
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2 }).format(amount)
   }
 
+  // === FUNGSI EXPORT KE EXCEL ===
+  const handleExportExcel = () => {
+    if (filteredList.length === 0) {
+      alert("Tidak ada data untuk diekspor!");
+      return;
+    }
+
+    // 1. Map data ke format yang rapi untuk Excel
+    const dataToExport = filteredList.map((item) => ({
+      "No. Akun": item.no_akun,
+      "Nama Akun": item.nama_akun,
+      "Klasifikasi Kelompok": item.nama_kelompok || "Tanpa Kategori",
+      "Saldo (Rp)": parseFloat(item.saldo || 0),
+      "Status": item.is_aktif === 1 ? "Aktif" : "Non-Aktif"
+    }));
+
+    // 2. Buat Worksheet dan Workbook
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Chart of Accounts");
+
+    // 3. Simpan dan unduh file
+    XLSX.writeFile(workbook, "Daftar_Akun_COA.xlsx");
+  }
+
   return (
     <div className="flex w-full min-h-screen font-sans bg-zinc-50 text-zinc-900">
       
@@ -241,6 +267,10 @@ export default function DaftarAkunPage() {
                 className="h-9 pl-8 text-xs bg-white border-zinc-300 rounded-sm focus:ring-1 focus:ring-black"
               />
             </div>
+            {/* Tombol Export Excel */}
+            <Button onClick={handleExportExcel} className="h-9 bg-emerald-600 text-white text-xs font-black italic rounded-sm transition-all hover:bg-emerald-700 active:scale-95 px-4">
+              <FileSpreadsheet className="mr-1 h-4 w-4" /> EKSPOR EXCEL
+            </Button>
             <Button onClick={handleOpenAddModal} className="h-9 bg-black text-white text-xs font-black italic rounded-sm transition-all active:scale-95 px-4">
               <Plus className="mr-1 h-4 w-4" /> TAMBAH AKUN BARU
             </Button>

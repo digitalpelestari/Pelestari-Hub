@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react"
 import { 
   Plus, Search, Pencil, Trash2, Eye, Printer, 
   CreditCard, Users, Clock, ChevronDown, Layers, FilterX, Loader2, CheckCircle2,
-  FileText, Wallet, AlertCircle, FileUp, FileDown, Paperclip
+  FileText, Wallet, AlertCircle, FileUp, FileDown, Paperclip, Calendar
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,15 +43,19 @@ export default function InvoiceListPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   
-  // PERBAIKAN 1: Default state diganti ke "ALL" agar data langsung muncul di awal load
+  // STATE FILTER UTAMA
   const [filterStatus, setFilterStatus] = useState("ALL")
   const [filterBatch, setFilterBatch] = useState("ALL")
+  
+  // STATE FILTER DATE RANGE
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [printData, setPrintData] = useState<any>(null)
 
-  // State pembantu penanda invoice mana yang sedang memproses upload faktur (UUID menggunakan string)
+  // State pembantu penanda invoice mana yang sedang memproses upload faktur
   const [uploadingInvoiceId, setUploadingInvoiceId] = useState<string | null>(null)
 
   const loadData = async () => {
@@ -66,9 +70,11 @@ export default function InvoiceListPage() {
     
     const formattedData = data.map((inv: any) => ({
       ...inv, 
-      id: inv.id, // Sekarang otomatis berupa string UUID
+      id: inv.id, 
       nomor_invoice: inv.nomor_invoice,
       batch: inv.batch || "N/A",
+      // Simpan objek tanggal mentah untuk komparasi filter kalender yang akurat
+      raw_tanggal: inv.tanggal ? inv.tanggal : null,
       tanggal: inv.tanggal ? new Date(inv.tanggal).toLocaleDateString('id-ID') : "-",
       tanggal_jatuh_tempo: inv.tanggal_jatuhtempo ? new Date(inv.tanggal_jatuhtempo).toLocaleDateString('id-ID') : "-",
       perusahaan_tujuan: inv.perusahaan_tujuan || "-",
@@ -78,8 +84,8 @@ export default function InvoiceListPage() {
       jumlah_peserta: inv.jumlah_peserta || 0,
       jumlah_peserta_2: inv.jumlah_peserta_2 || 0,
       total_asli: inv.total || 0, 
-      bayar_1 :inv.bayar_1 || 0,
-      bayar_2 :inv.bayar_2 || 0,
+      bayar_1: inv.bayar_1 || 0,
+      bayar_2: inv.bayar_2 || 0,
       status: inv.status || "Belum Lunas",
       umur_piutang: inv.umur_piutang || 0,
       file_faktur: inv.file_faktur || null, 
@@ -100,7 +106,6 @@ export default function InvoiceListPage() {
     }, 200);
   };
 
-  // PERBAIKAN 2: Parameter id diubah menjadi string karena database menggunakan UUID
   const handleDelete = async (id: string) => {
     const res = await deleteInvoice(id);
     if (res.success) {
@@ -127,7 +132,7 @@ export default function InvoiceListPage() {
     setUploadingInvoiceId(invoiceId);
 
     const reader = new FileReader();
-    reader.onload = async (evt) => {
+    reader.onload = async () => {
       try {
         const res = { success: true, message: "Faktur PDF Berhasil Diunggah!" };
         
@@ -150,7 +155,7 @@ export default function InvoiceListPage() {
     return Array.from(new Set(invoices.map(inv => inv.batch).filter(Boolean)))
   }, [invoices])
 
-  // PERBAIKAN 3: Proteksi .toLowerCase() dengan optional chaining / fallbacks jika field database bernilai null
+  // LOGIKA FILTERING DATA TABLE
   const filteredInvoices = useMemo(() => {
     return invoices.filter(inv => {
       const nomerInv = inv.nomor_invoice ? inv.nomor_invoice.toLowerCase() : "";
@@ -158,17 +163,29 @@ export default function InvoiceListPage() {
       const ket = inv.keterangan ? inv.keterangan.toLowerCase() : "";
       const targetCari = searchQuery.toLowerCase();
 
+      // 1. Filter Searching Text
       const matchesSearch = 
         nomerInv.includes(targetCari) || 
         ptTujuan.includes(targetCari) ||
         ket.includes(targetCari);
       
+      // 2. Filter Dropdown Seleksi Status & Batch
       const matchesStatus = !filterStatus || filterStatus === "ALL" || inv.status === filterStatus
       const matchesBatch = !filterBatch || filterBatch === "ALL" || inv.batch === filterBatch
       
-      return matchesSearch && matchesStatus && matchesBatch
+      // 3. Filter Rentang Kalender Tanggal Pembuatan Invoice
+      let matchesDateRange = true;
+      if (inv.raw_tanggal) {
+        const invDateStr = new Date(inv.raw_tanggal).toISOString().split("T")[0];
+        if (startDate && invDateStr < startDate) matchesDateRange = false;
+        if (endDate && invDateStr > endDate) matchesDateRange = false;
+      } else if (startDate || endDate) {
+        matchesDateRange = false;
+      }
+      
+      return matchesSearch && matchesStatus && matchesBatch && matchesDateRange
     })
-  }, [invoices, searchQuery, filterStatus, filterBatch])
+  }, [invoices, searchQuery, filterStatus, filterBatch, startDate, endDate])
 
   const ringkasanKeuangan = useMemo(() => {
     let totalInvoice = 0
@@ -198,7 +215,9 @@ export default function InvoiceListPage() {
     setSearchQuery("")
     setFilterStatus("ALL")
     setFilterBatch("ALL")
-  }
+    setStartDate("")
+    setEndDate("")
+  };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -329,6 +348,7 @@ export default function InvoiceListPage() {
         <Card className="shadow-md border-zinc-200 overflow-hidden rounded-sm">
           <CardHeader className="pb-4 bg-zinc-50/50 border-b space-y-4 font-sans">
             <div className="flex flex-wrap items-center gap-3">
+              {/* Pencarian Teks */}
               <div className="relative flex-1 min-w-[240px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
                 <Input 
@@ -339,11 +359,32 @@ export default function InvoiceListPage() {
                 />
               </div>
 
+              {/* INPUT RANGE KALENDER TANGGAL */}
+              <div className="flex items-center gap-2 border border-zinc-200 p-1.5 rounded-sm bg-white shadow-sm">
+                <div className="flex items-center gap-1 text-[10px] font-black text-zinc-400 uppercase tracking-wide px-1">
+                  <Calendar className="h-3.5 w-3.5 text-zinc-400" /> Dari:
+                </div>
+                <input 
+                  type="date" 
+                  value={startDate} 
+                  onChange={(e) => setStartDate(e.target.value)} 
+                  className="bg-transparent focus:outline-none text-xs font-semibold text-zinc-800 cursor-pointer w-28"
+                />
+                <div className="text-zinc-300 font-light px-0.5">|</div>
+                <div className="text-[10px] font-black text-zinc-400 uppercase tracking-wide">Sampai:</div>
+                <input 
+                  type="date" 
+                  value={endDate} 
+                  onChange={(e) => setEndDate(e.target.value)} 
+                  className="bg-transparent focus:outline-none text-xs font-semibold text-zinc-800 cursor-pointer w-28"
+                />
+              </div>
+
               <Select 
                 value={filterBatch} 
                 onValueChange={(val) => setFilterBatch(val ?? "ALL")}
               >
-                <SelectTrigger className="w-[150px] bg-white border-zinc-200 h-9 text-xs font-semibold rounded-sm focus:ring-1 focus:ring-black">
+                <SelectTrigger className="w-[130px] bg-white border-zinc-200 h-9 text-xs font-semibold rounded-sm focus:ring-1 focus:ring-black">
                   <div className="flex items-center gap-2">
                     <Layers className="h-3.5 w-3.5 text-zinc-400" />
                     <SelectValue placeholder="Batch" />
@@ -361,7 +402,7 @@ export default function InvoiceListPage() {
                 value={filterStatus} 
                 onValueChange={(val) => setFilterStatus(val ?? "ALL")}
               >
-                <SelectTrigger className="w-[150px] bg-white border-zinc-200 h-9 text-xs font-semibold rounded-sm focus:ring-1 focus:ring-black">
+                <SelectTrigger className="w-[140px] bg-white border-zinc-200 h-9 text-xs font-semibold rounded-sm focus:ring-1 focus:ring-black">
                   <div className="flex items-center gap-2">
                     <Clock className="h-3.5 w-3.5 text-zinc-400" />
                     <SelectValue placeholder="Status" />
@@ -375,7 +416,7 @@ export default function InvoiceListPage() {
               </Select>
 
               {/* RESET BUTTON */}
-              {(searchQuery || filterStatus !== "ALL" || filterBatch !== "ALL") && (
+              {(searchQuery || filterStatus !== "ALL" || filterBatch !== "ALL" || startDate || endDate) && (
                 <Button variant="ghost" size="sm" onClick={resetFilters} className="text-zinc-500 text-xs h-9 hover:bg-zinc-100 rounded-sm border border-dashed border-zinc-300">
                   <FilterX className="h-3.5 w-3.5 mr-2" /> Reset Filter
                 </Button>
@@ -553,37 +594,37 @@ export default function InvoiceListPage() {
                               >
                                 <Printer className="h-4 w-4" />
                               </Button>
-<AlertDialog>
-  {/* PERBAIKAN: Hapus asChild, ganti div pembungkus menjadi Button ghost standar */}
-  <AlertDialogTrigger>
-    <Button 
-      variant="ghost" 
-      size="icon" 
-      className="h-8 w-8 text-zinc-500 hover:text-red-600 rounded-sm p-0"
-      title="Hapus"
-    >
-      <Trash2 className="h-4 w-4" />
-    </Button>
-  </AlertDialogTrigger>
-  
-  <AlertDialogContent className="rounded-sm border-none shadow-2xl">
-    <AlertDialogHeader>
-      <AlertDialogTitle className="font-black uppercase italic tracking-tighter">Hapus Invoice?</AlertDialogTitle>
-      <AlertDialogDescription className="text-xs font-medium">
-        Tindakan ini tidak dapat dibatalkan. Data invoice <span className="font-bold text-black">{inv.nomor_invoice}</span> akan dihapus permanen dari database MySQL.
-      </AlertDialogDescription>
-    </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogCancel className="rounded-sm text-xs font-bold border-none bg-zinc-100">BATAL</AlertDialogCancel>
-      <AlertDialogAction 
-        onClick={() => handleDelete(inv.id)}
-        className="rounded-sm text-xs font-black bg-red-600 hover:bg-red-700 text-white"
-      >
-        YA, HAPUS PERMANEN
-      </AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
+
+                              <AlertDialog>
+                                <AlertDialogTrigger >
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-zinc-500 hover:text-red-600 rounded-sm p-0"
+                                    title="Hapus"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                
+                                <AlertDialogContent className="rounded-sm border-none shadow-2xl">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle className="font-black uppercase italic tracking-tighter">Hapus Invoice?</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-xs font-medium">
+                                      Tindakan ini tidak dapat dibatalkan. Data invoice <span className="font-bold text-black">{inv.nomor_invoice}</span> akan dihapus permanen dari database MySQL.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel className="rounded-sm text-xs font-bold border-none bg-zinc-100">BATAL</AlertDialogCancel>
+                                    <AlertDialogAction 
+                                      onClick={() => handleDelete(inv.id)}
+                                      className="rounded-sm text-xs font-black bg-red-600 hover:bg-red-700 text-white"
+                                    >
+                                      YA, HAPUS PERMANEN
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             </div>
                           </TableCell>
                         </TableRow>

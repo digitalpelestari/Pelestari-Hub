@@ -1,12 +1,11 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { getLabaRugiData, LabaRugiData } from "@/app/actions/labarugi"
+import { getLabaRugiData, LabaRugiData } from "@/app/actions/labarugi" 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { FileSpreadsheet, RefreshCw, Landmark, ArrowRightLeft } from "lucide-react"
-import { Badge } from "@/components/ui/badge";
+import { FileSpreadsheet, RefreshCw, Landmark } from "lucide-react"
 
 export default function LabaRugiPage() {
   const [data, setData] = useState<LabaRugiData | null>(null)
@@ -17,9 +16,11 @@ export default function LabaRugiPage() {
     setLoading(true)
     try {
       const res = await getLabaRugiData(currentYear)
-      setData(res)
+      if (res) {
+        setData(res)
+      }
     } catch (err) {
-      console.error("Gagal memuat struktur laba rugi:", err)
+      console.error("Gagal memuat struktur laba rugi dari database:", err)
     } finally {
       setLoading(false)
     }
@@ -41,7 +42,7 @@ export default function LabaRugiPage() {
     return (
       <div className="flex h-96 w-full items-center justify-center gap-3 text-xs font-bold text-zinc-500 uppercase tracking-widest italic bg-white/50">
         <RefreshCw className="h-4 w-4 animate-spin text-zinc-900" /> 
-        Menghitung Akumulasi Saldo Invoice & Beban Master...
+        Mengkalkulasi Laporan Laba Rugi...
       </div>
     )
   }
@@ -49,17 +50,15 @@ export default function LabaRugiPage() {
   return (
     <div className="p-6 w-full space-y-6 font-sans text-zinc-900">
       
-      {/* 1. HEADER BAR UTAMA (FULL WIDTH) */}
+      {/* HEADER UTAMA */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 pb-4 w-full">
         <div>
           <h1 className="text-2xl font-black uppercase tracking-tighter italic text-black flex items-center gap-2">
             <Landmark className="h-6 w-6" /> Laporan Finansial Laba Rugi
           </h1>
-          
         </div>
         
         <div className="flex items-center gap-2 self-end sm:self-auto">
-          {/* PILIHAN TAHUN BUKU */}
           <select 
             value={currentYear} 
             onChange={(e) => setCurrentYear(e.target.value)}
@@ -75,159 +74,135 @@ export default function LabaRugiPage() {
           </Button>
           
           <Button size="sm" className="h-9 bg-black text-white text-xs font-black italic rounded-sm px-4 gap-1.5 hover:bg-zinc-800 shadow-sm">
-            <FileSpreadsheet className="h-4 w-4" /> EKSPOR EXCEL
+            <FileSpreadsheet className="h-4 w-4" /> EKSPOR
           </Button>
         </div>
       </div>
 
-      {/* 2. AREA DATA LAPORAN (FULL WIDTH DARI KIRI KE KANAN) */}
+      {/* AREA KERTAS KERJA LAPORAN */}
       <Card className="border border-zinc-300 shadow-sm rounded-sm bg-white w-full overflow-hidden">
-        {/* KOP LAPORAN AKUNTANSI */}
-        <CardHeader className="text-left border-b border-zinc-300 bg-zinc-50/50 py-5 px-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <CardTitle className="text-base font-black uppercase tracking-tight text-zinc-900">
-                LAPORAN LABA RUGI
-              </CardTitle>
-              <p className="text-xs font-black text-blue-700 uppercase tracking-wider mt-0.5">
-                PT PEDULI LESTARI INDONESIA
-              </p>
-            </div>
-            <div className="text-left sm:text-right font-mono text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-              <p>Periode S/D: 31 Desember {currentYear}</p>
-              <p className="mt-0.5">Mata Uang: IDR (Rupiah)</p>
-            </div>
+        {/* KOP LAPORAN (Menyerupai Excel) */}
+        <CardHeader className="text-left border-b-2 border-black bg-white py-4 px-6 rounded-none">
+          <div>
+            <CardTitle className="text-base font-black uppercase text-black">
+              LABA RUGI
+            </CardTitle>
+            <p className="text-sm font-black text-black uppercase mt-0.5">
+              PT PEDULI LESTARI INDONESIA
+            </p>
+            <p className="text-xs font-medium text-black mt-0.5">
+              Periode : 31 Desember {currentYear}
+            </p>
           </div>
         </CardHeader>
         
         <CardContent className="p-0 w-full overflow-x-auto">
-          {/* Pembungkus Tabel Akuntansi Dua Kolom tanpa Batas Maksimal */}
           <Table className="w-full border-collapse">
-            <TableBody className="text-xs font-bold text-zinc-800">
+            <TableBody className="text-[13px] font-medium text-black">
               
-              {/* ======================================================== */}
-              {/* A. KELOMPOK PENDAPATAN (SUM INVOICE) */}
-              {/* ======================================================== */}
-              <TableRow className="bg-zinc-100 hover:bg-zinc-100 border-b border-zinc-300">
-                <TableCell className="font-black text-xs uppercase tracking-wider text-black py-3 px-6" colSpan={2}>
-                  I. KELOMPOK PENDAPATAN OPERASIONAL
+              {/* ========================================================= */}
+              {/* PENDAPATAN */}
+              {/* ========================================================= */}
+              <TableRow className="hover:bg-transparent border-none">
+                <TableCell className="font-bold py-2 px-6" colSpan={2}>
+                  Pendapatan
                 </TableCell>
               </TableRow>
               
-              <TableRow className="hover:bg-zinc-50/40 border-b border-zinc-100 transition-colors">
-                <TableCell className="pl-12 py-3 text-zinc-600 font-medium uppercase tracking-tight">
-                  Pendapatan Jasa Pelatihan
-                </TableCell>
-                <TableCell className="text-right font-mono text-zinc-900 pr-12 text-sm">
+              <TableRow className="hover:bg-zinc-50 border-none transition-colors">
+                <TableCell className="pl-6 py-1.5">Pendapatan Jasa Pelatihan</TableCell>
+                <TableCell className="text-right pr-6 w-1/3 whitespace-nowrap">
                   {formatRupiah(data?.pendapatanPelatihan || 0)}
                 </TableCell>
               </TableRow>
               
-              <TableRow className="hover:bg-zinc-50/40 border-b border-zinc-100 transition-colors">
-                <TableCell className="pl-12 py-3 text-zinc-600 font-medium uppercase tracking-tight">
-                  Pendapatan Jasa Konsultan
-                </TableCell>
-                <TableCell className="text-right font-mono text-zinc-900 pr-12 text-sm">
+              <TableRow className="hover:bg-zinc-50 border-none transition-colors">
+                <TableCell className="pl-6 py-1.5">Pendapatan Jasa Konsultan</TableCell>
+                <TableCell className="text-right pr-6 w-1/3 whitespace-nowrap">
                   {formatRupiah(data?.pendapatanKonsultan || 0)}
                 </TableCell>
               </TableRow>
 
-              {/* Total Sub Pendapatan */}
-              <TableRow className="bg-zinc-50/30 hover:bg-zinc-50/30 border-b border-zinc-300">
-                <TableCell className="font-black text-black uppercase tracking-wider pl-6 py-3.5">
-                  JUMLAH PENDAPATAN BERSIH
-                </TableCell>
-                <TableCell className="text-right font-black font-mono text-zinc-950 pr-12 text-sm border-t border-zinc-400">
-                  <span className="border-b-2 border-zinc-900 pb-0.5">
+              <TableRow className="hover:bg-transparent border-none">
+                <TableCell className="pl-6 py-2">Jumlah Pendapatan Bersih</TableCell>
+                <TableCell className="text-right font-bold pr-6 pt-2 w-1/3 whitespace-nowrap">
+                  <span className="border-b-4 border-double border-black pb-0.5 block w-full text-right">
                     {formatRupiah(data?.totalPendapatan || 0)}
                   </span>
                 </TableCell>
               </TableRow>
+              
+              <TableRow className="h-4 border-none hover:bg-transparent"><TableCell colSpan={2}></TableCell></TableRow>
 
-              {/* Spacing Row */}
-              <TableRow className="h-6 border-b border-zinc-100 hover:bg-transparent"><TableCell colSpan={2}></TableCell></TableRow>
-
-              {/* ======================================================== */}
-              {/* B. KELOMPOK BEBAN (AKUN KEPALA 5) */}
-              {/* ======================================================== */}
-              <TableRow className="bg-zinc-100 hover:bg-zinc-100 border-b border-zinc-300">
-                <TableCell className="font-black text-xs uppercase tracking-wider text-black py-3 px-6" colSpan={2}>
-                  II. BEBAN USAHA / JENIS BIAYA OPERASIONAL
+              {/* ========================================================= */}
+              {/* BEBAN OPERASIONAL */}
+              {/* ========================================================= */}
+              <TableRow className="hover:bg-transparent border-none">
+                <TableCell className="font-bold py-2 px-6" colSpan={2}>
+                  Beban
                 </TableCell>
               </TableRow>
               
-              {data && data.bebanOperasional.length > 0 ? (
-                data.bebanOperasional.map((item) => (
-                  <TableRow key={item.no_akun} className="hover:bg-zinc-50/40 border-b border-zinc-100 transition-colors">
-                    <TableCell className="pl-12 py-3 text-zinc-600 font-medium uppercase tracking-tight flex items-center justify-between">
-                      <span>{item.nama_akun}</span>
-                      <Badge variant="outline" className="text-[8px] rounded-sm bg-zinc-50 font-black text-zinc-400 px-1 py-0 border-zinc-200">
-                        {item.kelompok_biaya}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-zinc-600 pr-12 font-medium">
-                      {formatRupiah(item.saldo)}
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow className="border-b"><TableCell colSpan={2} className="py-4 text-center text-zinc-400 italic">Tidak ada transaksi beban terdata.</TableCell></TableRow>
-              )}
+              {data?.bebanOperasional.map((item) => (
+                <TableRow key={item.no_akun} className="hover:bg-zinc-50 border-none transition-colors">
+                  <TableCell className="pl-6 py-1">{item.nama_akun}</TableCell>
+                  <TableCell className="text-right pr-6 py-1 w-1/3 whitespace-nowrap">
+                    {formatRupiah(item.saldo)}
+                  </TableCell>
+                </TableRow>
+              ))}
 
-              {/* Total Sub Beban */}
-              <TableRow className="bg-zinc-50/30 hover:bg-zinc-50/30 border-b border-zinc-300">
-                <TableCell className="font-black text-black uppercase tracking-wider pl-6 py-3.5">
-                  TOTAL BEBAN USAHA OPERASIONAL
-                </TableCell>
-                <TableCell className="text-right font-black font-mono text-zinc-950 pr-12 text-sm border-t border-zinc-400">
-                  ({formatRupiah(data?.totalBebanOperasional || 0)})
+              {/* ========================================================= */}
+              {/* SUB TOTAL BEBAN & PENYUSUTAN */}
+              {/* ========================================================= */}
+              <TableRow className="hover:bg-transparent border-none mt-2">
+                <TableCell className="font-bold pl-6 py-3">Sub Total Beban</TableCell>
+                <TableCell className="text-right font-bold pr-6 py-3 w-1/3 whitespace-nowrap">
+                  <span className="border-b-4 border-double border-black pb-0.5 block w-full text-right">
+                    {formatRupiah(data?.subTotalBeban || 0)}
+                  </span>
                 </TableCell>
               </TableRow>
 
-              {/* Spacing Row */}
-              <TableRow className="h-6 border-b border-zinc-100 hover:bg-transparent"><TableCell colSpan={2}></TableCell></TableRow>
+              {data?.bebanPenyusutan.map((item) => (
+                <TableRow key={item.no_akun} className="hover:bg-zinc-50 border-none transition-colors">
+                  <TableCell className="pl-6 py-1">{item.nama_akun}</TableCell>
+                  <TableCell className="text-right pr-6 py-1 w-1/3 whitespace-nowrap">
+                    {formatRupiah(item.saldo)}
+                  </TableCell>
+                </TableRow>
+              ))}
 
-              {/* ======================================================== */}
-              {/* C. KELOMPOK PNBP & PAJAK (KODE 6 / 9) */}
-              {/* ======================================================== */}
-              {data && data.pnbpDanPajak.length > 0 && (
-                <>
-                  <TableRow className="bg-zinc-100 hover:bg-zinc-100 border-b border-zinc-300">
-                    <TableCell className="font-black text-xs uppercase tracking-wider text-black py-3 px-6" colSpan={2}>
-                      III. POTONGAN PNBP & ESTIMASI PAJAK TERHUTANG
-                    </TableCell>
-                  </TableRow>
-                  {data.pnbpDanPajak.map((item) => (
-                    <TableRow key={item.no_akun} className="hover:bg-zinc-50/40 border-b border-zinc-100 transition-colors">
-                      <TableCell className="pl-12 py-3 text-zinc-600 font-medium uppercase tracking-tight">
-                        {item.nama_akun}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-zinc-600 pr-12 font-medium">
-                        ({formatRupiah(item.saldo)})
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow className="bg-zinc-50/30 hover:bg-zinc-50/30 border-b border-zinc-300">
-                    <TableCell className="font-black text-black uppercase tracking-wider pl-6 py-3.5">
-                      TOTAL POTONGAN NEGARA & PAJAK
-                    </TableCell>
-                    <TableCell className="text-right font-black font-mono text-zinc-950 pr-12 text-sm border-t border-zinc-400">
-                      ({formatRupiah(data?.totalPnbpDanPajak || 0)})
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="h-6 border-b border-zinc-100 hover:bg-transparent"><TableCell colSpan={2}></TableCell></TableRow>
-                </>
-              )}
-
-              {/* ======================================================== */}
-              {/* D. GRAND TOTAL LABA BERSIH AKHIR */}
-              {/* ======================================================== */}
-              <TableRow className="bg-zinc-950 text-white hover:bg-zinc-950">
-                <TableCell className="font-black text-xs uppercase tracking-widest pl-6 py-4">
-                  LABA BERSIH SESUDAH PAJAK (NET INCOME)
+              <TableRow className="hover:bg-transparent border-none">
+                <TableCell className="pl-6 py-2">Total Beban Usaha</TableCell>
+                <TableCell className="text-right font-bold pr-6 pt-2 w-1/3 whitespace-nowrap">
+                  <span className="border-b-4 border-double border-black pb-0.5 block w-full text-right">
+                    {formatRupiah(data?.totalBebanUsaha || 0)}
+                  </span>
                 </TableCell>
-                <TableCell className="text-right font-black font-mono text-emerald-400 pr-12 text-base">
-                  <span className="border-b-4 border-double border-emerald-400 pb-1">
+              </TableRow>
+
+              {/* ========================================================= */}
+              {/* PNBP & PAJAK TERHUTANG */}
+              {/* ========================================================= */}
+              {data?.pnbpDanPajak.map((item) => (
+                <TableRow key={item.no_akun} className="hover:bg-zinc-50 border-none transition-colors">
+                  <TableCell className="pl-6 py-1.5">{item.nama_akun}</TableCell>
+                  <TableCell className="text-right pr-6 py-1.5 w-1/3 whitespace-nowrap">
+                    {formatRupiah(item.saldo)}
+                  </TableCell>
+                </TableRow>
+              ))}
+
+              {/* ========================================================= */}
+              {/* LABA BERSIH SESUDAH PAJAK */}
+              {/* ========================================================= */}
+              <TableRow className="hover:bg-transparent border-none">
+                <TableCell className="font-bold text-[14px] pl-6 pt-3 pb-6">
+                  Laba Bersih Sesudah Pajak
+                </TableCell>
+                <TableCell className="text-right font-bold text-[14px] pr-6 pt-3 pb-6 w-1/3 whitespace-nowrap">
+                  <span className="border-b-4 border-double border-black pb-1 block w-full text-right">
                     {formatRupiah(data?.labaBersih || 0)}
                   </span>
                 </TableCell>
@@ -237,12 +212,7 @@ export default function LabaRugiPage() {
           </Table>
         </CardContent>
       </Card>
-
-      {/* FOOTER TIMESTAMPS */}
-      <div className="text-[9px] font-bold text-zinc-400 flex justify-between px-2 uppercase italic tracking-wider">
-        <p>* Seluruh nilai finansial diekstraksi dari relational data model secara otomatis.</p>
-        <p>Sistem Akurasi: Lunas (Paid) Invoice Only</p>
-      </div>
+      
     </div>
   )
 }
