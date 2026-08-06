@@ -2,7 +2,6 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { ResultSetHeader } from "mysql2";
 
 // =========================================================================
 // 1. ACTION: AMBIL SEMUA LIST PO + HITUNG REMINDER SISA HARI
@@ -22,7 +21,7 @@ export async function getPurchaseOrdersAction() {
 }
 
 // =========================================================================
-// 2. ACTION: SIMPAN PO BARU (Otomatis Tambah Saldo Utang Usaha 8000)
+// 2. ACTION: SIMPAN PO BARU (Otomatis Tambah Saldo Utang Usaha 21100)
 // =========================================================================
 export async function createPurchaseOrderAction(payload: any) {
   const connection = await db.getConnection();
@@ -67,7 +66,7 @@ export async function createPurchaseOrderAction(payload: any) {
       );
     }
 
-    // C. OTOMATISASI UTANG: Tambahkan total_harga langsung ke saldo tb_akun 8000
+    // C. OTOMATISASI UTANG: Tambahkan total_harga langsung ke saldo tb_akun Utang Usaha (21100)
     const [updateAccount]: any = await connection.execute(
       `UPDATE tb_akun 
        SET saldo = saldo + ? 
@@ -91,7 +90,7 @@ export async function createPurchaseOrderAction(payload: any) {
 }
 
 // =========================================================================
-// 3. ACTION: UPDATE STATUS BAYAR (Termasuk Sinkronisasi Tanggal Bayar ke DB)
+// 3. ACTION: UPDATE STATUS BAYAR (Tanpa Mengurangi Saldo Utang di Akuntansi)
 // =========================================================================
 export async function updatePaymentStatusAction(
   id_po: number, 
@@ -110,29 +109,25 @@ export async function updatePaymentStatusAction(
       return { success: false, message: "Data Purchase Order tidak ditemukan!" };
     }
     
-    const { tanggal_po, total_harga, status_pembayaran: status_lama } = poRows[0];
+    const { tanggal_po } = poRows[0];
     let jatuhTempoDate = null;
 
-    // === PERBAIKAN MANIPULASI TANGGAL AMAN TIMEZONE (WIB) ===
+    // === MANIPULASI TANGGAL AMAN TIMEZONE (WIB) ===
     if (Number(tempo_hari_baru) > 0) {
-      // Pecah string tanggal_po asli agar tidak terkena efek timezone jam 00:00
       const originDate = new Date(tanggal_po);
       const year = originDate.getFullYear();
       const month = originDate.getMonth();
       const day = originDate.getDate();
 
-      // Buat objek date baru murni berdasarkan waktu lokal komputer
       const calculatedDate = new Date(year, month, day);
       calculatedDate.setDate(calculatedDate.getDate() + Number(tempo_hari_baru));
 
-      // Format manual ke YYYY-MM-DD tanpa menggunakan .toISOString()
       const resYear = calculatedDate.getFullYear();
       const resMonth = String(calculatedDate.getMonth() + 1).padStart(2, '0');
       const resDay = String(calculatedDate.getDate()).padStart(2, '0');
       
       jatuhTempoDate = `${resYear}-${resMonth}-${resDay}`;
     } else {
-      // Jika tempo 0 hari, langsung gunakan tanggal PO asli (dalam format string YYYY-MM-DD)
       jatuhTempoDate = new Date(tanggal_po).toISOString().split("T")[0];
     }
     // ========================================================
@@ -141,18 +136,7 @@ export async function updatePaymentStatusAction(
 
     await connection.beginTransaction();
 
-    if ((status_lama === "Belum Bayar" || status_lama === "BELUM BAYAR") && status_baru === "SUDAH BAYAR") {
-      await connection.execute(
-        "UPDATE tb_akun SET saldo = saldo - ? WHERE no_akun = '21100'",
-        [Number(total_harga)]
-      );
-    } else if (status_lama === "SUDAH BAYAR" && (status_baru === "Belum Bayar" || status_baru === "BELUM BAYAR")) {
-      await connection.execute(
-        "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = '21100'",
-        [Number(total_harga)]
-      );
-    }
-
+    // UPDATE HANYA KE TABEL PO (Status GA), TANPA MENGURANGI SALDO tb_akun NERACA
     await connection.execute(
       `UPDATE tb_po 
        SET status_pembayaran = ?, 
@@ -165,7 +149,10 @@ export async function updatePaymentStatusAction(
 
     await connection.commit();
     revalidatePath("/dashboard/ga/purchase-order");
-    return { success: true, message: "Status pembayaran, tanggal realisasi, dan saldo berhasil diperbarui!" };
+    return { 
+      success: true, 
+      message: "Status pembayaran dan tanggal realisasi berhasil diperbarui di PO! (Saldo Utang menunggu jurnal Finance)" 
+    };
   } catch (error: any) {
     await connection.rollback();
     return { success: false, message: error.message };
@@ -190,7 +177,7 @@ export async function getPoItemsAction(id_po: number) {
 }
 
 // =========================================================================
-// 5. ACTION: HAPUS PO SECARA PERMANEN (Otomatis Potong Saldo Akun 8000)
+// 5. ACTION: HAPUS PO SECARA PERMANEN (Otomatis Potong Saldo Akun Utang)
 // =========================================================================
 export async function deletePurchaseOrderAction(id_po: number) {
   const connection = await db.getConnection();
@@ -208,7 +195,8 @@ export async function deletePurchaseOrderAction(id_po: number) {
 
     await connection.beginTransaction();
 
-    // Jika dihapus saat statusnya masih Belum Bayar, kurangi saldo 8000 agar laporan klop
+    // Jika dihapus saat statusnya masih Belum Bayar, kurangi saldo utang agar laporan klop 
+    // (Karena Finance belum menjurnal pelunasannya)
     if (status_pembayaran === "Belum Bayar" || status_pembayaran === "BELUM BAYAR") {
       await connection.execute(
         "UPDATE tb_akun SET saldo = saldo - ? WHERE no_akun = '21100'",
