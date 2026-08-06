@@ -71,12 +71,12 @@ export async function createPurchaseOrderAction(payload: any) {
     const [updateAccount]: any = await connection.execute(
       `UPDATE tb_akun 
        SET saldo = saldo + ? 
-       WHERE no_akun = '8000'`,
+       WHERE no_akun = '21100'`,
       [Number(total_harga)]
     );
 
     if (updateAccount.affectedRows === 0) {
-      throw new Error("Gagal otomatisasi! Akun kode 8000 (Utang Usaha) tidak ditemukan di tb_akun.");
+      throw new Error("Gagal otomatisasi! Akun kode 21100 (Utang Usaha) tidak ditemukan di tb_akun.");
     }
 
     await connection.commit();
@@ -143,12 +143,12 @@ export async function updatePaymentStatusAction(
 
     if ((status_lama === "Belum Bayar" || status_lama === "BELUM BAYAR") && status_baru === "SUDAH BAYAR") {
       await connection.execute(
-        "UPDATE tb_akun SET saldo = saldo - ? WHERE no_akun = '8000'",
+        "UPDATE tb_akun SET saldo = saldo - ? WHERE no_akun = '21100'",
         [Number(total_harga)]
       );
     } else if (status_lama === "SUDAH BAYAR" && (status_baru === "Belum Bayar" || status_baru === "BELUM BAYAR")) {
       await connection.execute(
-        "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = '8000'",
+        "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = '21100'",
         [Number(total_harga)]
       );
     }
@@ -211,7 +211,7 @@ export async function deletePurchaseOrderAction(id_po: number) {
     // Jika dihapus saat statusnya masih Belum Bayar, kurangi saldo 8000 agar laporan klop
     if (status_pembayaran === "Belum Bayar" || status_pembayaran === "BELUM BAYAR") {
       await connection.execute(
-        "UPDATE tb_akun SET saldo = saldo - ? WHERE no_akun = '8000'",
+        "UPDATE tb_akun SET saldo = saldo - ? WHERE no_akun = '21100'",
         [Number(total_harga)]
       );
     }
