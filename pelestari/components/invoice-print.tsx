@@ -188,11 +188,17 @@ export const InvoicePrint = ({ data }: { data: any }) => {
         </div>
 
         {/* FOOTER */}
+        <div className="px-10 text-[8pt] mb-6">
+        <p>Apabila sesuai ketentuan perpajakan pengguna jasa wajib melakukan pemotongan PPh Pasal 23, maka pemotongan dilakukan dari <b>nilai jasa memperhitungkan PNBP</b> dan Bukti Potong agar dikirimkan kepada kami</p>
+
+        </div>
         <div className="px-10 text-[8pt] mb-6 ">
           {data.jenis_kegiatan === 'pelatihan' && data.is_ppn11 === 0 && (
             <p className="mb-4 text-[8pt]">
+              
               Transaksi ini tidak dikenakan PPN karena termasuk jasa pendidikan sesuai pasal 4A ayat (3b) UU PPN
             </p>
+            
           )}
         </div>
 
@@ -210,8 +216,8 @@ export const InvoicePrint = ({ data }: { data: any }) => {
         <div className="px-10 flex justify-end pt-2">
           <div className="text-center w-[180px]">
             <p className="font-bold mb-16 text-[8pt]">Hormat Kami,</p>
-            <p className="font-bold text-[8pt]">Maya Lukita</p>
-            <p className="font-medium text-[8pt] leading-none">Direktur</p>
+            <p className="font-bold text-[8pt]">Merlyn Yulianti Marpaung</p>
+            <p className="font-medium text-[8pt] leading-none">Manager Keuangan</p>
           </div>
         </div>
       </div>
