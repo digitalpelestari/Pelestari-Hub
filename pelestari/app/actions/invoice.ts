@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { randomUUID } from "crypto"; // Tambahkan generator UUID bawaan Node.js
+import { randomUUID } from "crypto";
 
 // =========================================================================
 // 1. FUNGSI: IMPORT DATA EXCEL INVOICES BULK
@@ -142,7 +142,7 @@ export async function createInvoice(formData: any) {
     await connection.query(queryInvoice, valuesInvoice);
 
     // --- SINKRONISASI SALDO MASTER AKUN PIUTANG ---
-    const akunPiutang = "6000"; 
+    const akunPiutang = "12100"; 
     await connection.query(
       "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = ?", 
       [formData.total, akunPiutang]
@@ -282,33 +282,16 @@ export async function updatePayment(id: string, data: any) {
 }
 
 // =========================================================================
-// 9. FUNGSI: EKSEKUSI PEMBAYARAN DAN OTOMATISASI JURNAL AKUNTANSI (invoiceId: string)
+// 9. FUNGSI: PROSES BAYAR INVOICE SAJA (UPDATE INVOICE TANPA JURNAL/NERACA)
 // =========================================================================
-interface PembayaranOtomatisPayload {
-  invoiceId: string; // Diubah ke string agar cocok dengan tipe UUID
+export async function prosesBayarInvoiceSaja(payload: {
+  invoiceId: string;
   jumlahBayar: number;
   jenisPembayaran: "DP" | "Pelunasan";
-  rekeningBankAkun: string; 
-  piutangAkun: string;      
-  keteranganJurnal: string; 
-}
-
-export async function prosesBayarDanJurnalOtomatis(payload: PembayaranOtomatisPayload) {
-  const connection = await db.getConnection();
-  
+}) {
   try {
-    await connection.beginTransaction();
-
-    const [invoiceRows]: any = await connection.query(
-      "SELECT nomor_invoice, total, bayar_1, bayar_2 FROM tb_invoice WHERE id = ?", 
-      [payload.invoiceId]
-    );
-    if (invoiceRows.length === 0) throw new Error("Target invoice tidak ditemukan.");
-    const invoice = invoiceRows[0];
-
     let updateInvoiceQuery = "";
     let updateParams = [];
-    const noRegJurnal = `BKM-${invoice.nomor_invoice}`; 
 
     if (payload.jenisPembayaran === "DP") {
       updateInvoiceQuery = `
@@ -329,48 +312,19 @@ export async function prosesBayarDanJurnalOtomatis(payload: PembayaranOtomatisPa
       `;
       updateParams = [payload.jumlahBayar, payload.invoiceId];
     }
-    await connection.query(updateInvoiceQuery, updateParams);
 
-    const jurnalHeaderQuery = `
-      INSERT INTO tb_jurnal (tanggal, no_registrasi, keterangan) 
-      VALUES (CURDATE(), ?, ?)
-    `;
-    const [jurnalResult]: any = await connection.query(jurnalHeaderQuery, [
-      noRegJurnal,
-      payload.keteranganJurnal
-    ]);
-    const jurnalId = jurnalResult.insertId;
-
-    const itemQuery = `
-      INSERT INTO tb_jurnal_item (jurnal_id, no_akun, debit, kredit) 
-      VALUES (?, ?, ?, ?)
-    `;
-    await connection.query(itemQuery, [jurnalId, payload.rekeningBankAkun, payload.jumlahBayar, 0]);
+    await db.query(updateInvoiceQuery, updateParams);
     
-    await connection.query(
-      "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = ?", 
-      [payload.jumlahBayar, payload.rekeningBankAkun]
-    );
-
-    await connection.query(itemQuery, [jurnalId, payload.piutangAkun, 0, payload.jumlahBayar]);
-    
-    await connection.query(
-      "UPDATE tb_akun SET saldo = saldo - ? WHERE no_akun = ?", 
-      [payload.jumlahBayar, payload.piutangAkun]
-    );
-
-    await connection.commit();
-    
+    // Refresh halaman invoice agar statusnya langsung berubah di tabel frontend
     revalidatePath("/dashboard/finance/invoices");
-    revalidatePath("/dashboard/finance/jurnal");
-    
-    return { success: true, message: "Pembayaran diproses & Buku Besar otomatis dijurnal!" };
+
+    return { 
+      success: true, 
+      message: "Pembayaran berhasil dicatat di Invoice! Saldo neraca belum berubah sebelum dijurnal." 
+    };
 
   } catch (error: any) {
-    await connection.rollback();
-    console.error("PROSES_BAYAR_JURNAL_ERROR:", error.message);
-    return { success: false, message: "Gagal memproses pembayaran otomatis: " + error.message };
-  } finally {
-    connection.release();
+    console.error("PROSES_BAYAR_ERROR:", error.message);
+    return { success: false, message: "Gagal memproses pembayaran: " + error.message };
   }
 }
