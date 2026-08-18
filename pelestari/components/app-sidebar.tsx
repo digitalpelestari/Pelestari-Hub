@@ -60,6 +60,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         { title: "Kelompok Biaya", url: "/dashboard/finance/pos/kelompok-biaya" },
       ],
     },
+     {
+      title: "Riwayat Transaksi",
+      url: "#",
+      icon: <CommandIcon />,
+      isActive: true,
+      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"], 
+      items: [
+
+        { title: "Riwayat Transaksi", url: "/dashboard/finance/riwayat" },
+      ],
+    },
     
     {
       title: "Invoice",
