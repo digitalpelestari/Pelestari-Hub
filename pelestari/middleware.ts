@@ -10,12 +10,15 @@ const routePermissions: Record<string, string[]> = {
   "/dashboard/purchase-order": ["ADMIN", "GA"], 
   "/dashboard/ga": ["ADMIN", "GA"],
   "/dashboard/admin": ["ADMIN"],
+  "/dashboard/admin/finance": ["ADMIN"],
+  "/dashboard/admin/ga": ["ADMIN"],  
 };
 
 function getDashboardUrl(role?: string) {
   const normalizedRole = role?.toUpperCase();
 
   if (normalizedRole === "GA") return "/dashboard/ga";
+  if (normalizedRole === "ADMIN") return "/dashboard/admin";
   if (normalizedRole === "FINANCE" || normalizedRole === "MANAGER FINANCE") {
     return "/dashboard/finance";
   }
