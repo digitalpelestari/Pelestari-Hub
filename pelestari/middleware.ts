@@ -4,12 +4,24 @@ import type { NextRequest } from "next/server";
 import NextAuth from "next-auth";
 import { authConfig } from "./auth.config";
 
+// redirect to login if not authenticated, or redirect to dashboard if already logged in
 const routePermissions: Record<string, string[]> = {
   "/dashboard/finance": ["ADMIN", "MANAGER FINANCE", "FINANCE"],
   "/dashboard/purchase-order": ["ADMIN", "GA"], 
   "/dashboard/ga": ["ADMIN", "GA"],
   "/dashboard/admin": ["ADMIN"],
 };
+
+function getDashboardUrl(role?: string) {
+  const normalizedRole = role?.toUpperCase();
+
+  if (normalizedRole === "GA") return "/dashboard/ga";
+  if (normalizedRole === "FINANCE" || normalizedRole === "MANAGER FINANCE") {
+    return "/dashboard/finance";
+  }
+
+  return "/dashboard";
+}
 
 // @ts-ignore
 const { auth } = NextAuth(authConfig);
@@ -25,22 +37,41 @@ export default auth(async function middleware(req: NextRequest & { auth: any }) 
 
   // 1. PROTEKSI AREA DASHBOARD: JIKA BELUM LOGIN
   if (urlPath.startsWith('/dashboard') && !isLoggedIn) {
-    // Gunakan nextUrl.clone() atau bersihkan response agar redirect bersih
-    return NextResponse.redirect(new URL("/login", req.url));
+    // Keep the requested page so a successful sign-in can return the user to it.
+    // Constructing this from NextURL also prevents an arbitrary external URL from
+    // being accepted as a redirect destination.
+    const loginUrl = nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("callbackUrl", `${urlPath}${nextUrl.search}`);
+    return NextResponse.redirect(loginUrl);
   }
 
   // 2. JIKA AKSES HALAMAN UTAMA ('/')
   if (urlPath === '/') {
     if (isLoggedIn) {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
+      return NextResponse.redirect(
+        new URL(getDashboardUrl(req.auth?.user?.role), req.url),
+      );
     } else {
       return NextResponse.redirect(new URL("/login", req.url));
     }
   }
 
+  // `/dashboard` is only the landing page for ADMIN/default roles. Route the
+  // role-specific users to their own dashboard and avoid a loop for ADMIN.
+  if (urlPath === "/dashboard" && isLoggedIn) {
+    const dashboardUrl = getDashboardUrl(req.auth?.user?.role);
+    if (dashboardUrl !== "/dashboard") {
+      return NextResponse.redirect(new URL(dashboardUrl, req.url));
+    }
+  }
+
   // 3. JIKA SUDAH LOGIN TAPI COBA-COBA AKSES /login
   if (urlPath === '/login' && isLoggedIn) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    return NextResponse.redirect(
+      new URL(getDashboardUrl(req.auth?.user?.role), req.url),
+    );
   }
 
   // 4. VALIDASI ROLE UNTUK SUB-DASHBOARD

@@ -2,11 +2,12 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -43,19 +44,27 @@ export default function LoginPage() {
         
         const userRole = sessionData?.user?.role?.toUpperCase();
 
+        // Accept only an internal dashboard URL. This prevents an open redirect
+        // when callbackUrl is supplied manually in the browser.
+        const requestedPath = searchParams.get("callbackUrl");
+        const callbackUrl =
+          requestedPath?.startsWith("/dashboard") && !requestedPath.startsWith("//")
+            ? requestedPath
+            : null;
+
         // 3. LOGIKA REDIRECT BERDASARKAN ROLE (RBAC LANDING)
+        let defaultDestination = "/dashboard";
         if (userRole === "GA") {
-          router.push("/dashboard/ga");
+          defaultDestination = "/dashboard/ga";
         } else if (userRole === "FINANCE" || userRole === "MANAGER FINANCE") {
-          router.push("/dashboard/finance");
-        } else {
-          router.push("/dashboard");
+          defaultDestination = "/dashboard/finance";
         }
 
+        router.replace(callbackUrl ?? defaultDestination);
         router.refresh();
       } catch (err) {
         // Fallback jika ada gangguan fetch session data
-        router.push("/dashboard");
+        router.replace("/login");
         router.refresh();
       }
     }
@@ -119,5 +128,13 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+      <LoginForm />
+    </Suspense>
   );
 }
