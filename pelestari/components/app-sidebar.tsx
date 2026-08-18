@@ -33,7 +33,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   // === MENENTUKAN URL DASHBOARD SECARA DINAMIS BERDASARKAN ROLE ===
   let dashboardUrl = "/dashboard"
-  if (userRole === "MANAGER FINANCE" || userRole === "FINANCE") {
+  if (userRole === "ADMIN") {
+    dashboardUrl = "/dashboard/admin"
+  } else if (userRole === "MANAGER FINANCE" || userRole === "FINANCE") {
     dashboardUrl = "/dashboard/finance"
   } else if (userRole === "GA") {
     dashboardUrl = "/dashboard/ga"

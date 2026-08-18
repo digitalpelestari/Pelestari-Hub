@@ -52,13 +52,15 @@ function LoginForm() {
             ? requestedPath
             : null;
 
-        // 3. LOGIKA REDIRECT BERDASARKAN ROLE (RBAC LANDING)
-        let defaultDestination = "/dashboard";
-        if (userRole === "GA") {
-          defaultDestination = "/dashboard/ga";
-        } else if (userRole === "FINANCE" || userRole === "MANAGER FINANCE") {
-          defaultDestination = "/dashboard/finance";
-        }
+         // 3. LOGIKA REDIRECT BERDASARKAN ROLE (RBAC LANDING)
+         let defaultDestination = "/dashboard";
+         if (userRole === "ADMIN") {
+           defaultDestination = "/dashboard/admin";
+         } else if (userRole === "GA") {
+           defaultDestination = "/dashboard/ga";
+         } else if (userRole === "FINANCE" || userRole === "MANAGER FINANCE") {
+           defaultDestination = "/dashboard/finance";
+         }
 
         router.replace(callbackUrl ?? defaultDestination);
         router.refresh();
