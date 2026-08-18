@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { 
   Plus, Search, Calendar, Landmark, Hash, Bookmark,
-  CheckCircle2, AlertTriangle, Pencil, Check, Trash2, FileText, Download, ArrowRight 
+  CheckCircle2, AlertTriangle, Pencil, Check, Trash2, FileText, Download, X 
 } from "lucide-react"
 import { getJurnalList, updateJurnalItem, deleteJurnalByHeader, exportJurnalToExcel } from "@/app/actions/jurnal"
 import { getAkunList } from "@/app/actions/akun" 
@@ -24,7 +24,6 @@ export default function JurnalUmumListPage() {
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   
-  // State manajemen inline editing untuk satu paket transaksi jurnal (Header + Semua Items)
   const [editingJurnalId, setEditingJurnalId] = useState<number | null>(null) 
   const [editHeaderForm, setEditHeaderForm] = useState<any>({})
   const [editItemsForm, setEditItemsForm] = useState<any[]>([])
@@ -38,11 +37,6 @@ export default function JurnalUmumListPage() {
       const dataJurnal = await getJurnalList(startParam, endParam)
       const dataAkun = await getAkunList()
       
-      // DEBUGGING: Untuk memantau apakah data dari MySQL benar-benar masuk atau tidak
-      console.log("Raw Data Jurnal dari Server Action:", dataJurnal)
-      console.log("Data Akun COA:", dataAkun)
-      
-      // Pastikan dataJurnal berbentuk array sebelum disimpan ke state
       setJurnalList(Array.isArray(dataJurnal) ? dataJurnal : [])
       setAkunList(Array.isArray(dataAkun) ? dataAkun : [])
     } catch (error) {
@@ -56,7 +50,6 @@ export default function JurnalUmumListPage() {
     loadData()
   }, [startDate, endDate])
 
-  // Filter pencarian teks berdasarkan No Registrasi, No Referensi, atau Keterangan Jurnal (Memo)
   const filteredJurnal = useMemo(() => {
     return jurnalList.filter(j => 
       (j.no_registrasi && j.no_registrasi.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -79,7 +72,6 @@ export default function JurnalUmumListPage() {
     return { debit, kredit, isBalanced: debit === kredit && debit > 0 }
   }, [filteredJurnal])
 
-  // Aktifkan mode edit untuk SEMUA KOLOM di dalam satu bundel transaksi
   const startEditJurnal = (jurnal: any) => {
     setEditingJurnalId(jurnal.id)
     setEditHeaderForm({
@@ -104,16 +96,13 @@ export default function JurnalUmumListPage() {
   const handleItemChange = (itemIndex: number, field: string, value: any) => {
     setEditItemsForm((prev) => {
       const updated = [...prev]
-      
-      // Lakukan deep copy pada objek item agar React mengenali perubahan properti objek
       updated[itemIndex] = { ...updated[itemIndex] }
       
       if (field === "no_akun") {
         updated[itemIndex].no_akun = value
         const targetAkun = akunList.find(a => a.no_akun === value)
-        
         updated[itemIndex].nama_akun = targetAkun ? targetAkun.nama_akun : ""
-        updated[itemIndex].nama_kelompok = targetAkun ? (targetAkun.kelompok_biaya || targetAkun.nama_kelompok || "General Parameter") : ""
+        updated[itemIndex].nama_kelompok = targetAkun ? (targetAkun.kelompok_biaya || targetAkun.nama_kelompok || "General") : ""
       } else {
         updated[itemIndex][field] = value
       }
@@ -135,7 +124,7 @@ export default function JurnalUmumListPage() {
     })
 
     if (totalDebitJurnal !== totalKreditJurnal) {
-      alert(`Gagal Simpan: Transaksi Jurnal TIDAK BALANCE!\nTotal Debit: Rp ${totalDebitJurnal.toLocaleString("id-ID")}\nTotal Kredit: Rp ${totalKreditJurnal.toLocaleString("id-ID")}\n\nPastikan nilai debit dan kredit sama sebelum menyimpan.`);
+      alert(`Gagal Simpan: Transaksi Jurnal TIDAK BALANCE!\nTotal Debit: Rp ${totalDebitJurnal.toLocaleString("id-ID")}\nTotal Kredit: Rp ${totalKreditJurnal.toLocaleString("id-ID")}`);
       return
     }
 
@@ -143,7 +132,7 @@ export default function JurnalUmumListPage() {
     try {
       for (const item of editItemsForm) {
         if (!item.id) {
-          throw new Error("ID baris transaksi hilang. Pastikan query backend getJurnalList mengambil kolom i.id!");
+          throw new Error("ID baris transaksi hilang.");
         }
 
         await updateJurnalItem(item.id, {
@@ -221,335 +210,367 @@ export default function JurnalUmumListPage() {
   }
 
   return (
-    <div className="p-6 w-full space-y-6 font-sans text-zinc-900">
+    <div className="p-6 w-full space-y-6 font-sans bg-zinc-50/50 min-h-screen text-zinc-900">
       
-      {/* HEADER BAR */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 pb-4">
-        <div>
-          <h1 className="text-2xl font-black uppercase tracking-tighter italic text-black flex items-center gap-2">
-            <Landmark className="h-6 w-6" /> Jurnal Umum Pembukuan
-          </h1>
-          <p className="text-[9px] font-bold text-zinc-400 tracking-widest uppercase italic mt-0.5">
-            General Journal Log Dashboard
+      {/* HEADER BAR UTAMA */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-xl border border-zinc-200 shadow-sm w-full">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-zinc-900 text-white rounded-lg">
+              <Landmark className="h-5 w-5" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-900">Jurnal Umum Pembukuan</h1>
+          </div>
+          <p className="text-xs text-zinc-500 pl-9">
+            Kelola, pantau, dan audit seluruh rekaman transaksi buku besar secara real-time.
           </p>
         </div>
-        <div className="flex items-center self-end sm:self-auto">
+        
+        <div className="flex items-center gap-3">
           <Button 
             onClick={handleDownloadExcel} 
             disabled={isExporting || loading} 
             variant="outline" 
-            className="h-9 border-zinc-300 text-zinc-700 text-xs font-black italic rounded-sm px-4 mr-2 gap-1.5"
+            className="h-10 border-zinc-200 text-zinc-700 text-xs font-semibold rounded-lg px-4 gap-2 hover:bg-zinc-50 transition-all"
           >
-            <Download className="h-4 w-4" /> {isExporting ? "MENGONVERSI..." : "EKSPOR EXCEL"}
+            <Download className="h-4 w-4 text-zinc-500" /> 
+            {isExporting ? "MENGONVERSI..." : "EKSPOR EXCEL"}
           </Button>
           
           <Link href="/dashboard/finance/pos/kasir">
-            <Button className="h-9 bg-black text-white text-xs font-black italic rounded-sm transition-all px-4">
-              <Plus className="mr-1 h-4 w-4" /> BUAT JURNAL BARU
+            <Button className="h-10 bg-zinc-900 text-white hover:bg-zinc-800 text-xs font-semibold rounded-lg px-4 gap-2 shadow-sm transition-all">
+              <Plus className="h-4 w-4" /> BUAT JURNAL BARU
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* FILTER SEARCH TEXT & RENTANG TANGGAL */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-zinc-50 p-3 rounded-sm border border-zinc-200 shadow-sm">
-        <div className="relative w-full max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
+      {/* FILTER BAR (SEARCH & DATE RANGE) */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-zinc-200 shadow-sm w-full">
+        <div className="relative w-full md:w-80">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
           <Input 
             placeholder="Cari No. Regis, Referensi, atau Memo..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-9 p-1 pl-8 text-xs bg-white border-zinc-300 rounded-sm focus:ring-1 focus:ring-black"
+            className="h-10 pl-9 text-xs bg-zinc-50/50 border-zinc-200 rounded-lg focus-visible:ring-1 focus-visible:ring-zinc-900"
           />
         </div>
 
-        <div className="flex items-center gap-2 text-xs font-bold text-zinc-700">
-          <div className="flex items-center gap-1.5 bg-white border border-zinc-300 rounded-sm px-2 h-9">
-            <Calendar className="h-3.5 w-3.5 text-zinc-400" />
-            <span className="text-[10px] uppercase text-zinc-400 font-black">Dari:</span>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="outline-none text-xs font-mono bg-transparent cursor-pointer" />
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          <div className="flex items-center gap-2 bg-zinc-50/50 border border-zinc-200 rounded-lg px-3 h-10">
+            <Calendar className="h-4 w-4 text-zinc-400" />
+            <span className="text-[10px] uppercase text-zinc-400 font-bold">Dari:</span>
+            <input 
+              type="date" 
+              value={startDate} 
+              onChange={(e) => setStartDate(e.target.value)} 
+              className="outline-none text-xs font-medium text-zinc-700 bg-transparent cursor-pointer" 
+            />
           </div>
           
-          <ArrowRight className="h-4 w-4 text-zinc-400" />
+          <span className="text-zinc-300 font-medium">/</span>
 
-          <div className="flex items-center gap-1.5 bg-white border border-zinc-300 rounded-sm px-2 h-9">
-            <Calendar className="h-3.5 w-3.5 text-zinc-400" />
-            <span className="text-[10px] uppercase text-zinc-400 font-black">Sampai:</span>
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="outline-none text-xs font-mono bg-transparent cursor-pointer" />
+          <div className="flex items-center gap-2 bg-zinc-50/50 border border-zinc-200 rounded-lg px-3 h-10">
+            <Calendar className="h-4 w-4 text-zinc-400" />
+            <span className="text-[10px] uppercase text-zinc-400 font-bold">Sampai:</span>
+            <input 
+              type="date" 
+              value={endDate} 
+              onChange={(e) => setEndDate(e.target.value)} 
+              className="outline-none text-xs font-medium text-zinc-700 bg-transparent cursor-pointer" 
+            />
           </div>
 
           {(startDate || endDate) && (
-            <Button variant="ghost" onClick={handleResetFilterTanggal} className="h-9 px-2 text-[10px] font-black text-rose-600 hover:bg-rose-50 rounded-sm uppercase tracking-wider">
-              Clear
+            <Button 
+              variant="ghost" 
+              onClick={handleResetFilterTanggal} 
+              className="h-10 px-3 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg gap-1.5"
+            >
+              <X className="h-3.5 w-3.5" /> Reset
             </Button>
           )}
         </div>
       </div>
 
-      {/* DATA RIWAYAT JURNAL TABLE */}
-      <div className="border border-zinc-300 rounded-sm overflow-hidden bg-white shadow-sm">
-        <Table>
-          <TableHeader className="bg-zinc-100">
-            <TableRow className="hover:bg-zinc-100 border-b border-zinc-300 text-[10px] font-black uppercase">
-              <TableHead className="w-[110px] text-zinc-800 border-r py-3 px-3 font-black">Tanggal</TableHead>
-              <TableHead className="w-[130px] text-zinc-800 border-r px-3 font-black">No. Registrasi</TableHead>
-              <TableHead className="w-[130px] text-zinc-800 border-r px-3 font-black">No. Referensi</TableHead> 
-              <TableHead className="w-[170px] text-zinc-800 border-r px-3 font-black">Keterangan Jurnal (Memo)</TableHead>
-              <TableHead className="w-[90px] text-zinc-800 border-r px-3 font-black">Kode Akun</TableHead>
-              <TableHead className="w-[130px] text-zinc-800 border-r px-3 font-black">Nama Akun</TableHead>
-              <TableHead className="w-[110px] text-zinc-800 border-r px-3 font-black">Tipe Akun</TableHead>
-              <TableHead className="w-[110px] text-zinc-800 text-right border-r px-3 font-black">Debit (Rp)</TableHead>
-              <TableHead className="w-[110px] text-zinc-800 text-right border-r px-3 font-black">Kredit (Rp)</TableHead>
-              <TableHead className="w-[95px] text-zinc-800 text-center px-3 font-black">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className="text-[11px] font-bold">
-            {loading ? (
-              <TableRow><TableCell colSpan={10} className="h-32 text-center text-zinc-400 italic">Menarik log data berdasarkan rentang waktu dari MySQL...</TableCell></TableRow>
-            ) : filteredJurnal.length > 0 ? (
-              filteredJurnal.map((jurnal) => {
-                // FALLBACK CHECK: Jika backend tidak me-return .items / bukan array, bypass agar tidak blank screen
-                const itemsArray = Array.isArray(jurnal.items) ? jurnal.items : [];
-                const totalItems = itemsArray.length > 0 ? itemsArray.length : 1;
-                const isJurnalEditing = editingJurnalId === jurnal.id;
+      {/* TABEL DATA JURNAL DENGAN SCROLL HORIZONTAL YANG AMAN */}
+      <div className="bg-white rounded-xl border border-zinc-200 shadow-sm w-full overflow-hidden">
+        <div className="w-full overflow-x-auto">
+          <Table className="w-full min-w-[1000px] border-collapse">
+            <TableHeader className="bg-zinc-50/70 border-b border-zinc-200">
+              <TableRow className="text-[11px] font-bold text-zinc-600 uppercase tracking-wider">
+                <TableHead className="py-3.5 px-4 w-[110px]">Tanggal</TableHead>
+                <TableHead className="py-3.5 px-4 w-[130px]">No. Registrasi</TableHead>
+                <TableHead className="py-3.5 px-4 w-[130px]">No. Referensi</TableHead> 
+                <TableHead className="py-3.5 px-4 min-w-[200px]">Keterangan (Memo)</TableHead>
+                <TableHead className="py-3.5 px-4 w-[90px]">Kode Akun</TableHead>
+                <TableHead className="py-3.5 px-4 min-w-[150px]">Nama Akun</TableHead>
+                <TableHead className="py-3.5 px-4 w-[120px]">Tipe Akun</TableHead>
+                <TableHead className="py-3.5 px-4 w-[120px] text-right">Debit (Rp)</TableHead>
+                <TableHead className="py-3.5 px-4 w-[120px] text-right">Kredit (Rp)</TableHead>
+                <TableHead className="py-3.5 px-4 w-[90px] text-center">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="text-xs font-medium text-zinc-700 divide-y divide-zinc-100">
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={10} className="h-40 text-center text-zinc-400 italic">
+                    Memuat data transaksi dari server...
+                  </TableCell>
+                </TableRow>
+              ) : filteredJurnal.length > 0 ? (
+                filteredJurnal.map((jurnal) => {
+                  const itemsArray = Array.isArray(jurnal.items) ? jurnal.items : [];
+                  const totalItems = itemsArray.length > 0 ? itemsArray.length : 1;
+                  const isJurnalEditing = editingJurnalId === jurnal.id;
 
-                // Jika items kosong, buat baris kosong buatan agar record header tetap terlihat di dashboard
-                const itemsToRender = itemsArray.length > 0 ? itemsArray : [{ no_akun: "-", nama_akun: "Item detail kosong dari backend", debit: 0, kredit: 0 }];
+                  const itemsToRender = itemsArray.length > 0 ? itemsArray : [{ no_akun: "-", nama_akun: "Detail kosong", debit: 0, kredit: 0 }];
 
-                return itemsToRender.map((item: any, idx: number) => {
-                  return (
-                    <TableRow key={`${jurnal.id}-${idx}`} className="border-b border-zinc-200 hover:bg-zinc-50/20 transition-colors last:border-0">
-                      
-                      {/* === GABUNGAN ROWSPAN KOLOM KIRI === */}
-                      {idx === 0 && (
-                        <>
-                          <TableCell rowSpan={totalItems} className="py-3 px-2 border-r font-mono bg-zinc-50/50 align-top">
-                            {isJurnalEditing ? (
-                              <Input 
-                                type="date"
-                                value={editHeaderForm.tanggal || ""}
-                                onChange={(e) => handleHeaderChange("tanggal", e.target.value)}
-                                className="h-7 p-1 text-[11px] font-mono border-zinc-300 rounded-sm mt-1 bg-white focus-visible:ring-1 focus-visible:ring-black"
-                              />
-                            ) : (
-                              <div className="flex items-center gap-1 mt-1 text-zinc-600">
-                                <Calendar className="h-3 w-3 text-zinc-400" />
-                                {jurnal.tanggal ? new Date(jurnal.tanggal).toLocaleDateString('id-ID') : "-"}
-                              </div>
-                            )}
-                          </TableCell>
-                          
-                          <TableCell rowSpan={totalItems} className="px-2 border-r font-mono bg-zinc-50/50 align-top">
-                            {isJurnalEditing ? (
-                              <Input 
-                                type="text"
-                                value={editHeaderForm.no_registrasi || ""}
-                                onChange={(e) => handleHeaderChange("no_registrasi", e.target.value)}
-                                className="h-7 p-1 text-[11px] font-mono border-zinc-300 rounded-sm mt-1 bg-white focus-visible:ring-1 focus-visible:ring-black"
-                              />
-                            ) : (
-                              <div className="flex items-center gap-1 mt-1 text-blue-700">
-                                <Hash className="h-3 w-3 text-zinc-400" />
-                                {jurnal.no_registrasi || "-"}
-                              </div>
-                            )}
-                          </TableCell>
-
-                          <TableCell rowSpan={totalItems} className="px-2 border-r font-mono bg-zinc-50/50 align-top">
-                            {isJurnalEditing ? (
-                              <Input 
-                                type="text"
-                                value={editHeaderForm.no_referensi || ""}
-                                onChange={(e) => handleHeaderChange("no_referensi", e.target.value)}
-                                className="h-7 p-1 text-[11px] font-mono border-zinc-300 rounded-sm mt-1 bg-white focus-visible:ring-1 focus-visible:ring-black"
-                              />
-                            ) : (
-                              <div className="flex items-center gap-1 mt-1 text-emerald-700">
-                                <Bookmark className="h-3 w-3 text-zinc-400" />
-                                {jurnal.no_referensi || "-"}
-                              </div>
-                            )}
-                          </TableCell>
-                          
-                          <TableCell rowSpan={totalItems} className="px-2 border-r bg-zinc-50/50 align-top">
-                            {isJurnalEditing ? (
-                              <Input 
-                                type="text"
-                                value={editHeaderForm.keterangan || ""}
-                                onChange={(e) => handleHeaderChange("keterangan", e.target.value)}
-                                className="h-7 p-1 text-[11px] uppercase border-zinc-300 rounded-sm mt-1 bg-white focus-visible:ring-1 focus-visible:ring-black"
-                              />
-                            ) : (
-                              <div className="flex items-center gap-1 mt-1 text-zinc-500 font-medium uppercase tracking-tight">
-                                <FileText className="h-3 w-3 text-zinc-400 flex-shrink-0" />
-                                <span className="break-all max-w-[150px]" title={jurnal.keterangan}>
-                                  {jurnal.keterangan || "-"}
-                                </span>
-                              </div>
-                            )}
-                          </TableCell>
-                        </>
-                      )}
-
-                      {/* === DATA DETAIL BARIS AKUN === */}
-                      <TableCell className="font-mono text-zinc-500 py-2.5 px-3 border-r">
-                        {isJurnalEditing ? (
+                  return itemsToRender.map((item: any, idx: number) => {
+                    return (
+                      <TableRow key={`${jurnal.id}-${idx}`} className="hover:bg-zinc-50/60 transition-colors">
+                        
+                        {idx === 0 && (
                           <>
-                            <Input 
-                              type="text"
-                              list={`edit-coa-${jurnal.id}-${idx}`}
-                              value={editItemsForm[idx]?.no_akun ?? ""}
-                              onChange={(e) => handleItemChange(idx, "no_akun", e.target.value)}
-                              className="h-7 p-1 text-[11px] font-mono border-zinc-300 rounded-sm bg-white focus-visible:ring-1 focus-visible:ring-black"
-                            />
-                            <datalist id={`edit-coa-${jurnal.id}-${idx}`}>
-                              {akunList.map((a) => (
-                                <option key={a.id} value={a.no_akun}>{a.nama_akun}</option>
-                              ))}
-                            </datalist>
+                            <TableCell rowSpan={totalItems} className="py-4 px-4 align-top bg-zinc-50/30 border-r border-zinc-100 font-mono text-zinc-600">
+                              {isJurnalEditing ? (
+                                <Input 
+                                  type="date"
+                                  value={editHeaderForm.tanggal || ""}
+                                  onChange={(e) => handleHeaderChange("tanggal", e.target.value)}
+                                  className="h-8 text-xs font-mono bg-white border-zinc-300 rounded-md"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                  <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+                                  {jurnal.tanggal ? new Date(jurnal.tanggal).toLocaleDateString('id-ID') : "-"}
+                                </div>
+                              )}
+                            </TableCell>
+                            
+                            <TableCell rowSpan={totalItems} className="py-4 px-4 align-top bg-zinc-50/30 border-r border-zinc-100 font-mono text-blue-600 font-semibold">
+                              {isJurnalEditing ? (
+                                <Input 
+                                  type="text"
+                                  value={editHeaderForm.no_registrasi || ""}
+                                  onChange={(e) => handleHeaderChange("no_registrasi", e.target.value)}
+                                  className="h-8 text-xs font-mono bg-white border-zinc-300 rounded-md"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                  <Hash className="h-3.5 w-3.5 text-zinc-400" />
+                                  {jurnal.no_registrasi || "-"}
+                                </div>
+                              )}
+                            </TableCell>
+
+                            <TableCell rowSpan={totalItems} className="py-4 px-4 align-top bg-zinc-50/30 border-r border-zinc-100 font-mono text-emerald-600">
+                              {isJurnalEditing ? (
+                                <Input 
+                                  type="text"
+                                  value={editHeaderForm.no_referensi || ""}
+                                  onChange={(e) => handleHeaderChange("no_referensi", e.target.value)}
+                                  className="h-8 text-xs font-mono bg-white border-zinc-300 rounded-md"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                  <Bookmark className="h-3.5 w-3.5 text-zinc-400" />
+                                  {jurnal.no_referensi || "-"}
+                                </div>
+                              )}
+                            </TableCell>
+                            
+                            <TableCell rowSpan={totalItems} className="py-4 px-4 align-top bg-zinc-50/30 border-r border-zinc-100 text-zinc-600 max-w-[250px]">
+                              {isJurnalEditing ? (
+                                <Input 
+                                  type="text"
+                                  value={editHeaderForm.keterangan || ""}
+                                  onChange={(e) => handleHeaderChange("keterangan", e.target.value)}
+                                  className="h-8 text-xs uppercase bg-white border-zinc-300 rounded-md"
+                                />
+                              ) : (
+                                <div className="flex items-start gap-1.5">
+                                  <FileText className="h-3.5 w-3.5 text-zinc-400 mt-0.5 flex-shrink-0" />
+                                  <span className="uppercase leading-relaxed break-words">{jurnal.keterangan || "-"}</span>
+                                </div>
+                              )}
+                            </TableCell>
                           </>
-                        ) : (
-                          item.no_akun
                         )}
-                      </TableCell>
-                      
-                      <TableCell className={`px-3 border-r uppercase tracking-tight text-zinc-800 ${item.kredit > 0 ? "pl-5 text-zinc-600 font-normal italic" : ""}`}>
-                        {isJurnalEditing ? (
-                          <Input 
-                            readOnly
-                            type="text"
-                            value={editItemsForm[idx]?.nama_akun ?? ""}
-                            className="h-7 p-1 text-[11px] uppercase bg-zinc-100 border-zinc-300 text-zinc-400 rounded-sm cursor-not-allowed"
-                          />
-                        ) : (
-                          item.nama_akun
-                        )}
-                      </TableCell>
 
-                      <TableCell className="px-3 border-r text-zinc-400 uppercase italic text-[10px]">
-                        {isJurnalEditing ? (
-                          <Input 
-                            readOnly
-                            type="text"
-                            value={editItemsForm[idx]?.nama_kelompok ?? "General Parameter"}
-                            className="h-7 p-1 text-[10px] uppercase bg-zinc-100 border-zinc-300 text-zinc-400 rounded-sm cursor-not-allowed"
-                          />
-                        ) : (
-                          <Badge variant="outline" className="rounded-sm font-black text-[9px] bg-zinc-50 border-zinc-200 text-zinc-500 px-1.5 py-0">
-                            {item.nama_kelompok || "General Parameter"}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      
-                      <TableCell className="text-right font-mono text-zinc-900 px-3 border-r bg-zinc-50/5">
-                        {isJurnalEditing ? (
-                          <Input 
-                            type="number"
-                            value={editItemsForm[idx]?.debit ?? 0} 
-                            onChange={(e) => handleItemChange(idx, "debit", Number(e.target.value))}
-                            className="h-7 text-xs bg-white border-zinc-300 rounded-sm w-full text-right font-mono focus-visible:ring-1 focus-visible:ring-black"
-                          />
-                        ) : (
-                          item.debit > 0 ? new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2 }).format(item.debit) : "-"
-                        )}
-                      </TableCell>
-
-                      <TableCell className="text-right font-mono text-zinc-900 px-3 border-r bg-zinc-50/5">
-                        {isJurnalEditing ? (
-                          <Input 
-                            type="number"
-                            value={editItemsForm[idx]?.kredit ?? 0} 
-                            onChange={(e) => handleItemChange(idx, "kredit", Number(e.target.value))}
-                            className="h-7 text-xs bg-white border-zinc-300 rounded-sm w-full text-right font-mono focus-visible:ring-1 focus-visible:ring-black"
-                          />
-                        ) : (
-                          item.kredit > 0 ? new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2 }).format(item.kredit) : "-"
-                        )}
-                      </TableCell>
-
-                      {/* === GABUNGAN KOLOM AKSI ROWSPAN === */}
-                      {idx === 0 && (
-                        <TableCell rowSpan={totalItems} className="px-3 text-center bg-zinc-50/50 align-middle">
+                        {/* DETAIL BARIS AKUN */}
+                        <TableCell className="py-3 px-4 font-mono text-zinc-600 border-r border-zinc-100 whitespace-nowrap">
                           {isJurnalEditing ? (
-                            <div className="flex flex-col items-center justify-center gap-1.5 animate-in fade-in duration-200">
-                              <Button size="sm" variant="outline" onClick={() => saveEditJurnal(jurnal.id)} disabled={loading} className="h-7 w-full text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 rounded-sm font-black text-[10px] gap-1">
-                                <Check className="h-3 w-3" /> SIMPAN
-                              </Button>
-                              <Button size="sm" variant="ghost" onClick={cancelEditJurnal} disabled={loading} className="h-7 w-full text-zinc-500 hover:bg-zinc-200 rounded-sm font-bold text-[10px]">
-                                BATAL
-                              </Button>
-                            </div>
+                            <>
+                              <Input 
+                                type="text"
+                                list={`edit-coa-${jurnal.id}-${idx}`}
+                                value={editItemsForm[idx]?.no_akun ?? ""}
+                                onChange={(e) => handleItemChange(idx, "no_akun", e.target.value)}
+                                className="h-8 text-xs font-mono bg-white border-zinc-300 rounded-md"
+                              />
+                              <datalist id={`edit-coa-${jurnal.id}-${idx}`}>
+                                {akunList.map((a) => (
+                                  <option key={a.id} value={a.no_akun}>{a.nama_akun}</option>
+                                ))}
+                              </datalist>
+                            </>
                           ) : (
-                            <div className="flex flex-col items-center justify-center gap-1">
-                              <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                onClick={() => startEditJurnal(jurnal)} 
-                                disabled={loading} 
-                                className="h-7 w-full text-zinc-500 hover:text-black hover:bg-zinc-200 rounded-sm text-[10px] font-bold flex items-center justify-start px-2 gap-1.5"
-                              >
-                                <Pencil className="h-3 w-3 text-zinc-400" /> EDIT
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                onClick={() => handleRemoveJurnalUtah(jurnal.id, jurnal.no_registrasi)} 
-                                disabled={loading} 
-                                className="h-7 w-full text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-sm text-[10px] font-bold flex items-center justify-start px-2 gap-1.5 italic"
-                              >
-                                <Trash2 className="h-3 w-3 text-rose-400" /> HAPUS
-                              </Button>
-                            </div>
+                            item.no_akun
                           )}
                         </TableCell>
-                      )}
+                        
+                        <TableCell className={`py-3 px-4 border-r border-zinc-100 font-medium uppercase ${item.kredit > 0 ? "pl-8 text-zinc-500 italic" : "text-zinc-900"}`}>
+                          {isJurnalEditing ? (
+                            <Input 
+                              readOnly
+                              type="text"
+                              value={editItemsForm[idx]?.nama_akun ?? ""}
+                              className="h-8 text-xs uppercase bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed rounded-md"
+                            />
+                          ) : (
+                            item.nama_akun
+                          )}
+                        </TableCell>
 
-                    </TableRow>
-                  )
+                        <TableCell className="py-3 px-4 border-r border-zinc-100 whitespace-nowrap">
+                          {isJurnalEditing ? (
+                            <Input 
+                              readOnly
+                              type="text"
+                              value={editItemsForm[idx]?.nama_kelompok ?? "General"}
+                              className="h-8 text-xs uppercase bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed rounded-md"
+                            />
+                          ) : (
+                            <Badge variant="outline" className="rounded-md font-medium text-[10px] bg-zinc-50 border-zinc-200 text-zinc-600 px-2 py-0.5">
+                              {item.nama_kelompok || "General"}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        
+                        <TableCell className="py-3 px-4 text-right font-mono text-zinc-900 border-r border-zinc-100 whitespace-nowrap">
+                          {isJurnalEditing ? (
+                            <Input 
+                              type="number"
+                              value={editItemsForm[idx]?.debit ?? 0} 
+                              onChange={(e) => handleItemChange(idx, "debit", Number(e.target.value))}
+                              className="h-8 text-xs bg-white border-zinc-300 rounded-md text-right font-mono"
+                            />
+                          ) : (
+                            item.debit > 0 ? new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2 }).format(item.debit) : "-"
+                          )}
+                        </TableCell>
+
+                        <TableCell className="py-3 px-4 text-right font-mono text-zinc-900 border-r border-zinc-100 whitespace-nowrap">
+                          {isJurnalEditing ? (
+                            <Input 
+                              type="number"
+                              value={editItemsForm[idx]?.kredit ?? 0} 
+                              onChange={(e) => handleItemChange(idx, "kredit", Number(e.target.value))}
+                              className="h-8 text-xs bg-white border-zinc-300 rounded-md text-right font-mono"
+                            />
+                          ) : (
+                            item.kredit > 0 ? new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2 }).format(item.kredit) : "-"
+                          )}
+                        </TableCell>
+
+                        {idx === 0 && (
+                          <TableCell rowSpan={totalItems} className="py-3 px-3 text-center align-middle bg-zinc-50/30 whitespace-nowrap">
+                            {isJurnalEditing ? (
+                              <div className="flex flex-col gap-1.5 w-24 mx-auto">
+                                <Button size="sm" onClick={() => saveEditJurnal(jurnal.id)} disabled={loading} className="h-7 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[10px] font-bold gap-1 shadow-sm">
+                                  <Check className="h-3 w-3" /> SIMPAN
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={cancelEditJurnal} disabled={loading} className="h-7 text-zinc-500 hover:bg-zinc-200 rounded-md text-[10px] font-bold">
+                                  Batal
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-1">
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost" 
+                                  onClick={() => startEditJurnal(jurnal)} 
+                                  disabled={loading} 
+                                  className="h-8 w-8 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg"
+                                  title="Edit Jurnal"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost" 
+                                  onClick={() => handleRemoveJurnalUtah(jurnal.id, jurnal.no_registrasi)} 
+                                  disabled={loading} 
+                                  className="h-8 w-8 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg"
+                                  title="Hapus Jurnal"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        )}
+
+                      </TableRow>
+                    )
+                  })
                 })
-              })
-            ) : (
-              <TableRow><TableCell colSpan={10} className="h-32 text-center text-zinc-400 italic">Tidak ada rekaman transaksi jurnal pada rentang waktu ini.</TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={10} className="h-32 text-center text-zinc-400 italic">
+                    Tidak ada rekaman transaksi jurnal pada rentang waktu ini.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
-      {/* PANEL INDIKATOR TOTAL BALANCE HALAMAN */}
+      {/* PANEL INDIKATOR TOTAL KUMULATIF (FOOTER SUMMARY) */}
       {!loading && filteredJurnal.length > 0 && (
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-zinc-100 p-4 rounded-sm border border-zinc-300 shadow-inner">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-5 rounded-xl border border-zinc-200 shadow-sm w-full">
+          <div className="flex items-center gap-3">
             {totalAccumulasi.isBalanced ? (
-              <div className="flex items-center gap-2 text-emerald-700 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-sm text-[10px] font-black tracking-wider uppercase italic">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" /> TOTAL LIST BALANCE
+              <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-2 rounded-lg text-xs font-bold tracking-wide">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" /> TOTAL BALANCE
               </div>
             ) : (
-              <div className="flex items-center gap-2 text-rose-700 bg-rose-100 border border-rose-300 px-3 py-1.5 rounded-sm text-[10px] font-black tracking-wider uppercase italic">
-                <AlertTriangle className="h-4 w-4 text-rose-600" /> LIST TIDAK BALANCE
+              <div className="flex items-center gap-2 text-rose-700 bg-rose-50 border border-rose-200 px-3.5 py-2 rounded-lg text-xs font-bold tracking-wide">
+                <AlertTriangle className="h-4 w-4 text-rose-600" /> TIDAK BALANCE
               </div>
             )}
           </div>
 
-          <div className="flex gap-8 text-xs font-bold text-zinc-700">
-            <div className="space-y-0.5">
-              <p className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Total Debit Kumulatif</p>
-              <p className="font-mono text-sm text-black">
+          <div className="flex flex-wrap items-center gap-6 text-xs text-zinc-600">
+            <div className="space-y-0.5 text-right">
+              <p className="text-[10px] text-zinc-400 uppercase font-semibold">Total Debit</p>
+              <p className="font-mono text-sm font-bold text-zinc-900">
                 Rp {new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2 }).format(totalAccumulasi.debit)}
               </p>
             </div>
-            <div className="space-y-0.5">
-              <p className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Total Kredit Kumulatif</p>
-              <p className="font-mono text-sm text-black">
+            
+            <div className="h-8 w-px bg-zinc-200 hidden sm:block"></div>
+
+            <div className="space-y-0.5 text-right">
+              <p className="text-[10px] text-zinc-400 uppercase font-semibold">Total Kredit</p>
+              <p className="font-mono text-sm font-bold text-zinc-900">
                 Rp {new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2 }).format(totalAccumulasi.kredit)}
               </p>
             </div>
+
             {!totalAccumulasi.isBalanced && (
-              <div className="space-y-0.5 border-l border-zinc-300 pl-6">
-                <p className="text-[9px] font-black text-rose-500 uppercase tracking-wider">Total Selisih (Variance)</p>
-                <p className="font-mono text-sm text-rose-600">
-                  Rp {new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2 }).format(Math.abs(totalAccumulasi.debit - totalAccumulasi.kredit))}
-                </p>
-              </div>
+              <>
+                <div className="h-8 w-px bg-zinc-200 hidden sm:block"></div>
+                <div className="space-y-0.5 text-right">
+                  <p className="text-[10px] text-rose-500 uppercase font-semibold">Selisih (Variance)</p>
+                  <p className="font-mono text-sm font-bold text-rose-600">
+                    Rp {new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2 }).format(Math.abs(totalAccumulasi.debit - totalAccumulasi.kredit))}
+                  </p>
+                </div>
+              </>
             )}
           </div>
         </div>
