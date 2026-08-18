@@ -14,16 +14,6 @@ export default function Page() {
       subtitle: "Klik untuk membuka dokumen PDF",
       url: "/docs/sop-penagihan.pdf",
     },
-    {
-      title: "SOP Perbendaharaan",
-      subtitle: "Klik untuk membuka dokumen PDF",
-      url: "/docs/sop-perbendaharaan.pdf",
-    },
-    {
-      title: "SOP Perpajakan",
-      subtitle: "Klik untuk membuka dokumen PDF",
-      url: "/docs/sop-perpajakan.pdf",
-    },
   ]
 
   return (
