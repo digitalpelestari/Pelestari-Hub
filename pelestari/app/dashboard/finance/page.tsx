@@ -10,7 +10,7 @@ export default function Page() {
 
   const sopList = [
     {
-      title: "SOP Penagihan",
+      title: "SOP",
       subtitle: "Klik untuk membuka dokumen PDF",
       url: "/docs/sop-penagihan.pdf",
     },
