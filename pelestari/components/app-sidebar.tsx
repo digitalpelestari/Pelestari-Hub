@@ -15,16 +15,17 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { 
-  LayoutDashboardIcon, 
-  FileTextIcon, 
-  Settings2Icon, 
+import {
+  LayoutDashboardIcon,
+  FileTextIcon,
+  Settings2Icon,
   CommandIcon,
   FolderIcon,
-  ShoppingCartIcon, 
+  ShoppingCartIcon,
   FileText,
   Package,
-  Wrench
+  Wrench,
+  Users,
 } from "lucide-react"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -47,6 +48,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: dashboardUrl, // Menggunakan URL dinamis hasil saringan di atas
       icon: <LayoutDashboardIcon />,
     },
+    {
+      title: "Karyawan",
+      url: "#",
+      icon: <Users />,
+      roles: ["ADMIN", "GA", "FINANCE", "MANAGER FINANCE"],
+      items: [
+        {
+          title: "Perjalanan Dinas",
+          url: "/dashboard/karyawan/perjalanan-dinas",
+        },
+        {
+          title: "Pengajuan Barang",
+          url: "/dashboard/karyawan/pengajuan-barang",
+        },
+        { title: "Gajian", url: "/dashboard/karyawan/gajian" },
+      ],
+    },
 
     // FINANCE DROPDOWN
     {
@@ -54,43 +72,49 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: "#",
       icon: <CommandIcon />,
       isActive: true,
-      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"], 
+      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
         { title: "Jurnal Umum", url: "/dashboard/finance/pos/jurnal" },
         { title: "Kasir", url: "/dashboard/finance/pos/kasir" },
         { title: "Daftar Akun", url: "/dashboard/finance/pos/akun" },
-        { title: "Kelompok Biaya", url: "/dashboard/finance/pos/kelompok-biaya" },
+        {
+          title: "Kelompok Biaya",
+          url: "/dashboard/finance/pos/kelompok-biaya",
+        },
       ],
     },
-     {
+    {
       title: "Riwayat Transaksi",
       url: "#",
       icon: <CommandIcon />,
       isActive: true,
-      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"], 
+      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
-
         { title: "Riwayat Transaksi", url: "/dashboard/finance/riwayat" },
       ],
     },
-    
+
     {
       title: "Invoice",
       url: "#",
       icon: <FolderIcon />,
-      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"], 
-      items: [
-        { title: "Invoice", url: "/dashboard/finance/invoices" },
-      ],
+      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+      items: [{ title: "Invoice", url: "/dashboard/finance/invoices" }],
     },
     {
       title: "Laporan",
       icon: <FileTextIcon />,
       url: "#",
-      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"], 
+      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
-        { title: "Laporan Neraca", url: "/dashboard/finance/laporan/lap-neraca" },
-        { title: "Laporan Laba Rugi", url: "/dashboard/finance/laporan/lap-labarugi" },
+        {
+          title: "Laporan Neraca",
+          url: "/dashboard/finance/laporan/lap-neraca",
+        },
+        {
+          title: "Laporan Laba Rugi",
+          url: "/dashboard/finance/laporan/lap-labarugi",
+        },
       ],
     },
     {
@@ -98,7 +122,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: "#",
       icon: <CommandIcon />,
       isActive: true,
-      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"], 
+      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
         { title: "PO Tracking", url: "/dashboard/finance/po-tracking" },
         { title: "Asset Tracking", url: "/dashboard/finance/asset-tracking" },
@@ -110,28 +134,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Purchase Order",
       url: "#",
       icon: <FileText />,
-      roles: ["ADMIN", "GA"], 
-      items: [
-        { title: "Purchase Order", url: "/dashboard/ga/purchase-order" },
-      ],
+      roles: ["ADMIN", "GA"],
+      items: [{ title: "Purchase Order", url: "/dashboard/ga/purchase-order" }],
     },
-     {
+    {
       title: "Asset",
       url: "#",
       icon: <Package />,
-      roles: ["ADMIN", "GA"], 
-      items: [
-        { title: "Asset", url: "/dashboard/ga/asset" },
-      ],
+      roles: ["ADMIN", "GA"],
+      items: [{ title: "Asset", url: "/dashboard/ga/asset" }],
     },
     {
       title: "Utilities",
       url: "#",
       icon: <Wrench />,
-      roles: ["ADMIN", "GA"], 
-      items: [
-        { title: "Utilities", url: "/dashboard/ga/utilities" },
-      ],
+      roles: ["ADMIN", "GA"],
+      items: [{ title: "Utilities", url: "/dashboard/ga/utilities" }],
     },
   ]
 
@@ -143,7 +161,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   })
 
   const navSecondaryData = [
-    { title: "Account Settings", url: "/dashboard/account", icon: <Settings2Icon /> },
+    {
+      title: "Account Settings",
+      url: "/dashboard/account",
+      icon: <Settings2Icon />,
+    },
   ]
 
   return (
@@ -160,12 +182,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      
+
       <SidebarContent>
         <NavMain items={filteredNavMain} />
         <NavSecondary items={navSecondaryData} className="mt-auto" />
       </SidebarContent>
-      
+
       <SidebarFooter>
         <NavUser />
       </SidebarFooter>
