@@ -43,6 +43,14 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  getKaryawanAction,
+  getPerjalananListAction,
+  getPerjalananDetailAction,
+  createPerjalananAction,
+  updatePerjalananAction,
+  deletePerjalananAction,
+} from "@/app/actions/perjalanan-dinas"
 
 interface KaryawanItem {
   nip: string
@@ -67,10 +75,11 @@ interface PerjalananItem {
   start_date: string
   end_date: string
   anggota: AnggotaItem[]
+  user_nama?: string
+  id_user?: string
 }
 
 export default function PerjalananDinasPage() {
-  const { data: session } = useSession()
   const [loading, setLoading] = useState(false)
   const [karyawanList, setKaryawanList] = useState<KaryawanItem[]>([])
   const [perjalananList, setPerjalananList] = useState<PerjalananItem[]>([])
@@ -85,6 +94,7 @@ export default function PerjalananDinasPage() {
   const [submitting, setSubmitting] = useState(false)
   const [karyawanDropdownOpen, setKaryawanDropdownOpen] = useState(false)
   const karyawanDropdownRef = useRef<HTMLDivElement>(null)
+  const { data: session } = useSession()
 
   const [formData, setFormData] = useState({
     nomor: "",
@@ -117,10 +127,9 @@ export default function PerjalananDinasPage() {
 
   const fetchKaryawan = async () => {
     try {
-      const res = await fetch("/api/karyawan")
-      const data = await res.json()
-      if (res.ok) {
-        setKaryawanList(data)
+      const result = await getKaryawanAction()
+      if (result.success && result.data) {
+        setKaryawanList(result.data)
       }
     } catch (err) {
       console.error("Gagal mengambil data karyawan", err)
@@ -130,10 +139,9 @@ export default function PerjalananDinasPage() {
   const fetchPerjalanan = async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/perjalanan-dinas")
-      const data = await res.json()
-      if (res.ok) {
-        setPerjalananList(data)
+      const result = await getPerjalananListAction()
+      if (result.success && result.data) {
+        setPerjalananList(result.data)
       }
     } catch (err) {
       console.error("Gagal mengambil data perjalanan dinas", err)
@@ -193,8 +201,12 @@ export default function PerjalananDinasPage() {
         keperluan: perjalanan.keperluan,
         tujuan: perjalanan.tujuan,
         tempat: perjalanan.tempat,
-        start_date: perjalanan.start_date?.toString().split("T")[0] || "",
-        end_date: perjalanan.end_date?.toString().split("T")[0] || "",
+        start_date: perjalanan.start_date
+          ? new Date(perjalanan.start_date).toISOString().split("T")[0]
+          : "",
+        end_date: perjalanan.end_date
+          ? new Date(perjalanan.end_date).toISOString().split("T")[0]
+          : "",
         karyawan: perjalanan.anggota.map((a) => a.nip),
       })
     } else {
@@ -209,47 +221,37 @@ export default function PerjalananDinasPage() {
 
     try {
       if (editMode) {
-        const res = await fetch(`/api/perjalanan-dinas/${formData.nomor}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            manager_nip: formData.manager_nip,
-            keperluan: formData.keperluan,
-            tujuan: formData.tujuan,
-            tempat: formData.tempat,
-            start_date: formData.start_date,
-            end_date: formData.end_date,
-            karyawan: formData.karyawan,
-          }),
+        const result = await updatePerjalananAction(formData.nomor, {
+          manager_nip: formData.manager_nip,
+          keperluan: formData.keperluan,
+          tujuan: formData.tujuan,
+          tempat: formData.tempat,
+          start_date: formData.start_date,
+          end_date: formData.end_date,
+          karyawan: formData.karyawan,
         })
 
-        const data = await res.json()
-        if (!res.ok) {
-          throw new Error(data.message || "Gagal memperbarui SPPD")
+        if (!result.success) {
+          throw new Error(result.message || "Gagal memperbarui SPPD")
         }
 
         await fetchPerjalanan()
         setIsModalOpen(false)
         resetForm()
       } else {
-        const res = await fetch("/api/perjalanan-dinas", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nomor: formData.nomor,
-            manager_nip: formData.manager_nip,
-            keperluan: formData.keperluan,
-            tujuan: formData.tujuan,
-            tempat: formData.tempat,
-            start_date: formData.start_date,
-            end_date: formData.end_date,
-            karyawan: formData.karyawan,
-          }),
+        const result = await createPerjalananAction({
+          nomor: formData.nomor,
+          manager_nip: formData.manager_nip,
+          keperluan: formData.keperluan,
+          tujuan: formData.tujuan,
+          tempat: formData.tempat,
+          start_date: formData.start_date,
+          end_date: formData.end_date,
+          karyawan: formData.karyawan,
         })
 
-        const data = await res.json()
-        if (!res.ok) {
-          throw new Error(data.message || "Gagal membuat SPPD")
+        if (!result.success) {
+          throw new Error(result.message || "Gagal membuat SPPD")
         }
 
         await fetchPerjalanan()
@@ -267,13 +269,9 @@ export default function PerjalananDinasPage() {
     if (!confirm("Apakah Anda yakin ingin menghapus SPPD ini?")) return
 
     try {
-      const res = await fetch(`/api/perjalanan-dinas/${nomor}`, {
-        method: "DELETE",
-      })
-
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.message || "Gagal menghapus SPPD")
+      const result = await deletePerjalananAction(nomor)
+      if (!result.success) {
+        throw new Error(result.message || "Gagal menghapus SPPD")
       }
 
       await fetchPerjalanan()
@@ -284,10 +282,9 @@ export default function PerjalananDinasPage() {
 
   const handleViewDetail = async (perjalanan: PerjalananItem) => {
     try {
-      const res = await fetch(`/api/perjalanan-dinas/${perjalanan.nomor}`)
-      const data = await res.json()
-      if (res.ok) {
-        setSelectedPerjalanan(data)
+      const result = await getPerjalananDetailAction(perjalanan.nomor)
+      if (result.success && result.data) {
+        setSelectedPerjalanan(result.data)
         setIsDetailOpen(true)
       }
     } catch (err) {
@@ -556,8 +553,8 @@ export default function PerjalananDinasPage() {
 
       {/* MODAL FORM TAMBAH/EDIT PERJALANAN */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="w-full max-w-3xl rounded-sm border-none shadow-2xl">
-          <DialogHeader className="-mx-6 -mt-6 mb-4 flex items-center justify-between bg-zinc-900 px-6 py-3 text-white">
+        <DialogContent className="w-full max-w-3xl rounded-sm border-none shadow-2xl [&>button]:hidden">
+          <DialogHeader className="-mx-6 -mt-6 mb-4 flex flex-row items-center justify-between bg-zinc-900 px-6 py-3 text-white">
             <DialogTitle className="text-xs font-bold tracking-wider uppercase">
               {editMode
                 ? "Edit Perjalanan Dinas"
@@ -784,8 +781,8 @@ export default function PerjalananDinasPage() {
 
       {/* MODAL DETAIL PERJALANAN */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="w-full max-w-2xl rounded-sm border-none shadow-2xl">
-          <DialogHeader className="-mx-6 -mt-6 mb-4 flex items-center justify-between bg-zinc-900 px-6 py-3 text-white">
+        <DialogContent className="w-full max-w-2xl rounded-sm border-none shadow-2xl [&>button]:hidden">
+          <DialogHeader className="-mx-6 -mt-6 mb-4 flex flex-row items-center justify-between bg-zinc-900 px-6 py-3 text-white">
             <DialogTitle className="text-xs font-bold tracking-wider uppercase">
               Detail Perjalanan Dinas
             </DialogTitle>
@@ -861,6 +858,16 @@ export default function PerjalananDinasPage() {
                     {selectedPerjalanan.keperluan}
                   </span>
                 </div>
+                {session?.user?.role === "Admin" && (
+                  <div className="flex justify-between">
+                    <span className="font-bold text-zinc-500 uppercase">
+                      Dibuat Oleh
+                    </span>
+                    <span className="font-semibold text-zinc-800">
+                      {selectedPerjalanan.user_nama || "-"}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="overflow-hidden rounded-sm border border-zinc-300 text-xs">
