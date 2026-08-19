@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react"
 import { useSession } from "next-auth/react"
+import Swal from "sweetalert2"
 import {
   Plus,
   Search,
@@ -216,9 +217,44 @@ export default function PerjalananDinasPage() {
     setIsModalOpen(true)
   }
 
+  const today = useMemo(
+    () => new Date().toISOString().split("T")[0],
+    []
+  )
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
+
+    if (formData.start_date < today) {
+      Swal.fire({
+        icon: "error",
+        title: "Gagal",
+        text: "Tanggal mulai tidak boleh kurang dari hari ini.",
+      })
+      setSubmitting(false)
+      return
+    }
+
+    if (formData.end_date < today) {
+      Swal.fire({
+        icon: "error",
+        title: "Gagal",
+        text: "Tanggal selesai tidak boleh kurang dari hari ini.",
+      })
+      setSubmitting(false)
+      return
+    }
+
+    if (formData.end_date < formData.start_date) {
+      Swal.fire({
+        icon: "error",
+        title: "Gagal",
+        text: "Tanggal selesai tidak boleh lebih awal dari tanggal mulai.",
+      })
+      setSubmitting(false)
+      return
+    }
 
     try {
       if (editMode) {
@@ -237,6 +273,13 @@ export default function PerjalananDinasPage() {
         }
 
         await fetchPerjalanan()
+        await Swal.fire({
+          icon: "success",
+          title: "Berhasil",
+          text: "Perubahan berhasil disimpan.",
+          timer: 2000,
+          showConfirmButton: true,
+        })
         setIsModalOpen(false)
         resetForm()
       } else {
@@ -256,28 +299,62 @@ export default function PerjalananDinasPage() {
         }
 
         await fetchPerjalanan()
+        await Swal.fire({
+          icon: "success",
+          title: "Berhasil",
+          text: "Perjalanan dinas berhasil diajukan.",
+          timer: 2000,
+          showConfirmButton: true,
+        })
         setIsModalOpen(false)
         resetForm()
       }
     } catch (err: any) {
-      alert(err.message)
+      Swal.fire({
+        icon: "error",
+        title: "Gagal",
+        text: err.message || "Terjadi kesalahan sistem",
+      })
     } finally {
       setSubmitting(false)
     }
   }
 
   const handleDelete = async (nomor: string) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus SPPD ini?")) return
+    const result = await Swal.fire({
+      title: "Apakah Anda yakin?",
+      text: "SPPD yang dihapus tidak dapat dikembalikan!",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#3085d6",
+      confirmButtonText: "Ya, hapus!",
+      cancelButtonText: "Batal",
+    })
+
+    if (!result.isConfirmed) return
 
     try {
-      const result = await deletePerjalananAction(nomor)
-      if (!result.success) {
-        throw new Error(result.message || "Gagal menghapus SPPD")
+      const res = await deletePerjalananAction(nomor)
+      if (!res.success) {
+        throw new Error(res.message || "Gagal menghapus SPPD")
       }
 
       await fetchPerjalanan()
+
+      await Swal.fire({
+        icon: "success",
+        title: "Terhapus!",
+        text: "SPPD berhasil dihapus.",
+        timer: 2000,
+        showConfirmButton: true,
+      })
     } catch (err: any) {
-      alert(err.message)
+      Swal.fire({
+        icon: "error",
+        title: "Gagal menghapus",
+        text: err.message || "Terjadi kesalahan sistem",
+      })
     }
   }
 
@@ -650,6 +727,7 @@ export default function PerjalananDinasPage() {
                 <Input
                   required
                   type="date"
+                  min={today}
                   value={formData.start_date}
                   onChange={(e) =>
                     setFormData({ ...formData, start_date: e.target.value })
@@ -664,6 +742,7 @@ export default function PerjalananDinasPage() {
                 <Input
                   required
                   type="date"
+                  min={today}
                   value={formData.end_date}
                   onChange={(e) =>
                     setFormData({ ...formData, end_date: e.target.value })

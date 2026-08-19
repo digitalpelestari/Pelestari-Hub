@@ -160,7 +160,7 @@ export default function CreateInvoicePage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[11px] font-black uppercase italic">Batch *</Label>
-                  <Input placeholder="Contoh: 01" value={formData.batch} onChange={(e) => setFormData({...formData, batch: e.target.value})} className="font-bold h-11" />
+                  <Input placeholder="Contoh: 01" value={formData.batch} onChange={(e) => setFormData({...formData, batch: e.target.value})} className="h-11" />
                 </div>
                 <div className="grid grid-cols-2 gap-5 mt-5">
   <div className="space-y-2 col-span-2">
@@ -205,15 +205,15 @@ export default function CreateInvoicePage() {
             <CardContent className="p-6 space-y-5 text-zinc-800">
               <div className="space-y-2">
                 <Label className="text-[11px] font-black uppercase italic">Nama Perusahaan *</Label>
-                <Input placeholder="Nama Perusahaan" value={formData.perusahaan_tujuan} onChange={(e) => setFormData({...formData, perusahaan_tujuan: e.target.value})} className="h-11 font-black uppercase" />
+                <Input placeholder="Nama Perusahaan" value={formData.perusahaan_tujuan} onChange={(e) => setFormData({...formData, perusahaan_tujuan: e.target.value})} className="h-11" />
               </div>
               <div className="space-y-2">
                 <Label className="text-[11px] font-black uppercase italic">NPWP Perusahaan</Label>
-                <Input placeholder="Nomor NPWP" value={formData.npwp} onChange={(e) => setFormData({...formData, npwp: e.target.value})} className="h-11 font-mono font-bold" />
+                <Input placeholder="Nomor NPWP" value={formData.npwp} onChange={(e) => setFormData({...formData, npwp: e.target.value})} className="h-11" />
               </div>
               <div className="space-y-2">
                 <Label className="text-[11px] font-black uppercase italic">Alamat Lengkap</Label>
-                <Textarea placeholder="Alamat Perusahaan" value={formData.alamat_perusahaan} onChange={(e) => setFormData({...formData, alamat_perusahaan: e.target.value})} className="min-h-[100px] bg-zinc-50/30 font-bold" />
+                <Textarea placeholder="Alamat Perusahaan" value={formData.alamat_perusahaan} onChange={(e) => setFormData({...formData, alamat_perusahaan: e.target.value})} className="h-11" />
               </div>
             </CardContent>
           </Card>
@@ -231,16 +231,16 @@ export default function CreateInvoicePage() {
                 <Badge className="bg-black text-[9px] font-black italic uppercase rounded-md px-3">Baris Pertama (Utama)</Badge>
                 <div className="space-y-2">
                   <Label className="text-[10px] font-black uppercase italic opacity-50">Keterangan Layanan 1 *</Label>
-                  <Input placeholder="Contoh: Pelatihan ABB" value={formData.keterangan} onChange={(e) => setFormData({...formData, keterangan: e.target.value})} className="h-12 font-bold border-zinc-300" />
+                  <Input placeholder="Contoh: Pelatihan ABB" value={formData.keterangan} onChange={(e) => setFormData({...formData, keterangan: e.target.value})} className="h-11 border-zinc-300" />
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                   <div className="space-y-1">
                     <Label className="text-[10px] font-black uppercase italic opacity-50">Jumlah Peserta</Label>
-                    <Input type="text" inputMode="numeric" placeholder="0" value={formData.jumlah_peserta || ""} onChange={(e) => handleNumericChange("jumlah_peserta", e.target.value)} className="h-11 font-black text-lg" />
+                    <Input type="text" inputMode="numeric" placeholder="0" value={formData.jumlah_peserta || ""} onChange={(e) => handleNumericChange("jumlah_peserta", e.target.value)} className="h-11" />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[10px] font-black uppercase italic opacity-50">Harga Satuan</Label>
-                    <Input type="text" inputMode="numeric" placeholder="Rp 0" value={formData.harga_peserta || ""} onChange={(e) => handleNumericChange("harga_peserta", e.target.value)} className="h-11 font-mono font-black text-lg" />
+                    <Input type="text" inputMode="numeric" placeholder="Rp 0" value={formData.harga_peserta || ""} onChange={(e) => handleNumericChange("harga_peserta", e.target.value)} className="h-11" />
                   </div>
                 </div>
               </div>
@@ -250,16 +250,16 @@ export default function CreateInvoicePage() {
                 <Badge variant="outline" className="text-[9px] font-black italic uppercase rounded-md px-3 text-zinc-400">Baris Kedua (Opsional)</Badge>
                 <div className="space-y-2">
                   <Label className="text-[10px] font-black uppercase italic opacity-30">Keterangan Layanan 2</Label>
-                  <Input placeholder="Contoh: Pembinaan AKABB" value={formData.keterangan_2} onChange={(e) => setFormData({...formData, keterangan_2: e.target.value})} className="h-12 font-bold border-zinc-200" />
+                  <Input placeholder="Contoh: Pembinaan AKABB" value={formData.keterangan_2} onChange={(e) => setFormData({...formData, keterangan_2: e.target.value})} className="h-11 border-zinc-200" />
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                   <div className="space-y-1">
                     <Label className="text-[10px] font-black uppercase italic opacity-30">Jumlah Peserta 2</Label>
-                    <Input type="text" inputMode="numeric" placeholder="0" value={formData.jumlah_peserta_2 || ""} onChange={(e) => handleNumericChange("jumlah_peserta_2", e.target.value)} className="h-11 font-black text-lg" />
+                    <Input type="text" inputMode="numeric" placeholder="0" value={formData.jumlah_peserta_2 || ""} onChange={(e) => handleNumericChange("jumlah_peserta_2", e.target.value)} className="h-11" />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[10px] font-black uppercase italic opacity-30">Harga Satuan 2</Label>
-                    <Input type="text" inputMode="numeric" placeholder="Rp 0" value={formData.harga_peserta_2 || ""} onChange={(e) => handleNumericChange("harga_peserta_2", e.target.value)} className="h-11 font-mono font-black text-lg" />
+                    <Input type="text" inputMode="numeric" placeholder="Rp 0" value={formData.harga_peserta_2 || ""} onChange={(e) => handleNumericChange("harga_peserta_2", e.target.value)} className="h-11" />
                   </div>
                 </div>
               </div>
