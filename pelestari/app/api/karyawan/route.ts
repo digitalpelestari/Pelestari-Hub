@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 export async function GET() {
   try {
     const [rows]: any = await db.execute(
-      "SELECT nip, nama, divisi FROM tb_karyawan ORDER BY nama ASC"
+      "SELECT nip, nama, divisi, jabatan FROM tb_karyawan ORDER BY nama ASC"
     );
     return NextResponse.json(rows);
   } catch (error: any) {

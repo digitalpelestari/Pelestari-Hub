@@ -56,6 +56,7 @@ interface KaryawanItem {
   nip: string
   nama: string
   divisi: string
+  jabatan: string
 }
 
 interface AnggotaItem {
@@ -604,11 +605,13 @@ export default function PerjalananDinasPage() {
                     <SelectValue placeholder="Pilih Manager" />
                   </SelectTrigger>
                   <SelectContent>
-                    {karyawanList.map((k) => (
-                      <SelectItem key={k.nip} value={k.nip}>
-                        {k.nama} - {k.nip}
-                      </SelectItem>
-                    ))}
+                    {karyawanList
+                      .filter((k) => k.jabatan === "Manager")
+                      .map((k) => (
+                        <SelectItem key={k.nip} value={k.nip}>
+                          {k.nama} - {k.nip}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -858,16 +861,16 @@ export default function PerjalananDinasPage() {
                     {selectedPerjalanan.keperluan}
                   </span>
                 </div>
-               {(session?.user as any)?.role === "Admin" && (
-  <div className="flex justify-between">
-    <span className="font-bold text-zinc-500 uppercase">
-      Dibuat Oleh
-    </span>
-    <span className="font-semibold text-zinc-800">
-      {selectedPerjalanan.user_nama || "-"}
-    </span>
-  </div>
-)}
+                {(session?.user as any)?.role === "Admin" && (
+                  <div className="flex justify-between">
+                    <span className="font-bold text-zinc-500 uppercase">
+                      Dibuat Oleh
+                    </span>
+                    <span className="font-semibold text-zinc-800">
+                      {selectedPerjalanan.user_nama || "-"}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="overflow-hidden rounded-sm border border-zinc-300 text-xs">
