@@ -858,16 +858,16 @@ export default function PerjalananDinasPage() {
                     {selectedPerjalanan.keperluan}
                   </span>
                 </div>
-                {session?.user?.role === "Admin" && (
-                  <div className="flex justify-between">
-                    <span className="font-bold text-zinc-500 uppercase">
-                      Dibuat Oleh
-                    </span>
-                    <span className="font-semibold text-zinc-800">
-                      {selectedPerjalanan.user_nama || "-"}
-                    </span>
-                  </div>
-                )}
+               {(session?.user as any)?.role === "Admin" && (
+  <div className="flex justify-between">
+    <span className="font-bold text-zinc-500 uppercase">
+      Dibuat Oleh
+    </span>
+    <span className="font-semibold text-zinc-800">
+      {selectedPerjalanan.user_nama || "-"}
+    </span>
+  </div>
+)}
               </div>
 
               <div className="overflow-hidden rounded-sm border border-zinc-300 text-xs">
