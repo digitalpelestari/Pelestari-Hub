@@ -9,6 +9,7 @@ const routePermissions: Record<string, string[]> = {
   "/dashboard/finance": ["ADMIN", "MANAGER FINANCE", "FINANCE"],
   "/dashboard/purchase-order": ["ADMIN", "GA"], 
   "/dashboard/ga": ["ADMIN", "GA"],
+  "/dashboard/hr": ["ADMIN", "HR"],
   "/dashboard/admin": ["ADMIN"],
   "/dashboard/admin/finance": ["ADMIN"],
   "/dashboard/admin/ga": ["ADMIN"],  
@@ -19,6 +20,7 @@ function getDashboardUrl(role?: string) {
 
   if (normalizedRole === "GA") return "/dashboard/ga";
   if (normalizedRole === "ADMIN") return "/dashboard/admin";
+  if (normalizedRole === "HR") return "/dashboard/hr";
   if (normalizedRole === "FINANCE" || normalizedRole === "MANAGER FINANCE") {
     return "/dashboard/finance";
   }

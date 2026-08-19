@@ -151,6 +151,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       roles: ["ADMIN", "GA"],
       items: [{ title: "Utilities", url: "/dashboard/ga/utilities" }],
     },
+    {
+      title: "Data Karyawan",
+      url: "#",
+      icon: <Wrench />,
+      roles: ["ADMIN", "HR"],
+      items: [{ title: "Data Karyawan", url: "/dashboard/hr/data-karyawan" }],
+    },
   ]
 
   // Saring menu berdasarkan role setelah data URL dashboard di-set
