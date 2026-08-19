@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache"
 export async function getKaryawanAction() {
   try {
     const [rows]: any = await db.execute(
-      "SELECT nip, nama, divisi FROM tb_karyawan ORDER BY nama ASC"
+      "SELECT nip, nama, divisi, jabatan FROM tb_karyawan ORDER BY nama ASC"
     )
     return { success: true, data: rows }
   } catch (error: any) {

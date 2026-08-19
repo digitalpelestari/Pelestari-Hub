@@ -24,7 +24,6 @@ import {
   ShoppingCartIcon,
   FileText,
   Package,
-  Wrench,
   Users,
 } from "lucide-react"
 
@@ -131,25 +130,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     // GA DROPDOWN
     {
-      title: "Purchase Order",
-      url: "#",
-      icon: <FileText />,
-      roles: ["ADMIN", "GA"],
-      items: [{ title: "Purchase Order", url: "/dashboard/ga/purchase-order" }],
-    },
-    {
-      title: "Asset",
+      title: "Facility Management",
       url: "#",
       icon: <Package />,
       roles: ["ADMIN", "GA"],
-      items: [{ title: "Asset", url: "/dashboard/ga/asset" }],
-    },
-    {
-      title: "Utilities",
-      url: "#",
-      icon: <Wrench />,
-      roles: ["ADMIN", "GA"],
-      items: [{ title: "Utilities", url: "/dashboard/ga/utilities" }],
+      items: [
+        { title: "Purchase Order", url: "/dashboard/ga/purchase-order" },
+        { title: "Asset", url: "/dashboard/ga/asset" },
+        { title: "Utilities", url: "/dashboard/ga/utilities" },
+      ],
     },
     {
       title: "Data Karyawan",

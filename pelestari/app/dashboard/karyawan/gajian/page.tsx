@@ -192,7 +192,7 @@ export default function GajianPage() {
       <div className="flex flex-col gap-4 border-b border-zinc-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-black tracking-tighter text-black uppercase">
-            <FileText className="h-6 w-6 text-blue-600" /> Riwayat Gaji Saya
+            <FileText className="h-6 w-6 text-blue-600" /> Riwayat Gaji
           </h1>
           <p className="mt-1 text-xs font-semibold text-zinc-500">
             {karyawan.nama} &middot; {karyawan.jabatan}
