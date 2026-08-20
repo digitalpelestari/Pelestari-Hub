@@ -190,6 +190,7 @@ export default function KaryawanPage() {
       const res = await deleteKaryawanAction(nip)
       if (!res.success) throw new Error(res.message)
       await fetchData()
+      swal.success("Karyawan berhasil dihapus")
     } catch (err: any) {
       swal.error(err.message || "Gagal menghapus karyawan")
     }

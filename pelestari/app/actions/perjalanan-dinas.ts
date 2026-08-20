@@ -35,12 +35,13 @@ export async function getPerjalananListAction() {
              s.keperluan, s.tujuan, s.tempat,
              s.start_date, s.end_date,
              s.created_at, s.updated_at,
-             k.nama AS manager_nama,
-             k.divisi AS manager_divisi,
-             u.nama AS user_nama
-      FROM tb_sppd s
-      LEFT JOIN tb_karyawan k ON s.manager_nip = k.nip
-      LEFT JOIN tb_login u ON s.id_user = u.id_user
+              k.nama AS manager_nama,
+              k.divisi AS manager_divisi,
+              k.jabatan AS manager_jabatan,
+              u.nama AS user_nama
+       FROM tb_sppd s
+       LEFT JOIN tb_karyawan k ON s.manager_nip = k.nip
+       LEFT JOIN tb_login u ON s.id_user = u.id_user
     `
     const params: any[] = []
 
@@ -97,13 +98,14 @@ export async function getPerjalananDetailAction(nomor: string) {
              s.keperluan, s.tujuan, s.tempat,
              s.start_date, s.end_date,
              s.created_at, s.updated_at,
-             k.nama AS manager_nama,
-             k.divisi AS manager_divisi,
-             u.nama AS user_nama
-      FROM tb_sppd s
-      LEFT JOIN tb_karyawan k ON s.manager_nip = k.nip
-      LEFT JOIN tb_login u ON s.id_user = u.id_user
-      WHERE s.nomor = ?
+              k.nama AS manager_nama,
+              k.divisi AS manager_divisi,
+              k.jabatan AS manager_jabatan,
+              u.nama AS user_nama
+       FROM tb_sppd s
+       LEFT JOIN tb_karyawan k ON s.manager_nip = k.nip
+       LEFT JOIN tb_login u ON s.id_user = u.id_user
+       WHERE s.nomor = ?
     `
     const params: any[] = [nomor]
 

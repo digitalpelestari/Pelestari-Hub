@@ -73,6 +73,7 @@ interface PerjalananItem {
   manager_nip: string
   manager_nama: string
   manager_divisi: string
+  manager_jabatan: string
   keperluan: string
   tujuan: string
   tempat: string
@@ -218,10 +219,7 @@ export default function PerjalananDinasPage() {
     setIsModalOpen(true)
   }
 
-  const today = useMemo(
-    () => new Date().toISOString().split("T")[0],
-    []
-  )
+  const today = useMemo(() => new Date().toISOString().split("T")[0], [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -374,7 +372,8 @@ export default function PerjalananDinasPage() {
   const handlePrint = async (perjalanan: PerjalananItem) => {
     try {
       const result = await getPerjalananDetailAction(perjalanan.nomor)
-      const dataToPrint = result.success && result.data ? result.data : perjalanan
+      const dataToPrint =
+        result.success && result.data ? result.data : perjalanan
       setPrintData(dataToPrint)
       setTimeout(() => {
         window.print()
@@ -442,17 +441,24 @@ export default function PerjalananDinasPage() {
             size: A4 portrait;
             margin: 0;
           }
+
           body {
             margin: 0;
             padding: 0;
           }
+
           body * {
             visibility: hidden;
           }
+
           #print-area,
           #print-area * {
             visibility: visible;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
           }
+
           #print-area {
             position: absolute;
             left: 0;
@@ -474,26 +480,25 @@ export default function PerjalananDinasPage() {
       {printData && (
         <div
           id="print-area"
-          className="hidden print:block text-black font-serif text-[11pt]"
+          className="relative hidden font-serif text-[11pt] text-black print:block"
           style={{ fontFamily: '"Times New Roman", Times, serif' }}
         >
           {/* Header Kop Surat */}
-          <div className="flex items-center justify-between border-b-2 border-black pb-2">
-            <div className="flex items-center gap-3">
+          <div
+            className="flex items-center justify-between border-b pb-1"
+            style={{ borderBottomColor: "#4472C4", borderBottomWidth: "1px" }}
+          >
+            <div className="relative h-28 w-40 flex-shrink-0">
+              {/* Spacer ini menjaga tinggi baris header tetap sama seperti sebelumnya,
+        sehingga alamat di kanan & konten di bawah tidak ikut bergeser */}
               <img
-                src="/images/logo-pelestari.png"
+                src="/logo-pelestari-baru.png"
                 alt="Logo PT Peduli Lestari Indonesia"
-                className="h-14 w-auto object-contain"
+                className="absolute top-1/2 left-0 h-52 w-auto -translate-y-1/2 object-contain"
                 onError={(e) => {
-                  (e.target as HTMLElement).style.display = "none"
+                  ;(e.target as HTMLElement).style.display = "none"
                 }}
               />
-              <div>
-                <h2 className="text-[13pt] font-bold tracking-tight uppercase leading-tight">
-                  PT PEDULI LESTARI INDONESIA
-                </h2>
-                <p className="text-[9pt] italic text-zinc-600">Your Best Solution Partner</p>
-              </div>
             </div>
             <div className="text-right text-[8.5pt] leading-tight text-zinc-800">
               <p>Jalan Raya Jakarta-Bogor No.77</p>
@@ -505,7 +510,7 @@ export default function PerjalananDinasPage() {
 
           {/* Judul Dokumen */}
           <div className="my-4 text-center">
-            <h1 className="text-[12pt] font-bold tracking-wider uppercase underline underline-offset-2">
+            <h1 className="text-[12pt] font-bold tracking-wider uppercase">
               SURAT PERINTAH PERJALANAN DINAS
             </h1>
             <p className="mt-0.5 text-[10.5pt] font-medium">
@@ -516,16 +521,22 @@ export default function PerjalananDinasPage() {
           {/* Yang Bertanda Tangan */}
           <div className="space-y-1">
             <p className="font-bold">Yang bertanda tangan di bawah ini:</p>
-            <div className="ml-4 space-y-0.5">
+            <div className="space-y-0.5">
               <div className="grid grid-cols-[160px_12px_1fr]">
                 <span>Nama</span>
                 <span>:</span>
-                <span className="font-semibold">{printData.manager_nama}</span>
+                <span>
+                  {printData.manager_nama
+                    .toLowerCase()
+                    .split(" ")
+                    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(" ")}
+                </span>
               </div>
               <div className="grid grid-cols-[160px_12px_1fr]">
                 <span>Jabatan</span>
                 <span>:</span>
-                <span>Manajer {printData.manager_divisi}</span>
+                <span>{printData.manager_jabatan}</span>
               </div>
             </div>
           </div>
@@ -533,13 +544,21 @@ export default function PerjalananDinasPage() {
           {/* Memerintahkan Kepada */}
           <div className="mt-3 space-y-1">
             <p className="font-bold">Dengan ini memerintahkan kepada:</p>
-            <div className="ml-4 space-y-2">
+            <div className="space-y-2">
               {printData.anggota.map((ang, idx) => (
                 <div key={idx} className="space-y-0.5">
                   <div className="grid grid-cols-[160px_12px_1fr]">
                     <span>Nama</span>
                     <span>:</span>
-                    <span className="font-semibold">{ang.nama}</span>
+                    <span>
+                      {ang.nama
+                        .toLowerCase()
+                        .split(" ")
+                        .map(
+                          (word) => word.charAt(0).toUpperCase() + word.slice(1)
+                        )
+                        .join(" ")}
+                    </span>{" "}
                   </div>
                   <div className="grid grid-cols-[160px_12px_1fr]">
                     <span>Jabatan</span>
@@ -558,8 +577,11 @@ export default function PerjalananDinasPage() {
 
           {/* Ketentuan Perjalanan */}
           <div className="mt-3 space-y-1">
-            <p>Untuk melaksanakan perjalanan dinas dengan ketentuan sebagai berikut :</p>
-            <div className="ml-4 space-y-0.5">
+            <p>
+              Untuk melaksanakan perjalanan dinas dengan ketentuan sebagai
+              berikut :
+            </p>
+            <div className="space-y-0.5">
               <div className="grid grid-cols-[160px_12px_1fr]">
                 <span>Keperluan</span>
                 <span>:</span>
@@ -581,10 +603,13 @@ export default function PerjalananDinasPage() {
                 <div>
                   <span>
                     {printDuration.totalDays} hari (
-                    {new Date(printData.start_date).toLocaleDateString("id-ID", {
-                      day: "numeric",
-                      month: "long",
-                    })}{" "}
+                    {new Date(printData.start_date).toLocaleDateString(
+                      "id-ID",
+                      {
+                        day: "numeric",
+                        month: "long",
+                      }
+                    )}{" "}
                     s.d{" "}
                     {new Date(printData.end_date).toLocaleDateString("id-ID", {
                       day: "numeric",
@@ -593,8 +618,9 @@ export default function PerjalananDinasPage() {
                     })}
                     )
                   </span>
-                  <p className="text-[10pt] text-zinc-600">
-                    {printDuration.weekdays} Weekday & {printDuration.weekends} Weekend
+                  <p className="text-[10pt]">
+                    {printDuration.weekdays} Weekday & {printDuration.weekends}{" "}
+                    Weekend
                   </p>
                 </div>
               </div>
@@ -603,7 +629,10 @@ export default function PerjalananDinasPage() {
 
           {/* Penutup */}
           <div className="mt-4 space-y-1">
-            <p>Demikian surat perjalanan dinas ini dibuat untuk dapat digunakan sebagaimana mestinya.</p>
+            <p>
+              Demikian surat perjalanan dinas ini dibuat untuk dapat digunakan
+              sebagaimana mestinya.
+            </p>
             <div className="space-y-0.5">
               <div className="grid grid-cols-[160px_12px_1fr]">
                 <span>Dikeluarkan pada</span>
@@ -630,37 +659,76 @@ export default function PerjalananDinasPage() {
 
             {/* Baris 1: Manajer (Kiri) & Karyawan (Kanan) */}
             <div className="flex items-start justify-between px-2">
-              <div className="text-center w-52">
+              <div className="w-52 text-left">
                 <div className="h-16" />
-                <p className="font-bold underline leading-tight">{printData.manager_nama}</p>
-                <p className="text-[10pt] text-zinc-800 leading-tight">
+                <p className="leading-tight font-bold">
+                  {printData.manager_nama
+                    ?.toLowerCase()
+                    .replace(/\b\w/g, (char) => char.toUpperCase())}
+                </p>
+                <p className="text-[10pt] leading-tight text-zinc-800">
                   Manajer {printData.manager_divisi}
                 </p>
               </div>
 
-              <div className="text-center w-52">
+              <div className="w-52 text-left">
                 <div className="h-16" />
-                <p className="font-bold underline leading-tight">
-                  {printData.anggota[0]?.nama || "Karyawan"}
+                <p className="leading-tight font-bold">
+                  {printData.anggota[0]?.nama
+                    ?.toLowerCase()
+                    .replace(/\b\w/g, (char) => char.toUpperCase()) ||
+                    "Karyawan"}
                 </p>
-                <p className="text-[10pt] text-zinc-800 leading-tight">
-                  {printData.anggota[0]?.jabatan || `Divisi ${printData.anggota[0]?.divisi || ""}`}
+                <p className="text-[10pt] leading-tight text-zinc-800">
+                  {printData.anggota[0]?.jabatan}
                 </p>
               </div>
             </div>
 
-            {/* Baris 2: HR & Legal (Tengah Bawah) */}
-            <div className="mt-4 flex justify-center">
-              <div className="text-center w-52">
+            {/* Baris 2: HR & Legal */}
+            <div className="relative mt-4 h-14">
+              <div
+                className="absolute top-0 w-52 text-center"
+                style={{ left: "50%", marginLeft: "-150px" }}
+              >
                 <div className="h-14" />
-                <p className="font-bold underline leading-tight">Ester Femy Iriani</p>
-                <p className="text-[10pt] text-zinc-800 leading-tight">HR & Legal</p>
+                <p className="leading-tight font-bold">Ester Femy Iriani</p>
+                <p className="text-[10pt] leading-tight text-zinc-800">
+                  HR & Legal
+                </p>
               </div>
             </div>
           </div>
+          {/* Garis vertikal dekoratif — pakai SVG supaya tidak kena toggle "Background graphics" browser */}
+          <svg
+            className="pointer-events-none absolute right-0"
+            style={{ top: "28mm", zIndex: 999 }}
+            width="3"
+            height="269mm"
+            viewBox="0 0 3 1000"
+            preserveAspectRatio="none"
+          >
+            <defs>
+              <linearGradient id="sppdLineGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#f5f8fb" />
+                <stop offset="15%" stopColor="#a4bbd9" />
+                <stop offset="30%" stopColor="#1f487d" />
+                <stop offset="50%" stopColor="#13716b" />
+                <stop offset="70%" stopColor="#00853d" />
+                <stop offset="85%" stopColor="#1b9440" />
+                <stop offset="100%" stopColor="#b8e08e" />
+              </linearGradient>
+            </defs>
+            <rect
+              x="0"
+              y="0"
+              width="3"
+              height="1000"
+              fill="url(#sppdLineGradient)"
+            />
+          </svg>
         </div>
       )}
-
       {/* DASHBOARD PAGE KONTEN */}
       <div className="space-y-6 p-6 font-sans">
         {/* HEADER */}
@@ -815,11 +883,14 @@ export default function PerjalananDinasPage() {
                                 { day: "numeric", month: "short" }
                               )}
                               {" - "}
-                              {new Date(p.end_date).toLocaleDateString("id-ID", {
-                                day: "numeric",
-                                month: "short",
-                                year: "numeric",
-                              })}
+                              {new Date(p.end_date).toLocaleDateString(
+                                "id-ID",
+                                {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                }
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="border-r px-6 py-4 text-zinc-700">
@@ -960,7 +1031,14 @@ export default function PerjalananDinasPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {karyawanList
-                        .filter((k) => k.jabatan === "Manager")
+                        .filter((k) => {
+                          const jabatan = (k.jabatan || "").trim().toLowerCase()
+
+                          return (
+                            jabatan.includes("manajer") ||
+                            jabatan.includes("manager")
+                          )
+                        })
                         .map((k) => (
                           <SelectItem key={k.nip} value={k.nip}>
                             {k.nama} - {k.nip}
@@ -1055,7 +1133,9 @@ export default function PerjalananDinasPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setKaryawanDropdownOpen(!karyawanDropdownOpen)}
+                    onClick={() =>
+                      setKaryawanDropdownOpen(!karyawanDropdownOpen)
+                    }
                     className="h-9 w-full justify-between rounded-sm border-zinc-300 text-xs font-semibold"
                   >
                     <span>
@@ -1200,9 +1280,9 @@ export default function PerjalananDinasPage() {
                       Periode
                     </span>
                     <span className="font-semibold text-zinc-800">
-                      {new Date(selectedPerjalanan.start_date).toLocaleDateString(
-                        "id-ID"
-                      )}{" "}
+                      {new Date(
+                        selectedPerjalanan.start_date
+                      ).toLocaleDateString("id-ID")}{" "}
                       -{" "}
                       {new Date(selectedPerjalanan.end_date).toLocaleDateString(
                         "id-ID"
@@ -1269,7 +1349,7 @@ export default function PerjalananDinasPage() {
                   <Button
                     onClick={() => handlePrint(selectedPerjalanan)}
                     variant="outline"
-                    className="h-9 rounded-sm border-zinc-300 text-xs font-semibold gap-1.5"
+                    className="h-9 gap-1.5 rounded-sm border-zinc-300 text-xs font-semibold"
                   >
                     <Printer className="h-4 w-4" /> Cetak SPPD
                   </Button>
