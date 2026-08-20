@@ -16,16 +16,15 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import {
-  LayoutDashboardIcon,
-  FileTextIcon,
-  Settings2Icon,
-  CommandIcon,
-  FolderIcon,
-  ShoppingCartIcon,
-  FileText,
-  Package,
-  Wrench,
+  LayoutDashboard,
   Users,
+  Store,
+  History,
+  Receipt,
+  FileSpreadsheet,
+  PackageSearch,
+  Building2,
+  Settings2,
 } from "lucide-react"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -45,8 +44,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const navMainData = [
     {
       title: "Dashboard",
-      url: dashboardUrl, // Menggunakan URL dinamis hasil saringan di atas
-      icon: <LayoutDashboardIcon />,
+      url: dashboardUrl,
+      icon: <LayoutDashboard />,
     },
     {
       title: "Karyawan",
@@ -70,7 +69,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     {
       title: "Point of Sale",
       url: "#",
-      icon: <CommandIcon />,
+      icon: <Store />,
       isActive: true,
       roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
@@ -86,7 +85,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     {
       title: "Riwayat Transaksi",
       url: "#",
-      icon: <CommandIcon />,
+      icon: <History />,
       isActive: true,
       roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
@@ -97,13 +96,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     {
       title: "Invoice",
       url: "#",
-      icon: <FolderIcon />,
+      icon: <Receipt />,
       roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [{ title: "Invoice", url: "/dashboard/finance/invoices" }],
     },
     {
       title: "Laporan",
-      icon: <FileTextIcon />,
+      icon: <FileSpreadsheet />,
       url: "#",
       roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
@@ -120,7 +119,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     {
       title: "Tracking",
       url: "#",
-      icon: <CommandIcon />,
+      icon: <PackageSearch />,
       isActive: true,
       roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
@@ -133,16 +132,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     {
       title: "Facility Management",
       url: "#",
-      icon: <Package />,
+      icon: <Building2 />,
       roles: ["ADMIN", "GA"],
-      items: [{ title: "Purchase Order", url: "/dashboard/ga/purchase-order"},
-        {title: "Asset", url: "/dashboard/ga/asset"},
-        {title: "Utilities", url: "/dashboard/ga/utilities"},
+      items: [
+        { title: "Purchase Order", url: "/dashboard/ga/purchase-order" },
+        { title: "Asset", url: "/dashboard/ga/asset" },
+        { title: "Utilities", url: "/dashboard/ga/utilities" },
       ],
     },
   ]
 
-  // Saring menu berdasarkan role setelah data URL dashboard di-set
   const filteredNavMain = navMainData.filter((menu) => {
     if (!menu.roles) return true
     if (status === "loading") return false
@@ -153,7 +152,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     {
       title: "Account Settings",
       url: "/dashboard/account",
-      icon: <Settings2Icon />,
+      icon: <Settings2 />,
     },
   ]
 
