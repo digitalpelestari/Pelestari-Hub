@@ -47,6 +47,7 @@ import {
   deleteKaryawanAction,
   KaryawanData,
 } from "@/app/actions/karyawan"
+import { swal } from "@/lib/sweetalert"
 
 const initialForm: KaryawanData = {
   nip: "",
@@ -168,27 +169,29 @@ export default function KaryawanPage() {
       if (editMode) {
         const res = await updateKaryawanAction(formData.nip, formData)
         if (!res.success) throw new Error(res.message)
+        swal.success("Data karyawan berhasil diperbarui")
       } else {
         const res = await createKaryawanAction(formData)
         if (!res.success) throw new Error(res.message)
+        swal.success("Data karyawan berhasil ditambahkan")
       }
       await fetchData()
       setIsModalOpen(false)
     } catch (err: any) {
-      alert(err.message || "Terjadi kesalahan")
+      swal.error(err.message || "Terjadi kesalahan")
     } finally {
       setSubmitting(false)
     }
   }
 
   const handleDelete = async (nip: string) => {
-    if (!confirm(`Hapus data karyawan dengan NIP ${nip}?`)) return
+    if (!(await swal.confirm(`Hapus data karyawan dengan NIP ${nip}?`))) return
     try {
       const res = await deleteKaryawanAction(nip)
       if (!res.success) throw new Error(res.message)
       await fetchData()
     } catch (err: any) {
-      alert(err.message || "Gagal menghapus karyawan")
+      swal.error(err.message || "Gagal menghapus karyawan")
     }
   }
 
