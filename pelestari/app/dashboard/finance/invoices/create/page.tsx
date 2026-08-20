@@ -11,17 +11,19 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { 
   ArrowLeft, Save, Loader2, Calculator, Hash, 
-  AlertCircle, ShieldCheck, List, Building2, Landmark
+  ShieldCheck, List, Building2, UploadCloud, FileText, CheckCircle2, Trash2
 } from "lucide-react"
 import Link from "next/link"
 import { createInvoice, getNextInvoiceNumber } from "@/app/actions/invoice"
+import { uploadFileToR2Action } from "@/app/actions/upload-r2"
 import { swal } from "@/lib/sweetalert"
 
 export default function CreateInvoicePage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [uploadingCL, setUploadingCL] = useState(false)
+  const [clFileName, setClFileName] = useState("")
   
-  // SEMUA KOLOM DATABASE ADA DI SINI
   const [formData, setFormData] = useState({
     nomor_invoice: "",
     batch: "",
@@ -31,6 +33,8 @@ export default function CreateInvoicePage() {
     perusahaan_tujuan: "",
     npwp: "",
     alamat_perusahaan: "",
+    file_faktur: "",
+    cl: "", // Sesuai nama kolom di DB
     // BARIS 1
     keterangan: "",
     jumlah_peserta: 0,
@@ -46,7 +50,6 @@ export default function CreateInvoicePage() {
     status: "Belum Lunas"
   })
 
-  // GENERATE NOMOR INVOICE OTOMATIS SAAT HALAMAN DIBUKA
   useEffect(() => {
     const syncInvoiceNumber = async () => {
       const nextId = await getNextInvoiceNumber(); 
@@ -61,7 +64,6 @@ export default function CreateInvoicePage() {
     syncInvoiceNumber();
   }, []);
 
-  // KALKULASI OTOMATIS (BARIS 1 + BARIS 2)
   const calculation = useMemo(() => {
     const sub1 = formData.jumlah_peserta * formData.harga_peserta;
     const sub2 = formData.jumlah_peserta_2 * formData.harga_peserta_2;
@@ -88,12 +90,41 @@ export default function CreateInvoicePage() {
     setFormData({ ...formData, [key]: cleanValue === "" ? 0 : parseInt(cleanValue) });
   };
 
+  const handleFileUploadCL = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingCL(true)
+    const form = new FormData()
+    form.append("file", file)
+
+    try {
+      const res = await uploadFileToR2Action(form)
+      if (res.success && res.url) {
+        setFormData(prev => ({ ...prev, cl: res.url }))
+        setClFileName(res.fileName || file.name)
+        swal.success("File CL berhasil diunggah ke Cloudflare R2!")
+      } else {
+        swal.error(res.message || "Gagal mengunggah file CL")
+      }
+    } catch (err: any) {
+      swal.error("Terjadi error saat upload: " + err.message)
+    } finally {
+      setUploadingCL(false)
+    }
+  }
+
+  const handleRemoveCL = () => {
+    setFormData(prev => ({ ...prev, cl: "" }))
+    setClFileName("")
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // VALIDASI MINIMAL
     if (!formData.perusahaan_tujuan || !formData.tanggal_jatuhtempo || !formData.keterangan) {
       swal.warning("KOLOM WAJIB: [Perusahaan, Jatuh Tempo, & Keterangan 1] Harus Diisi!")
+      return
     }
     
     setLoading(true);
@@ -135,7 +166,7 @@ export default function CreateInvoicePage() {
         </div>
         <Button 
           onClick={handleSubmit} 
-          disabled={loading} 
+          disabled={loading || uploadingCL} 
           className="bg-black text-white hover:bg-zinc-800 shadow-2xl px-12 h-14 rounded-2xl font-black italic transition-all active:scale-95"
         >
           {loading ? <Loader2 className="animate-spin mr-2 h-5 w-5" /> : <Save className="mr-2 h-5 w-5" />}
@@ -163,27 +194,27 @@ export default function CreateInvoicePage() {
                   <Label className="text-[11px] font-black uppercase italic">Batch *</Label>
                   <Input placeholder="Contoh: 01" value={formData.batch} onChange={(e) => setFormData({...formData, batch: e.target.value})} className="h-11" />
                 </div>
-                <div className="grid grid-cols-2 gap-5 mt-5">
-  <div className="space-y-2 col-span-2">
-    <Label className="text-[11px] font-black uppercase italic">Jenis Kegiatan</Label>
-    <div className="flex gap-3">
-      {["Pelatihan", "Konsultan"].map((item) => (
-        <button
-          key={item}
-          type="button"
-          onClick={() => setFormData({ ...formData, jenis_kegiatan: item })}
-          className={`flex-1 h-12 rounded-xl border-2 font-black italic uppercase transition-all ${
-            formData.jenis_kegiatan === item
-              ? "border-black bg-black text-white shadow-lg scale-[1.02]"
-              : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300"
-          }`}
-        >
-          {item}
-        </button>
-      ))}
-    </div>
-  </div>
-</div>
+                <div className="grid grid-cols-2 gap-5 mt-5 col-span-2">
+                  <div className="space-y-2 col-span-2">
+                    <Label className="text-[11px] font-black uppercase italic">Jenis Kegiatan</Label>
+                    <div className="flex gap-3">
+                      {["Pelatihan", "Konsultan"].map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, jenis_kegiatan: item })}
+                          className={`flex-1 h-12 rounded-xl border-2 font-black italic uppercase transition-all ${
+                            formData.jenis_kegiatan === item
+                              ? "border-black bg-black text-white shadow-lg scale-[1.02]"
+                              : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300"
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-5">
                 <div className="space-y-2">
@@ -216,6 +247,80 @@ export default function CreateInvoicePage() {
                 <Label className="text-[11px] font-black uppercase italic">Alamat Lengkap</Label>
                 <Textarea placeholder="Alamat Perusahaan" value={formData.alamat_perusahaan} onChange={(e) => setFormData({...formData, alamat_perusahaan: e.target.value})} className="h-11" />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* UPLOAD FILE CL (CLOUDFLARE R2) */}
+          <Card className="border-none shadow-sm ring-1 ring-zinc-200">
+            <CardHeader className="bg-zinc-50/50 border-b py-3 font-black text-[10px] uppercase tracking-widest text-zinc-400 flex flex-row items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <UploadCloud className="h-3.5 w-3.5 text-blue-600" />
+                <span>Upload Confirmation Letter (CL)</span>
+              </div>
+              <span className="text-[8px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-black italic">CLOUDFLARE R2</span>
+            </CardHeader>
+            <CardContent className="p-6">
+              {!formData.cl ? (
+                <div className="relative border-2 border-dashed border-zinc-300 hover:border-black rounded-2xl p-6 text-center transition-colors bg-zinc-50/50">
+                  <input
+                    type="file"
+                    id="cl_input"
+                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                    disabled={uploadingCL}
+                    onChange={handleFileUploadCL}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full disabled:cursor-not-allowed"
+                  />
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    {uploadingCL ? (
+                      <>
+                        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                        <p className="text-xs font-bold text-zinc-600">Mengunggah ke Cloudflare R2...</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="p-3 bg-white rounded-full shadow-sm border border-zinc-200 text-zinc-500">
+                          <UploadCloud className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-tight text-zinc-800">Klik atau Drag file CL ke sini</p>
+                          <p className="text-[10px] text-zinc-400 font-medium">Format PDF, JPG, PNG, atau DOCX (Maks 10MB)</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-emerald-500 text-white rounded-xl">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-zinc-800">{clFileName || "File CL Terunggah"}</p>
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      </div>
+                      <a
+                        href={formData.cl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-bold text-blue-600 hover:underline uppercase italic"
+                      >
+                        Lihat File Tersimpan
+                      </a>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRemoveCL}
+                    className="h-8 w-8 p-0 rounded-full hover:bg-rose-100 hover:text-rose-600 text-zinc-400"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -333,7 +438,7 @@ export default function CreateInvoicePage() {
 
               <Button 
                 onClick={handleSubmit} 
-                disabled={loading} 
+                disabled={loading || uploadingCL} 
                 className="w-full bg-emerald-500 text-black hover:bg-emerald-400 h-20 text-2xl font-black rounded-[1.5rem] mt-6 transition-all shadow-[0_10px_20px_rgba(16,185,129,0.3)] active:scale-95 italic uppercase tracking-tighter"
               >
                 {loading ? <Loader2 className="animate-spin" /> : "KONFIRMASI"}

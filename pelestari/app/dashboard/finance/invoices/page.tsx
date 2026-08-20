@@ -4,7 +4,8 @@ import React, { useState, useMemo, useEffect, useRef } from "react"
 import { 
   Plus, Search, Pencil, Trash2, Eye, Printer, 
   CreditCard, Users, Clock, ChevronDown, Layers, FilterX, Loader2, CheckCircle2,
-  FileText, Wallet, AlertCircle, FileUp, FileDown, Paperclip, Calendar
+  FileText, Wallet, AlertCircle, FileUp, FileDown, Paperclip, Calendar,
+  ExternalLink, UploadCloud, FileCheck
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,7 +31,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { deleteInvoice, getInvoices, importInvoices } from "@/app/actions/invoice"
+import { deleteInvoice, getInvoices, importInvoices, updateInvoiceFile } from "@/app/actions/invoice"
+import { uploadFileToR2Action } from "@/app/actions/upload-r2"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
 
@@ -56,8 +58,9 @@ export default function InvoiceListPage() {
   const [isImporting, setIsImporting] = useState(false)
   const [printData, setPrintData] = useState<any>(null)
 
-  // State pembantu penanda invoice mana yang sedang memproses upload faktur
-  const [uploadingInvoiceId, setUploadingInvoiceId] = useState<string | null>(null)
+  // State penanda proses upload
+  const [uploadingFakturId, setUploadingFakturId] = useState<string | null>(null)
+  const [uploadingCLId, setUploadingCLId] = useState<string | null>(null)
 
   const loadData = async () => {
     setLoading(true)
@@ -74,7 +77,6 @@ export default function InvoiceListPage() {
       id: inv.id, 
       nomor_invoice: inv.nomor_invoice,
       batch: inv.batch || "N/A",
-      // Simpan objek tanggal mentah untuk komparasi filter kalender yang akurat
       raw_tanggal: inv.tanggal ? inv.tanggal : null,
       tanggal: inv.tanggal ? new Date(inv.tanggal).toLocaleDateString('id-ID') : "-",
       tanggal_jatuh_tempo: inv.tanggal_jatuhtempo ? new Date(inv.tanggal_jatuhtempo).toLocaleDateString('id-ID') : "-",
@@ -90,6 +92,7 @@ export default function InvoiceListPage() {
       status: inv.status || "Belum Lunas",
       umur_piutang: inv.umur_piutang || 0,
       file_faktur: inv.file_faktur || null, 
+      cl: inv.cl || null, // Field CL dari Cloudflare R2
     }))
     
     setInvoices(formattedData)
@@ -111,14 +114,16 @@ export default function InvoiceListPage() {
     const res = await deleteInvoice(id);
     if (res.success) {
       setInvoices(prev => prev.filter(inv => inv.id !== id));
+      swal.success("Invoice berhasil dihapus!");
     } else {
       swal.error("Gagal menghapus data: " + (res.message || ""))
     }
   };
 
+  // HANDLER UPLOAD FAKTUR
   const handleUploadFakturClick = (invoiceId: string) => {
-    const pemicuInput = document.getElementById(`faktur-input-${invoiceId}`) as HTMLInputElement;
-    if (pemicuInput) pemicuInput.click();
+    const el = document.getElementById(`faktur-input-${invoiceId}`) as HTMLInputElement;
+    if (el) el.click();
   };
 
   const handleFakturFileChange = async (e: React.ChangeEvent<HTMLInputElement>, invoiceId: string) => {
@@ -126,37 +131,66 @@ export default function InvoiceListPage() {
     if (!file) return;
 
     if (file.type !== "application/pdf") {
-      swal.warning("Format berkas harus berupa PDF!")
+      swal.warning("Format berkas faktur harus berupa PDF!")
       return;
     }
 
-    setUploadingInvoiceId(invoiceId);
+    setUploadingFakturId(invoiceId);
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const res = { success: true, message: "Faktur PDF Berhasil Diunggah!" };
-        
-        if (res.success) {
-          swal.success(res.message)
-          setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, file_faktur: file.name } : inv));
-        } else {
-          swal.error("Gagal mengunggah faktur");
-        }
-      } catch (err) {
-        swal.error("Terjadi kesalahan sistem saat mengunggah.");
-      } finally {
-        setUploadingInvoiceId(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const resR2 = await uploadFileToR2Action(formData);
+
+      if (resR2.success && resR2.url) {
+        await updateInvoiceFile(invoiceId, "file_faktur", resR2.url);
+        setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, file_faktur: resR2.url } : inv));
+        swal.success("Faktur PDF berhasil diunggah!");
+      } else {
+        swal.error(resR2.message || "Gagal mengunggah faktur");
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      swal.error("Terjadi kesalahan sistem saat mengunggah.");
+    } finally {
+      setUploadingFakturId(null);
+    }
+  };
+
+  // HANDLER UPLOAD CL (CLOUDFLARE R2)
+  const handleUploadCLClick = (invoiceId: string) => {
+    const el = document.getElementById(`cl-input-${invoiceId}`) as HTMLInputElement;
+    if (el) el.click();
+  };
+
+  const handleCLFileChange = async (e: React.ChangeEvent<HTMLInputElement>, invoiceId: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingCLId(invoiceId);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const resR2 = await uploadFileToR2Action(formData);
+
+      if (resR2.success && resR2.url) {
+        await updateInvoiceFile(invoiceId, "cl", resR2.url);
+        setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, cl: resR2.url } : inv));
+        swal.success("File Confirmation Letter (CL) berhasil disimpan!");
+      } else {
+        swal.error(resR2.message || "Gagal mengunggah file CL");
+      }
+    } catch (err) {
+      swal.error("Terjadi kesalahan sistem saat mengunggah.");
+    } finally {
+      setUploadingCLId(null);
+    }
   };
 
   const uniqueBatches = useMemo(() => {
     return Array.from(new Set(invoices.map(inv => inv.batch).filter(Boolean)))
   }, [invoices])
 
-  // LOGIKA FILTERING DATA TABLE
   const filteredInvoices = useMemo(() => {
     return invoices.filter(inv => {
       const nomerInv = inv.nomor_invoice ? inv.nomor_invoice.toLowerCase() : "";
@@ -164,17 +198,14 @@ export default function InvoiceListPage() {
       const ket = inv.keterangan ? inv.keterangan.toLowerCase() : "";
       const targetCari = searchQuery.toLowerCase();
 
-      // 1. Filter Searching Text
       const matchesSearch = 
         nomerInv.includes(targetCari) || 
-        ptTujuan.includes(targetCari) ||
+        ptTujuan.includes(targetCari) || 
         ket.includes(targetCari);
       
-      // 2. Filter Dropdown Seleksi Status & Batch
       const matchesStatus = !filterStatus || filterStatus === "ALL" || inv.status === filterStatus
       const matchesBatch = !filterBatch || filterBatch === "ALL" || inv.batch === filterBatch
       
-      // 3. Filter Rentang Kalender Tanggal Pembuatan Invoice
       let matchesDateRange = true;
       if (inv.raw_tanggal) {
         const invDateStr = new Date(inv.raw_tanggal).toISOString().split("T")[0];
@@ -265,7 +296,7 @@ export default function InvoiceListPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900 font-sans">Daftar Invoice Pelestari</h1>
-          <p className="text-sm text-muted-foreground italic tracking-wide">Data sinkron otomatis dengan database MySQL.</p>
+          <p className="text-sm text-muted-foreground italic tracking-wide">Data sinkron otomatis dengan database MySQL & Cloudflare R2.</p>
         </div>
         
         <div className="print:hidden flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -437,14 +468,15 @@ export default function InvoiceListPage() {
                   <TableHeader className="bg-zinc-100/80">
                     <TableRow className="text-xs uppercase tracking-wider border-b border-zinc-200">
                       <TableHead className="font-bold py-4 px-6 border-r text-zinc-700">No. Invoice</TableHead>
-                      <TableHead className="font-bold border-r w-[110px] text-zinc-700 text-center">Batch</TableHead>
-                      <TableHead className="font-bold border-r w-[130px] text-zinc-700">Jatuh Tempo</TableHead>
+                      <TableHead className="font-bold border-r w-[90px] text-zinc-700 text-center">Batch</TableHead>
+                      <TableHead className="font-bold border-r w-[120px] text-zinc-700">Jatuh Tempo</TableHead>
                       <TableHead className="font-bold border-r text-zinc-700">Tujuan</TableHead>
                       <TableHead className="font-bold border-r text-zinc-700">Layanan</TableHead>
-                      <TableHead className="font-bold border-r w-[160px] text-zinc-700">Tagihan</TableHead>
-                      <TableHead className="font-bold border-r w-[160px] text-zinc-700">Sisa Tagihan</TableHead>
-                      <TableHead className="font-bold border-r w-[130px] text-zinc-700">Status</TableHead>
-                      <TableHead className="font-bold text-center w-[200px] text-zinc-700">Opsi</TableHead>
+                      <TableHead className="font-bold border-r w-[150px] text-zinc-700">Tagihan</TableHead>
+                      <TableHead className="font-bold border-r w-[150px] text-zinc-700">Sisa Tagihan</TableHead>
+                      <TableHead className="font-bold border-r w-[120px] text-zinc-700 text-center">Berkas</TableHead>
+                      <TableHead className="font-bold border-r w-[110px] text-zinc-700 text-center">Status</TableHead>
+                      <TableHead className="font-bold text-center w-[180px] text-zinc-700">Opsi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -513,8 +545,73 @@ export default function InvoiceListPage() {
                             </div>
                           </TableCell>
 
+                          {/* KOLOM BERKAS (FAKTUR & CL) */}
+                          <TableCell className="border-r py-5 text-center px-2">
+                            <div className="flex flex-col gap-1.5 items-center justify-center">
+                              
+                              {/* 1. Berkas Faktur */}
+                              <div className="flex items-center gap-1">
+                                <input 
+                                  type="file" 
+                                  id={`faktur-input-${inv.id}`} 
+                                  accept="application/pdf" 
+                                  className="hidden" 
+                                  onChange={(e) => handleFakturFileChange(e, inv.id)} 
+                                />
+                                {inv.file_faktur ? (
+                                  <a href={inv.file_faktur} target="_blank" rel="noreferrer" title="Buka Faktur">
+                                    <Badge variant="outline" className="cursor-pointer bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 text-[9px] font-bold px-1.5 py-0.5 rounded-sm flex items-center gap-1">
+                                      <FileDown className="h-3 w-3" /> Faktur
+                                    </Badge>
+                                  </a>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={uploadingFakturId === inv.id}
+                                    onClick={() => handleUploadFakturClick(inv.id)}
+                                    className="text-[9px] font-semibold text-zinc-400 hover:text-blue-600 flex items-center gap-1 hover:underline"
+                                    title="Upload Faktur"
+                                  >
+                                    {uploadingFakturId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paperclip className="h-3 w-3" />}
+                                    + Faktur
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* 2. Berkas CL (Confirmation Letter) */}
+                              <div className="flex items-center gap-1">
+                                <input 
+                                  type="file" 
+                                  id={`cl-input-${inv.id}`} 
+                                  accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" 
+                                  className="hidden" 
+                                  onChange={(e) => handleCLFileChange(e, inv.id)} 
+                                />
+                                {inv.cl ? (
+                                  <a href={inv.cl} target="_blank" rel="noreferrer" title="Buka File CL">
+                                    <Badge variant="outline" className="cursor-pointer bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 text-[9px] font-bold px-1.5 py-0.5 rounded-sm flex items-center gap-1">
+                                      <FileCheck className="h-3 w-3" /> CL
+                                    </Badge>
+                                  </a>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={uploadingCLId === inv.id}
+                                    onClick={() => handleUploadCLClick(inv.id)}
+                                    className="text-[9px] font-semibold text-zinc-400 hover:text-emerald-600 flex items-center gap-1 hover:underline"
+                                    title="Upload File CL"
+                                  >
+                                    {uploadingCLId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UploadCloud className="h-3 w-3" />}
+                                    + CL
+                                  </button>
+                                )}
+                              </div>
+
+                            </div>
+                          </TableCell>
+
                           <TableCell className="border-r text-center py-5">
-                            <Badge className={`h-7 px-3 text-[9px] font-black uppercase tracking-widest shadow-none rounded-sm ${
+                            <Badge className={`h-7 px-2.5 text-[9px] font-black uppercase tracking-wider shadow-none rounded-sm ${
                                 inv.status === "Lunas" 
                                   ? "bg-emerald-500 text-white" 
                                   : (inv.bayar_1 > 0) 
@@ -524,7 +621,7 @@ export default function InvoiceListPage() {
                               {inv.status === "Lunas" ? (
                                 <><CheckCircle2 className="w-3 h-3 mr-1" /> Lunas</>
                               ) : (inv.bayar_1 > 0) ? (
-                                <><Clock className="w-3 h-3 mr-1" /> Dibayar Sebagian</>
+                                <><Clock className="w-3 h-3 mr-1" /> Sebagian</>
                               ) : (
                                 <><Clock className="w-3 h-3 mr-1" /> Belum Lunas</>
                               )}
@@ -534,42 +631,8 @@ export default function InvoiceListPage() {
                           <TableCell className="text-center py-5 px-4">
                             <div className="flex items-center justify-center gap-0.5 text-zinc-400">
                               
-                              {/* === TOMBOL UPLOAD / DOWNLOAD FAKTUR PDF === */}
-                              <div className="relative">
-                                <input 
-                                  type="file" 
-                                  id={`faktur-input-${inv.id}`} 
-                                  accept="application/pdf" 
-                                  className="hidden" 
-                                  onChange={(e) => handleFakturFileChange(e, inv.id)} 
-                                />
-                                
-                                {inv.file_faktur ? (
-                                  <a href={`/uploads/faktur/${inv.file_faktur}`} download title={`Download Faktur: ${inv.file_faktur}`}>
-                                    <Button size="sm" variant="ghost" className="h-8 w-8 text-blue-600 hover:bg-blue-50 p-0 rounded-sm">
-                                      <FileDown className="h-4 w-4" />
-                                    </Button>
-                                  </a>
-                                ) : (
-                                  <Button 
-                                    size="sm" 
-                                    variant="ghost" 
-                                    disabled={uploadingInvoiceId === inv.id}
-                                    onClick={() => handleUploadFakturClick(inv.id)}
-                                    className="h-8 w-8 text-zinc-400 hover:text-black hover:bg-zinc-100 p-0 rounded-sm"
-                                    title="Upload Faktur PDF"
-                                  >
-                                    {uploadingInvoiceId === inv.id ? (
-                                      <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
-                                    ) : (
-                                      <Paperclip className="h-4 w-4" />
-                                    )}
-                                  </Button>
-                                )}
-                              </div>
-
                               <Link href={`/dashboard/finance/invoices/${inv.id}/bayar`}>
-                                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black italic rounded-sm h-8 px-3">
+                                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black italic rounded-sm h-8 px-2.5">
                                   <CreditCard className="w-3 h-3 mr-1" /> BAYAR
                                 </Button>
                               </Link>
@@ -597,7 +660,7 @@ export default function InvoiceListPage() {
                               </Button>
 
                               <AlertDialog>
-                                <AlertDialogTrigger >
+                                <AlertDialogTrigger>
                                   <Button 
                                     variant="ghost" 
                                     size="icon" 
@@ -632,7 +695,7 @@ export default function InvoiceListPage() {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={9} className="py-24 text-center text-zinc-400 italic font-sans">
+                        <TableCell colSpan={10} className="py-24 text-center text-zinc-400 italic font-sans">
                           Tidak ada data invoice yang ditemukan dalam database.
                         </TableCell>
                       </TableRow>

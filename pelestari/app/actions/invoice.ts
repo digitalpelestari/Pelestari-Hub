@@ -10,26 +10,28 @@ import { randomUUID } from "crypto";
 export async function importInvoices(dataArray: any[]) {
   try {
     for (const item of dataArray) {
-      const newInvoiceId = randomUUID(); // Generate UUID untuk setiap baris excel
+      const newInvoiceId = randomUUID();
 
       const query = `INSERT INTO tb_invoice (
         id, nomor_invoice, batch, jenis_kegiatan, tanggal, tanggal_jatuhtempo, 
-        perusahaan_tujuan, npwp, alamat_perusahaan, keterangan, 
+        perusahaan_tujuan, npwp, alamat_perusahaan, file_faktur, cl, keterangan, 
         jumlah_peserta, harga_peserta, keterangan_2, jumlah_peserta_2, 
         harga_peserta_2, is_pph23, is_ppn11, is_pnbp, nominal_pnbp, 
         total, status, bayar_1, bayar_2
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
       const values = [
-        newInvoiceId, // Suntikkan UUID manual
+        newInvoiceId,
         item.nomor_invoice,
         item.batch || "N/A",
         item.jenis_kegiatan || "-", 
-        item.tanggal, // Format wajib YYYY-MM-DD
+        item.tanggal,
         item.tanggal_jatuhtempo,
         item.perusahaan_tujuan,
         item.npwp || "-",
         item.alamat_perusahaan || "-",
+        item.file_faktur || null,
+        item.cl || null,
         item.keterangan || "-",
         Number(item.jumlah_peserta) || 0,
         Number(item.harga_peserta) || 0,
@@ -58,7 +60,7 @@ export async function importInvoices(dataArray: any[]) {
 }
 
 // =========================================================================
-// 2. FUNGSI: AMBIL URUTAN (Dipertahankan jika aplikasi frontend membutuhkan)
+// 2. FUNGSI: AMBIL URUTAN NOMOR INVOICE
 // =========================================================================
 export async function getNextInvoiceNumber() {
   try {
@@ -72,7 +74,7 @@ export async function getNextInvoiceNumber() {
 }
 
 // =========================================================================
-// 3. FUNGSI: TAMBAH INVOICE FORM (SISI SERVER)
+// 3. FUNGSI: TAMBAH INVOICE FORM
 // =========================================================================
 export async function createInvoice(formData: any) {
   const connection = await db.getConnection();
@@ -80,9 +82,8 @@ export async function createInvoice(formData: any) {
   try {
     await connection.beginTransaction();
 
-    const newInvoiceId = randomUUID(); // 1. Buat UUID string unik di sini
+    const newInvoiceId = randomUUID();
 
-    // 2. Simpan Data Utama ke Tabel tb_invoice (Tambahkan kolom id di insert query)
     const queryInvoice = `INSERT INTO tb_invoice (
       id,
       nomor_invoice, 
@@ -93,6 +94,8 @@ export async function createInvoice(formData: any) {
       perusahaan_tujuan, 
       npwp, 
       alamat_perusahaan, 
+      file_faktur,
+      cl,
       keterangan, 
       jumlah_peserta, 
       harga_peserta, 
@@ -109,10 +112,10 @@ export async function createInvoice(formData: any) {
       bayar_2,
       tanggal_bayar_2,
       status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
     const valuesInvoice = [
-      newInvoiceId, // 3. Masukkan data UUID ke urutan parameter pertama (?)
+      newInvoiceId,
       formData.nomor_invoice,
       formData.batch,
       formData.tanggal,
@@ -121,6 +124,8 @@ export async function createInvoice(formData: any) {
       formData.perusahaan_tujuan,
       formData.npwp,
       formData.alamat_perusahaan,
+      formData.file_faktur || null,
+      formData.cl || null,
       formData.keterangan,
       formData.jumlah_peserta,
       formData.harga_peserta,
@@ -141,7 +146,6 @@ export async function createInvoice(formData: any) {
 
     await connection.query(queryInvoice, valuesInvoice);
 
-    // --- SINKRONISASI SALDO MASTER AKUN PIUTANG ---
     const akunPiutang = "12100"; 
     await connection.query(
       "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = ?", 
@@ -162,7 +166,7 @@ export async function createInvoice(formData: any) {
 }
 
 // =========================================================================
-// 4. FUNGSI: HAPUS DATA INVOICE (id diubah bertipe data string)
+// 4. FUNGSI: HAPUS DATA INVOICE
 // =========================================================================
 export async function deleteInvoice(id: string) {
   try {
@@ -177,16 +181,16 @@ export async function deleteInvoice(id: string) {
 }
 
 // =========================================================================
-// 5. FUNGSI: UPDATE / EDIT INVOICE DATA (id diubah bertipe data string)
+// 5. FUNGSI: UPDATE / EDIT INVOICE DATA
 // =========================================================================
 export async function updateInvoice(id: string, data: any) {
   try {
     const query = `
       UPDATE tb_invoice SET 
         batch = ?, jenis_kegiatan = ?, perusahaan_tujuan = ?, npwp = ?, alamat_perusahaan = ?, 
-        keterangan = ?, jumlah_peserta = ?, harga_peserta = ?, 
+        file_faktur = ?, cl = ?, keterangan = ?, jumlah_peserta = ?, harga_peserta = ?, 
         keterangan_2 = ?, jumlah_peserta_2 = ?, harga_peserta_2 = ?, 
-        is_pph23 = ?, is_ppn11 = ?, is_pnbp = ?, nominal_pnbp = ?,
+        is_pph23 = ?, is_ppn11 = ?, is_pnbp = ?, nominal_pnbp = ?, 
         bayar_1 = ?, tanggal_bayar_1 = ?, 
         bayar_2 = ?, tanggal_bayar_2 = ?, 
         total = ?, status = ? 
@@ -195,6 +199,8 @@ export async function updateInvoice(id: string, data: any) {
 
     const values = [
       data.batch, data.jenis_kegiatan, data.perusahaan_tujuan, data.npwp, data.alamat_perusahaan,
+      data.file_faktur || null,
+      data.cl || null,
       data.keterangan, data.jumlah_peserta, data.harga_peserta,
       data.keterangan_2 || null, data.jumlah_peserta_2 || 0, data.harga_peserta_2 || 0,
       data.is_pph23 ? 1 : 0, data.is_ppn11 ? 1 : 0, data.is_pnbp ? 1 : 0, data.nominal_pnbp || 0,
@@ -214,7 +220,7 @@ export async function updateInvoice(id: string, data: any) {
 }
 
 // =========================================================================
-// 6. FUNGSI: DETEKSI DETIL INVOICE BY ID (id diubah bertipe data string)
+// 6. FUNGSI: DETEKSI DETIL INVOICE BY ID
 // =========================================================================
 export async function getInvoiceById(id: string) {
   try {
@@ -256,7 +262,7 @@ export async function getInvoices() {
 }
 
 // =========================================================================
-// 8. FUNGSI: UPDATE DATA MANUAL PEMBAYARAN (id diubah bertipe data string)
+// 8. FUNGSI: UPDATE DATA MANUAL PEMBAYARAN
 // =========================================================================
 export async function updatePayment(id: string, data: any) {
   try {
@@ -281,8 +287,25 @@ export async function updatePayment(id: string, data: any) {
   }
 }
 
+export async function updateInvoiceFile(
+  id: string,
+  field: "file_faktur" | "cl",
+  fileUrl: string
+) {
+  try {
+    const query = `UPDATE tb_invoice SET ${field} = ? WHERE id = ?`;
+    await db.query(query, [fileUrl, id]);
+    revalidatePath("/dashboard/finance/invoices");
+    return { success: true };
+  } catch (error: any) {
+    console.error("UPDATE_FILE_ERROR:", error.message);
+    return { success: false, message: error.message };
+  }
+}
+
+
 // =========================================================================
-// 9. FUNGSI: PROSES BAYAR INVOICE SAJA (UPDATE INVOICE TANPA JURNAL/NERACA)
+// 9. FUNGSI: PROSES BAYAR INVOICE SAJA
 // =========================================================================
 export async function prosesBayarInvoiceSaja(payload: {
   invoiceId: string;
@@ -315,7 +338,6 @@ export async function prosesBayarInvoiceSaja(payload: {
 
     await db.query(updateInvoiceQuery, updateParams);
     
-    // Refresh halaman invoice agar statusnya langsung berubah di tabel frontend
     revalidatePath("/dashboard/finance/invoices");
 
     return { 
@@ -327,4 +349,6 @@ export async function prosesBayarInvoiceSaja(payload: {
     console.error("PROSES_BAYAR_ERROR:", error.message);
     return { success: false, message: "Gagal memproses pembayaran: " + error.message };
   }
+
+  
 }
