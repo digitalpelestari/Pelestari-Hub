@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Plus, X, Trash2, ClipboardList, Activity, BarChart3, Filter } from "lucide-react";
 import { getUtilitiesAction, createUtilityAction, deleteUtilityAction } from "@/app/actions/utility";
+import { swal } from "@/lib/sweetalert"
 
 export default function GaUtilitiesPage() {
   const [records, setRecords] = useState<any[]>([]);
@@ -50,22 +51,28 @@ export default function GaUtilitiesPage() {
 
     const res = await createUtilityAction(payload);
     if (res.success) {
+      swal.success("Tagihan utilitas berhasil dicatat")
       setIsModalOpen(false);
       setNominal("");
       setKeterangan("");
       fetchRecords();
     } else {
-      alert(res.message);
+      swal.error(res.message);
     }
     setLoading(false);
   };
 
   const handleDelete = async (id: number, nama: string, bln: string) => {
-    const konfirmasi = window.confirm(`Hapus catatan pembayaran ${nama} bulan ${bln}?`);
+    const konfirmasi = await swal.confirm(`Hapus catatan pembayaran ${nama} bulan ${bln}?`)
     if (!konfirmasi) return;
 
     const res = await deleteUtilityAction(id);
-    if (res.success) fetchRecords();
+    if (res.success) {
+      swal.success("Catatan pembayaran berhasil dihapus")
+      fetchRecords();
+    } else {
+      swal.error(res.message);
+    }
   };
 
   // Balik urutan khusus untuk tampilan grafik batang dari kiri-ke-kanan / atas-ke-bawah (kronologis waktu lama ke baru)

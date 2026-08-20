@@ -15,7 +15,8 @@ import {
 import { Trash2, Edit2, Plus, Search, ChevronDown, ChevronRight, Folder, FileSpreadsheet } from "lucide-react"
 import { getAkunList, createAkun, updateAkun, deleteAkun } from "@/app/actions/akun"
 import { getKelompokBiaya } from "@/app/actions/kelompok-biaya"
-import * as XLSX from "xlsx" // Import library xlsx
+import * as XLSX from "xlsx"
+import { swal } from "@/lib/sweetalert" // Import library xlsx
 
 export default function DaftarAkunPage() {
   const [list, setList] = useState<any[]>([])
@@ -123,11 +124,11 @@ export default function DaftarAkunPage() {
 
   const handleSave = async () => {
     if (!noAkun || !namaAkun || !categoryInput) {
-      return alert("Mohon lengkapi semua kolom wajib!")
+      swal.warning("Mohon lengkapi semua kolom wajib!")
     }
     
     if (!selectedCatId) {
-      return alert("Tipe Akun tidak valid! Pilih dari list rekomendasi yang muncul saat mengetik.")
+      return swal.warning("Tipe Akun tidak valid! Pilih dari list rekomendasi yang muncul saat mengetik.")
     }
 
     setLoading(true)
@@ -148,7 +149,7 @@ export default function DaftarAkunPage() {
     }
 
     if (res && !res.success) {
-      alert("Gagal memproses data: " + res.message)
+      swal.error("Gagal memproses data: " + res.message)
     } else {
       setIsDialogOpen(false)
       resetForm()
@@ -174,7 +175,7 @@ export default function DaftarAkunPage() {
   // === FUNGSI EXPORT KE EXCEL ===
   const handleExportExcel = () => {
     if (filteredList.length === 0) {
-      alert("Tidak ada data untuk diekspor!");
+      swal.warning("Tidak ada data untuk diekspor!");
       return;
     }
 
@@ -350,7 +351,7 @@ export default function DaftarAkunPage() {
                               <Button size="icon" variant="ghost" className="h-7 w-7 rounded-sm hover:bg-zinc-100" onClick={() => handleOpenEditModal(item)}>
                                 <Edit2 className="h-3 w-3 text-zinc-600" />
                               </Button>
-                              <Button size="icon" variant="ghost" className="h-7 w-7 rounded-sm hover:bg-red-50 hover:text-red-600" onClick={async () => { if(confirm(`Hapus akun ${item.nama_akun}?`)) { await deleteAkun(item.id); loadInitialData(); }}}>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 rounded-sm hover:bg-red-50 hover:text-red-600" onClick={async () => { if(await swal.confirm(`Hapus akun ${item.nama_akun}?`)) { await deleteAkun(item.id); loadInitialData(); }}}>
                                 <Trash2 className="h-3 w-3" />
                               </Button>
                             </div>

@@ -26,6 +26,7 @@ import {
   updateKelompokBiaya, 
   deleteKelompokBiaya 
 } from "@/app/actions/kelompok-biaya"
+import { swal } from "@/lib/sweetalert"
 
 export default function KelompokBiayaPage() {
   const [list, setList] = useState<any[]>([])
@@ -56,14 +57,20 @@ export default function KelompokBiayaPage() {
   const handleSave = async () => {
     if (!input) return
     setLoading(true)
+    let res
     if (editId) {
-      await updateKelompokBiaya(editId, input)
+      res = await updateKelompokBiaya(editId, input)
     } else {
-      await createKelompokBiaya(input)
+      res = await createKelompokBiaya(input)
     }
-    setInput("")
-    setEditId(null)
-    await refreshData()
+    if (res && res.success) {
+      swal.success(editId ? "Kelompok biaya berhasil diperbarui" : "Kelompok biaya berhasil ditambahkan")
+      setInput("")
+      setEditId(null)
+      await refreshData()
+    } else if (res && !res.success) {
+      swal.error(res.message || "Gagal menyimpan data")
+    }
     setLoading(false)
   }
 
@@ -169,7 +176,7 @@ export default function KelompokBiayaPage() {
                         <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-zinc-200 rounded-sm" onClick={() => { setEditId(item.id); setInput(item.kelompok_biaya); }}>
                           <Edit2 className="h-3.5 w-3.5 text-zinc-600" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-red-50 hover:text-red-600 rounded-sm" onClick={async () => { if(confirm(`Hapus data?`)) { await deleteKelompokBiaya(item.id); refreshData(); }}}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-red-50 hover:text-red-600 rounded-sm" onClick={async () => { if(await swal.confirm(`Hapus data?`)) { const res = await deleteKelompokBiaya(item.id); if (res && res.success) { swal.success("Kelompok biaya berhasil dihapus"); await refreshData(); } else { swal.error(res?.message || "Gagal menghapus data"); } }}}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>

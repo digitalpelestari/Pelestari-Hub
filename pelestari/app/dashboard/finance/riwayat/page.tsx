@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { getJurnalList } from "@/app/actions/jurnal"
 import { exportBukuKasToExcel } from "@/app/actions/export-buku-kas"
+import { swal } from "@/lib/sweetalert"
 
 
 export default function BukuKasPage() {
@@ -26,7 +27,7 @@ export default function BukuKasPage() {
   try {
     const res = await exportBukuKasToExcel(startDate || undefined, endDate || undefined)
     if (!res.success || !res.base64) {
-      alert(res.message || "Gagal mengunduh file Excel")
+      swal.error(res.message || "Gagal mengunduh file Excel")
       return
     }
 
@@ -48,7 +49,7 @@ export default function BukuKasPage() {
     document.body.removeChild(link)
     URL.revokeObjectURL(link.href)
   } catch (err: any) {
-    alert("Error saat export: " + err.message)
+      swal.error("Error saat export: " + err.message)
   } finally {
     setIsExporting(false)
   }

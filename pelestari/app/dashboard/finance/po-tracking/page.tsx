@@ -6,6 +6,7 @@ import { Eye, FileText, X, Download, Printer, CalendarClock, CheckCircle, AlertC
 // Import Server Actions murni
 import { getPurchaseOrdersAction, getPoItemsAction } from "@/app/actions/po";
 import { exportToExcel, exportToPdf, exportSinglePoToExcel, exportSinglePoToPdf } from "@/app/utils/poExport";
+import { swal } from "@/lib/sweetalert"
 
 interface POItem {
   transaksi: string;
@@ -41,7 +42,7 @@ export default function FinancePoTrackingPage() {
       setDetailItems(res.data);
       setIsDetailModalOpen(true);
     } else {
-      alert("Gagal memuat rincian item barang.");
+      swal.error("Gagal memuat rincian item barang.")
     }
   };
 
