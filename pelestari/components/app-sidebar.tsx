@@ -131,38 +131,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     // GA DROPDOWN
     {
-      title: "Purchase Order",
-      url: "#",
-      icon: <FileText />,
-      roles: ["ADMIN", "GA"],
-      items: [{ title: "Purchase Order", url: "/dashboard/ga/purchase-order" }],
-    },
-    {
-      title: "Asset",
+      title: "Facility Management",
       url: "#",
       icon: <Package />,
       roles: ["ADMIN", "GA"],
-      items: [{ title: "Asset", url: "/dashboard/ga/asset" }],
-    },
-    {
-      title: "Utilities",
-      url: "#",
-      icon: <Package />,
-      roles: ["ADMIN", "GA"],
-      items: [{ title: "Utilities", url: "/dashboard/ga/utilities" }],
-    },
-
-
-      {
-      title: "Data Karyawan",
-      url: "#",
-      icon: <Package />,
-      roles: ["ADMIN", "HR"],
-      items: [{ title: "Data Karyawan", url: "/dashboard/ga/karyawan" }],
+      items: [{ title: "Purchase Order", url: "/dashboard/ga/purchase-order"},
+        {title: "Asset", url: "/dashboard/ga/asset"},
+        {title: "Utilities", url: "/dashboard/ga/utilities"},
+      ],
     },
   ]
-
-  
 
   // Saring menu berdasarkan role setelah data URL dashboard di-set
   const filteredNavMain = navMainData.filter((menu) => {
