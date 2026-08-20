@@ -5,6 +5,7 @@ import { Plus, X, FileSpreadsheet, ClipboardList, Trash2, Search, Filter } from 
 // IMPORT DIPERBARUI: Menambahkan updateAssetKondisiAction dari Server Action Backend
 import { getAssetsAction, createAssetAction, deleteAssetAction, updateAssetKondisiAction } from "@/app/actions/asset";
 import { exportAssetToExcelGA } from "@/app/utils/assetExport";
+import { swal } from "@/lib/sweetalert"
 
 export default function GaAssetPage() {
   const [assets, setAssets] = useState<any[]>([]);
@@ -70,6 +71,7 @@ export default function GaAssetPage() {
     
     const res = await createAssetAction(payload);
     if (res.success) {
+      swal.success("Aset berhasil ditambahkan")
       setIsModalOpen(false);
       setNamaAsset(""); 
       setKodeAsset(""); 
@@ -80,7 +82,7 @@ export default function GaAssetPage() {
       setKondisi("Baik");
       fetchAssets();
     } else {
-      alert(res.message);
+      swal.error(res.message);
     }
     setLoading(false);
   };
@@ -104,7 +106,7 @@ export default function GaAssetPage() {
       // Sinkronisasi ulang data agar selaras dengan database terbaru
       fetchAssets();
     } catch (error: any) {
-      alert("Gagal memperbarui kondisi ke database: " + error.message);
+      swal.error("Gagal memperbarui kondisi ke database: " + error.message);
       setAssets(originalAssets); // Kembalikan ke kondisi asal jika query gagal/error
     } finally {
       setUpdatingId(null);
@@ -112,14 +114,15 @@ export default function GaAssetPage() {
   };
 
   const handleDeleteAsset = async (id_asset: number, nama_asset: string) => {
-    const konfirmasi = window.confirm(`Apakah Anda yakin ingin menghapus aset "${nama_asset}"? Data di menu Finance juga akan ikut terhapus.`);
+    const konfirmasi = await swal.confirm(`Apakah Anda yakin ingin menghapus aset "${nama_asset}"? Data di menu Finance juga akan ikut terhapus.`)
     if (!konfirmasi) return;
 
     const res = await deleteAssetAction(id_asset);
     if (res.success) {
+      swal.success("Aset berhasil dihapus")
       fetchAssets();
     } else {
-      alert("Gagal menghapus aset: " + res.message);
+      swal.error("Gagal menghapus aset: " + res.message);
     }
   };
 

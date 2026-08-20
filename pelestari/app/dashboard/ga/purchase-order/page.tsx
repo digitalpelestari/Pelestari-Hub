@@ -14,6 +14,7 @@ import {
 
 // Import fungsi helper export berkas lengkap (Massal & Satuan)
 import { exportToExcel, exportToPdf, exportSinglePoToExcel, exportSinglePoToPdf } from "@/app/utils/poExport";
+import { swal } from "@/lib/sweetalert"
 
 interface POItem {
   transaksi: string;
@@ -99,7 +100,7 @@ export default function PurchaseOrderPage() {
       setDetailItems(res.data);
       setIsDetailModalOpen(true);
     } else {
-      alert("Gagal mengambil rincian item barang");
+      swal.error("Gagal mengambil rincian item barang")
     }
   };
 
@@ -136,26 +137,26 @@ export default function PurchaseOrderPage() {
     );
 
     if (res.success) {
-      alert("Status pembayaran dan tanggal berhasil diperbarui!");
+      swal.success("Status pembayaran dan tanggal berhasil diperbarui!")
       setIsEditModalOpen(false);
       fetchPO();
     } else {
-      alert("Gagal memperbarui data: " + res.message);
+      swal.error("Gagal memperbarui data: " + res.message)
     }
     setLoading(false);
   };
 
   const handleDeletePO = async (id_po: number, nomor_po: string) => {
-    const konfirmasi = confirm(`Apakah Anda yakin ingin menghapus PO ${nomor_po}?\nTindakan ini otomatis memotong balik saldo utang usaha jika statusnya belum dibayar.`);
+    const konfirmasi = await swal.confirm(`Apakah Anda yakin ingin menghapus PO ${nomor_po}?\nTindakan ini otomatis memotong balik saldo utang usaha jika statusnya belum dibayar.`)
     if (!konfirmasi) return;
 
     setLoading(true);
     const res = await deletePurchaseOrderAction(id_po);
     if (res.success) {
-      alert(res.message);
+      swal.success(res.message)
       fetchPO();
     } else {
-      alert("Gagal menghapus PO: " + res.message);
+      swal.error("Gagal menghapus PO: " + res.message)
     }
     setLoading(false);
   };
@@ -199,7 +200,7 @@ export default function PurchaseOrderPage() {
   const handleSubmitPO = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.length === 0 || !items[0].transaksi) {
-      alert("Harap isi minimal 1 item transaksi!");
+      swal.warning("Harap isi minimal 1 item transaksi!")
       return;
     }
 
@@ -223,12 +224,12 @@ export default function PurchaseOrderPage() {
     const res = await createPurchaseOrderAction(payload);
 
     if (res.success) {
-      alert(res.message);
+      swal.success(res.message)
       setIsModalOpen(false);
       resetFormFields();
       fetchPO();
     } else {
-      alert("Oops, Gagal menyimpan PO: " + res.message);
+      swal.error("Oops, Gagal menyimpan PO: " + res.message)
     }
     setLoading(false);
   };
