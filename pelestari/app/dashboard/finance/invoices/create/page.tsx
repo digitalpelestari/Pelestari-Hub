@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { createInvoice, getNextInvoiceNumber } from "@/app/actions/invoice"
+import { swal } from "@/lib/sweetalert"
 
 export default function CreateInvoicePage() {
   const router = useRouter()
@@ -92,7 +93,7 @@ export default function CreateInvoicePage() {
 
     // VALIDASI MINIMAL
     if (!formData.perusahaan_tujuan || !formData.tanggal_jatuhtempo || !formData.keterangan) {
-      return alert("KOLOM WAJIB: [Perusahaan, Jatuh Tempo, & Keterangan 1] Harus Diisi!");
+      swal.warning("KOLOM WAJIB: [Perusahaan, Jatuh Tempo, & Keterangan 1] Harus Diisi!")
     }
     
     setLoading(true);
@@ -105,11 +106,11 @@ export default function CreateInvoicePage() {
     const res = await createInvoice(payload);
     
     if (res.success) {
-      alert("Invoice Berhasil Disimpan Ke Database!");
+      swal.success("Invoice Berhasil Disimpan Ke Database!")
       router.push("/dashboard/finance/invoices");
       router.refresh();
     } else {
-      alert("GAGAL SIMPAN: " + res.message);
+      swal.error("GAGAL SIMPAN: " + res.message)
     }
     setLoading(false);
   }

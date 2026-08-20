@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { getInvoiceById, updateInvoice } from "@/app/actions/invoice"
+import { swal } from "@/lib/sweetalert"
 
 export default function EditInvoicePage() {
   const router = useRouter()
@@ -154,11 +155,11 @@ export default function EditInvoicePage() {
 
     const res = await updateInvoice(invoiceId, payload)
     if (res.success) {
-      alert("Invoice berhasil diperbarui!")
+      swal.success("Invoice berhasil diperbarui!")
       router.push("/dashboard/finance/invoices")
       router.refresh()
     } else {
-      alert(res.message || "Gagal memperbarui invoice.")
+      swal.error(res.message || "Gagal memperbarui invoice.")
     }
     setUpdating(false)
   }

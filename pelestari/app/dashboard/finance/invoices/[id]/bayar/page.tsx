@@ -9,6 +9,7 @@ import { ArrowLeft, Save, Loader2, Banknote, Calculator, Hash } from "lucide-rea
 import Link from "next/link"
 import { getInvoiceById, updatePayment } from "@/app/actions/invoice"
 import { Badge } from "@/components/ui/badge"
+import { swal } from "@/lib/sweetalert"
 
 export default function PaymentPage() {
   const router = useRouter()
@@ -65,11 +66,11 @@ export default function PaymentPage() {
     // PERBAIKAN 2: Hapus fungsi Number(), kirim invoiceId string UUID murni ke backend action
     const res = await updatePayment(invoiceId, { ...form, status: calc.status })
     if (res.success) {
-      alert("Pembayaran Berhasil Diupdate!")
+      swal.success("Pembayaran Berhasil Diupdate!")
       router.push("/dashboard/finance/invoices")
       router.refresh()
     } else {
-      alert("Gagal memperbarui pembayaran: " + (res.message || ""))
+      swal.error("Gagal memperbarui pembayaran: " + (res.message || ""))
     }
     setSaving(false)
   }

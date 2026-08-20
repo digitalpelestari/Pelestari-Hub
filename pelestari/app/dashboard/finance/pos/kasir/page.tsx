@@ -10,6 +10,7 @@ import { Plus, Save, X, FileText, ArrowLeft, Wand2 } from "lucide-react"
 import { createJurnalUmum, generateNoRegistrasiOtomatis } from "@/app/actions/jurnal" // <-- Import generator baru
 import { getAkunList } from "@/app/actions/akun"
 import Link from "next/link"
+import { swal } from "@/lib/sweetalert"
 
 interface JournalItem {
   accountCode: string;
@@ -123,7 +124,7 @@ export default function KasirJurnalPage() {
 
   const removeRow = (index: number) => {
     if (form.items.length <= 2) {
-      alert("Jurnal umum minimal harus memiliki 2 baris (Debit & Kredit).")
+      swal.warning("Jurnal umum minimal harus memiliki 2 baris (Debit & Kredit).")
       return
     }
     setForm((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }))
@@ -131,13 +132,13 @@ export default function KasirJurnalPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!isBalanced) return alert("Total Debit dan Kredit harus seimbang (Balanced)!")
+    if (!isBalanced) return swal.warning("Total Debit dan Kredit harus seimbang (Balanced)!")
 
     setLoading(true)
     const res = await createJurnalUmum(form) 
     
     if (res.success) {
-      alert(res.message)
+      swal.success(res.message)
       setForm({
         tanggal: new Date().toISOString().split("T")[0],
         noRegistrasi: "", 
@@ -149,7 +150,7 @@ export default function KasirJurnalPage() {
         ],
       })
     } else {
-      alert("Gagal Simpan: " + res.message)
+      swal.error("Gagal Simpan: " + res.message)
     }
     setLoading(false)
   }

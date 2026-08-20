@@ -27,6 +27,7 @@ import {
   updateJenisBiaya, 
   deleteJenisBiaya 
 } from "@/app/actions/jenis-biaya"
+import { swal } from "@/lib/sweetalert"
 
 export default function JenisBiayaPage() {
   const [list, setList] = useState<any[]>([])
@@ -170,7 +171,7 @@ export default function JenisBiayaPage() {
                         <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-zinc-200 rounded-sm" onClick={() => { setEditId(item.id); setInput(item.jenis_biaya); }}>
                           <Edit2 className="h-3.5 w-3.5 text-zinc-600" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-red-50 hover:text-red-600 rounded-sm" onClick={async () => { if(confirm(`Hapus data?`)) { await deleteJenisBiaya(item.id); refreshData(); }}}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-red-50 hover:text-red-600 rounded-sm" onClick={async () => { if(await swal.confirm(`Hapus data?`)) { await deleteJenisBiaya(item.id); refreshData(); }}}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>

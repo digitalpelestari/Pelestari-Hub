@@ -12,6 +12,7 @@ import {
 import { getJurnalList, updateJurnalItem, deleteJurnalByHeader, exportJurnalToExcel } from "@/app/actions/jurnal"
 import { getAkunList } from "@/app/actions/akun" 
 import Link from "next/link"
+import { swal } from "@/lib/sweetalert"
 
 export default function JurnalUmumListPage() {
   const [jurnalList, setJurnalList] = useState<any[]>([])
@@ -124,7 +125,7 @@ export default function JurnalUmumListPage() {
     })
 
     if (totalDebitJurnal !== totalKreditJurnal) {
-      alert(`Gagal Simpan: Transaksi Jurnal TIDAK BALANCE!\nTotal Debit: Rp ${totalDebitJurnal.toLocaleString("id-ID")}\nTotal Kredit: Rp ${totalKreditJurnal.toLocaleString("id-ID")}`);
+      swal.error(`Gagal Simpan: Transaksi Jurnal TIDAK BALANCE!\nTotal Debit: Rp ${totalDebitJurnal.toLocaleString("id-ID")}\nTotal Kredit: Rp ${totalKreditJurnal.toLocaleString("id-ID")}`)
       return
     }
 
@@ -147,26 +148,26 @@ export default function JurnalUmumListPage() {
         })
       }
       
-      alert("Perubahan seluruh kolom jurnal berhasil disimpan!")
+      swal.success("Perubahan seluruh kolom jurnal berhasil disimpan!")
       setEditingJurnalId(null)
       await loadData()
     } catch (err: any) {
-      alert("Gagal menyimpan perubahan: " + err.message)
+      swal.error("Gagal menyimpan perubahan: " + err.message)
     } finally {
       setLoading(false)
     }
   }
 
   const handleRemoveJurnalUtah = async (jurnalId: number, noRegis: string) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus seluruh transaksi No. Registrasi: ${noRegis}?`)) return
+    if (!(await swal.confirm(`Apakah Anda yakin ingin menghapus seluruh transaksi No. Registrasi: ${noRegis}?`))) return
 
     setLoading(true)
     const res = await deleteJurnalByHeader(jurnalId)
     if (res.success) {
-      alert(res.message)
+      swal.success(res.message)
       await loadData() 
     } else {
-      alert("Gagal menghapus transaksi: " + res.message)
+      swal.error("Gagal menghapus transaksi: " + res.message)
     }
     setLoading(false)
   }
@@ -179,7 +180,7 @@ export default function JurnalUmumListPage() {
 
       const res = await exportJurnalToExcel(startParam, endParam)
       if (!res.success || !res.base64) {
-        alert(res.message || "Terjadi kesalahan sistem saat mengekspor data.")
+        swal.error(res.message || "Terjadi kesalahan sistem saat mengekspor data.")
         return
       }
 
@@ -198,7 +199,7 @@ export default function JurnalUmumListPage() {
       link.click()
       document.body.removeChild(link)
     } catch (err: any) {
-      alert("Gagal mengunduh file Excel: " + err.message)
+      swal.error("Gagal mengunduh file Excel: " + err.message)
     } finally {
       setIsExporting(false)
     }

@@ -37,6 +37,7 @@ import Link from "next/link"
 import { InvoicePrint } from "@/components/invoice-print" 
 import ExportInvoiceButton from "@/components/ExportInvoiceButton"
 import * as XLSX from "xlsx"
+import { swal } from "@/lib/sweetalert"
 
 export default function InvoiceListPage() {
   const [invoices, setInvoices] = useState<any[]>([])
@@ -111,7 +112,7 @@ export default function InvoiceListPage() {
     if (res.success) {
       setInvoices(prev => prev.filter(inv => inv.id !== id));
     } else {
-      alert("Gagal menghapus data: " + (res.message || ""));
+      swal.error("Gagal menghapus data: " + (res.message || ""))
     }
   };
 
@@ -125,7 +126,7 @@ export default function InvoiceListPage() {
     if (!file) return;
 
     if (file.type !== "application/pdf") {
-      alert("Format berkas harus berupa PDF!");
+      swal.warning("Format berkas harus berupa PDF!")
       return;
     }
 
@@ -137,13 +138,13 @@ export default function InvoiceListPage() {
         const res = { success: true, message: "Faktur PDF Berhasil Diunggah!" };
         
         if (res.success) {
-          alert(res.message);
+          swal.success(res.message)
           setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, file_faktur: file.name } : inv));
         } else {
-          alert("Gagal mengunggah faktur");
+          swal.error("Gagal mengunggah faktur");
         }
       } catch (err) {
-        alert("Terjadi kesalahan sistem saat mengunggah.");
+        swal.error("Terjadi kesalahan sistem saat mengunggah.");
       } finally {
         setUploadingInvoiceId(null);
       }
@@ -235,20 +236,20 @@ export default function InvoiceListPage() {
         const rawData: any[] = XLSX.utils.sheet_to_json(ws);
 
         if (rawData.length === 0) {
-          alert("File Excel kosong!");
+          swal.warning("File Excel kosong!")
           setIsImporting(false);
           return;
         }
 
         const res = await importInvoices(rawData);
         if (res.success) {
-          alert(res.message);
+          swal.success(res.message)
           loadData();
         } else {
-          alert("Gagal impor: " + res.message);
+          swal.error("Gagal impor: " + res.message);
         }
       } catch (error) {
-        alert("Terjadi kesalahan saat membaca file.");
+        swal.error("Terjadi kesalahan saat membaca file.");
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
