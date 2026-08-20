@@ -131,7 +131,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     // GA DROPDOWN
     {
-      title: "Facility Managementt",
+      title: "Facility Management",
       url: "#",
       icon: <Building2 />,
       roles: ["ADMIN", "GA"],
