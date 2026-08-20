@@ -31,16 +31,16 @@ export async function getPerjalananListAction() {
     const role = String(session.user.role || "").toLowerCase()
 
     let query = `
-SELECT s.nomor, s.id_user, s.manager_nip,
-       s.keperluan, s.tujuan, s.tempat,
-       s.start_date, s.end_date,
-       s.created_at, s.updated_at,
-       k.nama AS manager_nama,
-       k.divisi AS manager_divisi,
-       u.nama AS user_nama
-FROM tb_sppd s
-LEFT JOIN tb_karyawan k ON s.manager_nip = k.nip
-LEFT JOIN tb_login u ON s.id_user = u.id_user
+      SELECT s.nomor, s.id_user, s.manager_nip,
+             s.keperluan, s.tujuan, s.tempat,
+             s.start_date, s.end_date,
+             s.created_at, s.updated_at,
+             k.nama AS manager_nama,
+             k.divisi AS manager_divisi,
+             u.nama AS user_nama
+      FROM tb_sppd s
+      LEFT JOIN tb_karyawan k ON s.manager_nip = k.nip
+      LEFT JOIN tb_login u ON s.id_user = u.id_user
     `
     const params: any[] = []
 
@@ -55,13 +55,17 @@ LEFT JOIN tb_login u ON s.id_user = u.id_user
 
     const result = await Promise.all(
       sppdRows.map(async (sppd: any) => {
-        const [anggotaRows]: any = await db.execute(`
-          SELECT sk.nip, k.nama, k.divisi
+        // DIUBAH: Menambahkan k.jabatan agar terbaca di tabel & cetak SPPD
+        const [anggotaRows]: any = await db.execute(
+          `
+          SELECT sk.nip, k.nama, k.divisi, k.jabatan
           FROM tb_sppd_karyawan sk
           JOIN tb_karyawan k ON sk.nip = k.nip
           WHERE sk.nomor_sppd = ?
           ORDER BY k.nama ASC
-        `, [sppd.nomor])
+          `,
+          [sppd.nomor]
+        )
 
         return {
           ...sppd,
@@ -89,17 +93,17 @@ export async function getPerjalananDetailAction(nomor: string) {
     const role = String(session.user.role || "").toLowerCase()
 
     let query = `
-SELECT s.nomor, s.id_user, s.manager_nip,
-       s.keperluan, s.tujuan, s.tempat,
-       s.start_date, s.end_date,
-       s.created_at, s.updated_at,
-       k.nama AS manager_nama,
-       k.divisi AS manager_divisi,
-       u.nama AS user_nama
-FROM tb_sppd s
-LEFT JOIN tb_karyawan k ON s.manager_nip = k.nip
-LEFT JOIN tb_login u ON s.id_user = u.id_user
-WHERE s.nomor = ?
+      SELECT s.nomor, s.id_user, s.manager_nip,
+             s.keperluan, s.tujuan, s.tempat,
+             s.start_date, s.end_date,
+             s.created_at, s.updated_at,
+             k.nama AS manager_nama,
+             k.divisi AS manager_divisi,
+             u.nama AS user_nama
+      FROM tb_sppd s
+      LEFT JOIN tb_karyawan k ON s.manager_nip = k.nip
+      LEFT JOIN tb_login u ON s.id_user = u.id_user
+      WHERE s.nomor = ?
     `
     const params: any[] = [nomor]
 
@@ -118,13 +122,17 @@ WHERE s.nomor = ?
 
     const sppd = sppdRows[0]
 
-    const [anggotaRows]: any = await db.execute(`
-      SELECT sk.nip, k.nama, k.divisi
+    // DIUBAH: Menambahkan k.jabatan untuk format print SPPD
+    const [anggotaRows]: any = await db.execute(
+      `
+      SELECT sk.nip, k.nama, k.divisi, k.jabatan
       FROM tb_sppd_karyawan sk
       JOIN tb_karyawan k ON sk.nip = k.nip
       WHERE sk.nomor_sppd = ?
       ORDER BY k.nama ASC
-    `, [nomor])
+      `,
+      [nomor]
+    )
 
     return { success: true, data: { ...sppd, anggota: anggotaRows } }
   } catch (error: any) {
@@ -147,9 +155,9 @@ export async function createPerjalananAction(payload: {
 }) {
   const session = await auth()
 
-if (!session?.user) {
-  return { success: false, message: "Unauthorized" }
-}
+  if (!session?.user) {
+    return { success: false, message: "Unauthorized" }
+  }
 
   const id_user = session.user.id
 
@@ -235,7 +243,8 @@ export async function updatePerjalananAction(
   }
 
   try {
-    let updateQuery = "UPDATE tb_sppd SET manager_nip = ?, keperluan = ?, tujuan = ?, tempat = ?, start_date = ?, end_date = ?, updated_at = NOW() WHERE nomor = ?"
+    let updateQuery =
+      "UPDATE tb_sppd SET manager_nip = ?, keperluan = ?, tujuan = ?, tempat = ?, start_date = ?, end_date = ?, updated_at = NOW() WHERE nomor = ?"
     const updateParams: any[] = [manager_nip, keperluan, tujuan, tempat, start_date, end_date, nomor]
 
     if (role !== "admin") {

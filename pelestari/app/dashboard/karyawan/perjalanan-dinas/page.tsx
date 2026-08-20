@@ -16,6 +16,7 @@ import {
   Loader2,
   X,
   ChevronDown,
+  Printer,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -64,6 +65,7 @@ interface AnggotaItem {
   nip: string
   nama: string
   divisi: string
+  jabatan?: string
 }
 
 interface PerjalananItem {
@@ -92,6 +94,7 @@ export default function PerjalananDinasPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [selectedPerjalanan, setSelectedPerjalanan] =
     useState<PerjalananItem | null>(null)
+  const [printData, setPrintData] = useState<PerjalananItem | null>(null)
   const [editMode, setEditMode] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [karyawanDropdownOpen, setKaryawanDropdownOpen] = useState(false)
@@ -194,8 +197,6 @@ export default function PerjalananDinasPage() {
 
   const handleOpenModal = (perjalanan?: PerjalananItem) => {
     if (perjalanan) {
-      console.log("start_date asli:", perjalanan.start_date) // tambahin ini
-      console.log("end_date asli:", perjalanan.end_date) // tambahin ini
       setEditMode(true)
       setFormData({
         nomor: perjalanan.nomor,
@@ -370,6 +371,23 @@ export default function PerjalananDinasPage() {
     }
   }
 
+  const handlePrint = async (perjalanan: PerjalananItem) => {
+    try {
+      const result = await getPerjalananDetailAction(perjalanan.nomor)
+      const dataToPrint = result.success && result.data ? result.data : perjalanan
+      setPrintData(dataToPrint)
+      setTimeout(() => {
+        window.print()
+      }, 300)
+    } catch (err) {
+      console.error("Gagal menyiapkan data cetak", err)
+      setPrintData(perjalanan)
+      setTimeout(() => {
+        window.print()
+      }, 300)
+    }
+  }
+
   const resetFilters = () => {
     setSearchQuery("")
     setStartDate("")
@@ -389,617 +407,884 @@ export default function PerjalananDinasPage() {
     .map((nip) => karyawanList.find((k) => k.nip === nip))
     .filter(Boolean)
 
-  const managerName = karyawanList.find((k) => k.nip === formData.manager_nip)
-    ? `${karyawanList.find((k) => k.nip === formData.manager_nip)!.nama} - ${karyawanList.find((k) => k.nip === formData.manager_nip)!.nip}`
-    : ""
+  const calculateDurationDetails = (start: string, end: string) => {
+    if (!start || !end) return { totalDays: 0, weekdays: 0, weekends: 0 }
+    const s = new Date(start)
+    const e = new Date(end)
+    let totalDays = 0
+    let weekdays = 0
+    let weekends = 0
+
+    const current = new Date(s)
+    while (current <= e) {
+      totalDays++
+      const day = current.getDay()
+      if (day === 0 || day === 6) {
+        weekends++
+      } else {
+        weekdays++
+      }
+      current.setDate(current.getDate() + 1)
+    }
+    return { totalDays, weekdays, weekends }
+  }
+
+  const printDuration = printData
+    ? calculateDurationDetails(printData.start_date, printData.end_date)
+    : { totalDays: 0, weekdays: 0, weekends: 0 }
 
   return (
-    <div className="space-y-6 p-6 font-sans">
-      {/* HEADER */}
-      <div className="flex flex-col gap-4 border-b border-zinc-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-black tracking-tighter text-black uppercase">
-            <MapPin className="h-6 w-6 text-blue-600" /> Perjalanan Dinas
-          </h1>
-        </div>
-        <Button
-          onClick={() => handleOpenModal()}
-          className="h-9 rounded-sm bg-black px-4 text-xs font-semibold text-white shadow-sm hover:bg-zinc-800"
+    <>
+      {/* GLOBAL PRINT STYLES - HAPUS HEADER/FOOTER BROWSER */}
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 0;
+          }
+          body {
+            margin: 0;
+            padding: 0;
+          }
+          body * {
+            visibility: hidden;
+          }
+          #print-area,
+          #print-area * {
+            visibility: visible;
+          }
+          #print-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 16mm 20mm;
+            box-sizing: border-box;
+            background: white !important;
+            color: black !important;
+            font-family: "Times New Roman", Times, serif !important;
+            font-size: 11pt !important;
+            line-height: 1.35;
+          }
+        }
+      `}</style>
+
+      {/* TAMPILAN CETAK SPPD */}
+      {printData && (
+        <div
+          id="print-area"
+          className="hidden print:block text-black font-serif text-[11pt]"
+          style={{ fontFamily: '"Times New Roman", Times, serif' }}
         >
-          <Plus className="mr-1.5 h-4 w-4" /> Ajukan Perjalanan Baru
-        </Button>
-      </div>
-
-      {/* RINGKASAN */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="rounded-sm border border-zinc-200 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase italic">
-              Total Perjalanan
-            </CardTitle>
-            <div className="rounded-sm bg-zinc-100 p-1.5">
-              <FileText className="h-4 w-4 text-zinc-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="font-mono text-xl font-black text-zinc-900">
-              {ringkasan.total}
-            </div>
-            <p className="mt-1 text-[9px] font-bold text-zinc-400 uppercase">
-              Semua perjalanan dinas
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* FILTER & SEARCH */}
-      <Card className="overflow-hidden rounded-sm border-zinc-200 shadow-md">
-        <CardHeader className="space-y-4 border-b bg-zinc-50/50 pb-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative min-w-[240px] flex-1">
-              <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-              <Input
-                placeholder="Cari nomor, tujuan, tempat, manager, atau anggota..."
-                className="h-9 rounded-sm border-zinc-200 bg-white pl-10 text-xs shadow-sm focus-visible:ring-1 focus-visible:ring-black"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+          {/* Header Kop Surat */}
+          <div className="flex items-center justify-between border-b-2 border-black pb-2">
+            <div className="flex items-center gap-3">
+              <img
+                src="/images/logo-pelestari.png"
+                alt="Logo PT Peduli Lestari Indonesia"
+                className="h-14 w-auto object-contain"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = "none"
+                }}
               />
-            </div>
-
-            <div className="flex items-center gap-2 rounded-sm border border-zinc-200 bg-white p-1.5 shadow-sm">
-              <div className="flex items-center gap-1 px-1 text-[10px] font-black tracking-wide text-zinc-400 uppercase">
-                <Calendar className="h-3.5 w-3.5 text-zinc-400" /> Dari:
+              <div>
+                <h2 className="text-[13pt] font-bold tracking-tight uppercase leading-tight">
+                  PT PEDULI LESTARI INDONESIA
+                </h2>
+                <p className="text-[9pt] italic text-zinc-600">Your Best Solution Partner</p>
               </div>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-28 cursor-pointer bg-transparent text-xs font-semibold text-zinc-800 focus:outline-none"
-              />
-              <div className="px-0.5 font-light text-zinc-300">|</div>
-              <div className="text-[10px] font-black tracking-wide text-zinc-400 uppercase">
-                Sampai:
-              </div>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-28 cursor-pointer bg-transparent text-xs font-semibold text-zinc-800 focus:outline-none"
-              />
             </div>
-
-            {(searchQuery || startDate || endDate) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={resetFilters}
-                className="h-9 rounded-sm border border-dashed border-zinc-300 text-xs text-zinc-500 hover:bg-zinc-100"
-              >
-                <FilterX className="mr-2 h-3.5 w-3.5" /> Reset Filter
-              </Button>
-            )}
+            <div className="text-right text-[8.5pt] leading-tight text-zinc-800">
+              <p>Jalan Raya Jakarta-Bogor No.77</p>
+              <p>Kedunghalang, Kota Bogor 16158</p>
+              <p>Phone: 0251 2025 818, 0821 2789 5406</p>
+              <p>Email: ptpelestari@gmail.com</p>
+            </div>
           </div>
-        </CardHeader>
 
-        <CardContent className="p-0 font-sans text-[13px]">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-20 text-zinc-400">
-              <Loader2 className="mb-2 h-8 w-8 animate-spin" />
-              <p className="italic">Mengambil data...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader className="bg-zinc-100/80">
-                  <TableRow className="border-b border-zinc-200 text-xs tracking-wider uppercase">
-                    <TableHead className="border-r px-6 py-4 font-bold text-zinc-700">
-                      No
-                    </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Nomor SPPD
-                    </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Tujuan
-                    </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Tempat
-                    </TableHead>
-                    <TableHead className="border-r text-center font-bold text-zinc-700">
-                      Periode
-                    </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Manager
-                    </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Anggota
-                    </TableHead>
-                    <TableHead className="text-center font-bold text-zinc-700">
-                      Aksi
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredData.length > 0 ? (
-                    filteredData.map((p, idx) => (
-                      <TableRow
-                        key={p.nomor}
-                        className="border-b border-zinc-100 transition-colors hover:bg-zinc-50/80"
-                      >
-                        <TableCell className="border-r px-6 py-4 font-bold text-zinc-500">
-                          {idx + 1}
-                        </TableCell>
-                        <TableCell className="border-r px-6 py-4 font-bold text-zinc-900">
-                          {p.nomor}
-                        </TableCell>
-                        <TableCell className="border-r px-6 py-4 font-bold text-zinc-900">
-                          {p.tujuan}
-                        </TableCell>
-                        <TableCell className="border-r px-6 py-4 text-zinc-700">
-                          <div className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3 text-zinc-400" />
-                            {p.tempat}
-                          </div>
-                        </TableCell>
-                        <TableCell className="border-r px-6 py-4 text-center text-zinc-700">
-                          <div className="text-[11px]">
-                            {new Date(p.start_date).toLocaleDateString(
-                              "id-ID",
-                              { day: "numeric", month: "short" }
-                            )}
-                            {" - "}
-                            {new Date(p.end_date).toLocaleDateString("id-ID", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })}
-                          </div>
-                        </TableCell>
-                        <TableCell className="border-r px-6 py-4 text-zinc-700">
-                          <div className="text-[11px] font-medium">
-                            {p.manager_nama}
-                          </div>
-                          <div className="text-[10px] text-zinc-400">
-                            {p.manager_nip}
-                          </div>
-                        </TableCell>
-                        <TableCell className="border-r px-6 py-4">
-                          <div className="flex flex-col gap-0.5">
-                            {p.anggota.slice(0, 2).map((a, i) => (
-                              <span
-                                key={i}
-                                className="text-[11px] font-medium text-zinc-700"
-                              >
-                                • {a.nama}
-                              </span>
-                            ))}
-                            {p.anggota.length > 2 && (
-                              <span className="text-[10px] text-zinc-400 italic">
-                                +{p.anggota.length - 2} anggota
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="px-6 py-4 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 w-8 rounded-sm hover:bg-blue-50 hover:text-blue-600"
-                              title="Detail"
-                              onClick={() => handleViewDetail(p)}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 w-8 rounded-sm hover:bg-amber-50 hover:text-amber-600"
-                              title="Edit"
-                              onClick={() => handleOpenModal(p)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 w-8 rounded-sm hover:bg-red-50 hover:text-red-600"
-                              title="Hapus"
-                              onClick={() => handleDelete(p.nomor)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell
-                        colSpan={8}
-                        className="py-24 text-center font-sans text-zinc-400 italic"
-                      >
-                        Tidak ada data perjalanan dinas yang ditemukan.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          {/* Judul Dokumen */}
+          <div className="my-4 text-center">
+            <h1 className="text-[12pt] font-bold tracking-wider uppercase underline underline-offset-2">
+              SURAT PERINTAH PERJALANAN DINAS
+            </h1>
+            <p className="mt-0.5 text-[10.5pt] font-medium">
+              Nomor: {printData.nomor}
+            </p>
+          </div>
 
-      {/* MODAL FORM TAMBAH/EDIT PERJALANAN */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="w-full max-w-3xl rounded-sm border-none shadow-2xl [&>button]:hidden">
-          <DialogHeader className="-mx-6 -mt-6 mb-4 flex flex-row items-center justify-between bg-zinc-900 px-6 py-3 text-white">
-            <DialogTitle className="text-xs font-bold tracking-wider uppercase">
-              {editMode
-                ? "Edit Perjalanan Dinas"
-                : "Form Pengajuan Perjalanan Dinas"}
-            </DialogTitle>
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-              className="text-zinc-400 hover:text-white"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </DialogHeader>
-
-          <form
-            onSubmit={handleSubmit}
-            className="max-h-[70vh] space-y-4 overflow-y-auto px-1"
-          >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold text-zinc-700 uppercase">
-                  Nomor SPPD
-                </Label>
-                <Input
-                  required
-                  disabled={editMode}
-                  value={formData.nomor}
-                  onChange={(e) =>
-                    setFormData({ ...formData, nomor: e.target.value })
-                  }
-                  className="h-9 rounded-sm border-zinc-300 text-xs"
-                  placeholder="Contoh: SPPD-001"
-                />
+          {/* Yang Bertanda Tangan */}
+          <div className="space-y-1">
+            <p className="font-bold">Yang bertanda tangan di bawah ini:</p>
+            <div className="ml-4 space-y-0.5">
+              <div className="grid grid-cols-[160px_12px_1fr]">
+                <span>Nama</span>
+                <span>:</span>
+                <span className="font-semibold">{printData.manager_nama}</span>
               </div>
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold text-zinc-700 uppercase">
-                  Manager
-                </Label>
-                <Select
-                  value={formData.manager_nip}
-                  onValueChange={(val) =>
-                    setFormData({ ...formData, manager_nip: val ?? "" })
-                  }
-                  required
-                >
-                  <SelectTrigger className="h-9 rounded-sm border-zinc-300 text-xs">
-                    <SelectValue placeholder="Pilih Manager" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {karyawanList
-                      .filter((k) => k.jabatan === "Manager")
-                      .map((k) => (
-                        <SelectItem key={k.nip} value={k.nip}>
-                          {k.nama} - {k.nip}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold text-zinc-700 uppercase">
-                  Tujuan Perjalanan
-                </Label>
-                <Input
-                  required
-                  value={formData.tujuan}
-                  onChange={(e) =>
-                    setFormData({ ...formData, tujuan: e.target.value })
-                  }
-                  className="h-9 rounded-sm border-zinc-300 text-xs"
-                  placeholder="Contoh: Pelatihan ISO 9001"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold text-zinc-700 uppercase">
-                  Tempat
-                </Label>
-                <Input
-                  required
-                  value={formData.tempat}
-                  onChange={(e) =>
-                    setFormData({ ...formData, tempat: e.target.value })
-                  }
-                  className="h-9 rounded-sm border-zinc-300 text-xs"
-                  placeholder="Contoh: Hotel Santika, Bandung"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold text-zinc-700 uppercase">
-                  Tanggal Mulai
-                </Label>
-                <Input
-                  required
-                  type="date"
-                  min={today}
-                  value={formData.start_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, start_date: e.target.value })
-                  }
-                  className="h-9 rounded-sm border-zinc-300 text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold text-zinc-700 uppercase">
-                  Tanggal Selesai
-                </Label>
-                <Input
-                  required
-                  type="date"
-                  min={today}
-                  value={formData.end_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, end_date: e.target.value })
-                  }
-                  className="h-9 rounded-sm border-zinc-300 text-xs"
-                />
-              </div>
-              <div className="space-y-1 md:col-span-2">
-                <Label className="text-[11px] font-bold text-zinc-700 uppercase">
-                  Keperluan
-                </Label>
-                <Textarea
-                  required
-                  value={formData.keperluan}
-                  onChange={(e) =>
-                    setFormData({ ...formData, keperluan: e.target.value })
-                  }
-                  className="resize-none rounded-sm border-zinc-300 text-xs"
-                  rows={2}
-                  placeholder="Jelaskan keperluan perjalanan dinas..."
-                />
+              <div className="grid grid-cols-[160px_12px_1fr]">
+                <span>Jabatan</span>
+                <span>:</span>
+                <span>Manajer {printData.manager_divisi}</span>
               </div>
             </div>
+          </div>
 
-            <div className="space-y-3 rounded-sm border border-zinc-200 bg-zinc-50/30 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black tracking-wider text-zinc-700 uppercase">
-                  Daftar Karyawan
+          {/* Memerintahkan Kepada */}
+          <div className="mt-3 space-y-1">
+            <p className="font-bold">Dengan ini memerintahkan kepada:</p>
+            <div className="ml-4 space-y-2">
+              {printData.anggota.map((ang, idx) => (
+                <div key={idx} className="space-y-0.5">
+                  <div className="grid grid-cols-[160px_12px_1fr]">
+                    <span>Nama</span>
+                    <span>:</span>
+                    <span className="font-semibold">{ang.nama}</span>
+                  </div>
+                  <div className="grid grid-cols-[160px_12px_1fr]">
+                    <span>Jabatan</span>
+                    <span>:</span>
+                    <span>{ang.jabatan || `Staf ${ang.divisi}`}</span>
+                  </div>
+                  <div className="grid grid-cols-[160px_12px_1fr]">
+                    <span>NIP</span>
+                    <span>:</span>
+                    <span>{ang.nip}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Ketentuan Perjalanan */}
+          <div className="mt-3 space-y-1">
+            <p>Untuk melaksanakan perjalanan dinas dengan ketentuan sebagai berikut :</p>
+            <div className="ml-4 space-y-0.5">
+              <div className="grid grid-cols-[160px_12px_1fr]">
+                <span>Keperluan</span>
+                <span>:</span>
+                <span>{printData.keperluan}</span>
+              </div>
+              <div className="grid grid-cols-[160px_12px_1fr]">
+                <span>Tujuan Dinas</span>
+                <span>:</span>
+                <span>{printData.tujuan}</span>
+              </div>
+              <div className="grid grid-cols-[160px_12px_1fr]">
+                <span>Tempat Tujuan</span>
+                <span>:</span>
+                <span>{printData.tempat}</span>
+              </div>
+              <div className="grid grid-cols-[160px_12px_1fr]">
+                <span>Lama Perjalanan dinas</span>
+                <span>:</span>
+                <div>
+                  <span>
+                    {printDuration.totalDays} hari (
+                    {new Date(printData.start_date).toLocaleDateString("id-ID", {
+                      day: "numeric",
+                      month: "long",
+                    })}{" "}
+                    s.d{" "}
+                    {new Date(printData.end_date).toLocaleDateString("id-ID", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                    )
+                  </span>
+                  <p className="text-[10pt] text-zinc-600">
+                    {printDuration.weekdays} Weekday & {printDuration.weekends} Weekend
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Penutup */}
+          <div className="mt-4 space-y-1">
+            <p>Demikian surat perjalanan dinas ini dibuat untuk dapat digunakan sebagaimana mestinya.</p>
+            <div className="space-y-0.5">
+              <div className="grid grid-cols-[160px_12px_1fr]">
+                <span>Dikeluarkan pada</span>
+                <span>:</span>
+                <span>Bogor</span>
+              </div>
+              <div className="grid grid-cols-[160px_12px_1fr]">
+                <span>Pada tanggal</span>
+                <span>:</span>
+                <span>
+                  {new Date().toLocaleDateString("id-ID", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
                 </span>
               </div>
+            </div>
+          </div>
 
-              <div className="relative" ref={karyawanDropdownRef}>
+          {/* Tanda Tangan */}
+          <div className="mt-5">
+            <p className="mb-2">Atas nama,</p>
+
+            {/* Baris 1: Manajer (Kiri) & Karyawan (Kanan) */}
+            <div className="flex items-start justify-between px-2">
+              <div className="text-center w-52">
+                <div className="h-16" />
+                <p className="font-bold underline leading-tight">{printData.manager_nama}</p>
+                <p className="text-[10pt] text-zinc-800 leading-tight">
+                  Manajer {printData.manager_divisi}
+                </p>
+              </div>
+
+              <div className="text-center w-52">
+                <div className="h-16" />
+                <p className="font-bold underline leading-tight">
+                  {printData.anggota[0]?.nama || "Karyawan"}
+                </p>
+                <p className="text-[10pt] text-zinc-800 leading-tight">
+                  {printData.anggota[0]?.jabatan || `Divisi ${printData.anggota[0]?.divisi || ""}`}
+                </p>
+              </div>
+            </div>
+
+            {/* Baris 2: HR & Legal (Tengah Bawah) */}
+            <div className="mt-4 flex justify-center">
+              <div className="text-center w-52">
+                <div className="h-14" />
+                <p className="font-bold underline leading-tight">Ester Femy Iriani</p>
+                <p className="text-[10pt] text-zinc-800 leading-tight">HR & Legal</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DASHBOARD PAGE KONTEN */}
+      <div className="space-y-6 p-6 font-sans">
+        {/* HEADER */}
+        <div className="flex flex-col gap-4 border-b border-zinc-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-black tracking-tighter text-black uppercase">
+              <MapPin className="h-6 w-6 text-blue-600" /> Perjalanan Dinas
+            </h1>
+          </div>
+          <Button
+            onClick={() => handleOpenModal()}
+            className="h-9 rounded-sm bg-black px-4 text-xs font-semibold text-white shadow-sm hover:bg-zinc-800"
+          >
+            <Plus className="mr-1.5 h-4 w-4" /> Ajukan Perjalanan Baru
+          </Button>
+        </div>
+
+        {/* RINGKASAN */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="rounded-sm border border-zinc-200 bg-white shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase italic">
+                Total Perjalanan
+              </CardTitle>
+              <div className="rounded-sm bg-zinc-100 p-1.5">
+                <FileText className="h-4 w-4 text-zinc-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="font-mono text-xl font-black text-zinc-900">
+                {ringkasan.total}
+              </div>
+              <p className="mt-1 text-[9px] font-bold text-zinc-400 uppercase">
+                Semua perjalanan dinas
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* FILTER & SEARCH */}
+        <Card className="overflow-hidden rounded-sm border-zinc-200 shadow-md">
+          <CardHeader className="space-y-4 border-b bg-zinc-50/50 pb-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[240px] flex-1">
+                <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                <Input
+                  placeholder="Cari nomor, tujuan, tempat, manager, atau anggota..."
+                  className="h-9 rounded-sm border-zinc-200 bg-white pl-10 text-xs shadow-sm focus-visible:ring-1 focus-visible:ring-black"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center gap-2 rounded-sm border border-zinc-200 bg-white p-1.5 shadow-sm">
+                <div className="flex items-center gap-1 px-1 text-[10px] font-black tracking-wide text-zinc-400 uppercase">
+                  <Calendar className="h-3.5 w-3.5 text-zinc-400" /> Dari:
+                </div>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-28 cursor-pointer bg-transparent text-xs font-semibold text-zinc-800 focus:outline-none"
+                />
+                <div className="px-0.5 font-light text-zinc-300">|</div>
+                <div className="text-[10px] font-black tracking-wide text-zinc-400 uppercase">
+                  Sampai:
+                </div>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-28 cursor-pointer bg-transparent text-xs font-semibold text-zinc-800 focus:outline-none"
+                />
+              </div>
+
+              {(searchQuery || startDate || endDate) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetFilters}
+                  className="h-9 rounded-sm border border-dashed border-zinc-300 text-xs text-zinc-500 hover:bg-zinc-100"
+                >
+                  <FilterX className="mr-2 h-3.5 w-3.5" /> Reset Filter
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-0 font-sans text-[13px]">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-zinc-400">
+                <Loader2 className="mb-2 h-8 w-8 animate-spin" />
+                <p className="italic">Mengambil data...</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-zinc-100/80">
+                    <TableRow className="border-b border-zinc-200 text-xs tracking-wider uppercase">
+                      <TableHead className="border-r px-6 py-4 font-bold text-zinc-700">
+                        No
+                      </TableHead>
+                      <TableHead className="border-r font-bold text-zinc-700">
+                        Nomor SPPD
+                      </TableHead>
+                      <TableHead className="border-r font-bold text-zinc-700">
+                        Tujuan
+                      </TableHead>
+                      <TableHead className="border-r font-bold text-zinc-700">
+                        Tempat
+                      </TableHead>
+                      <TableHead className="border-r text-center font-bold text-zinc-700">
+                        Periode
+                      </TableHead>
+                      <TableHead className="border-r font-bold text-zinc-700">
+                        Manager
+                      </TableHead>
+                      <TableHead className="border-r font-bold text-zinc-700">
+                        Anggota
+                      </TableHead>
+                      <TableHead className="text-center font-bold text-zinc-700">
+                        Aksi
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredData.length > 0 ? (
+                      filteredData.map((p, idx) => (
+                        <TableRow
+                          key={p.nomor}
+                          className="border-b border-zinc-100 transition-colors hover:bg-zinc-50/80"
+                        >
+                          <TableCell className="border-r px-6 py-4 font-bold text-zinc-500">
+                            {idx + 1}
+                          </TableCell>
+                          <TableCell className="border-r px-6 py-4 font-bold text-zinc-900">
+                            {p.nomor}
+                          </TableCell>
+                          <TableCell className="border-r px-6 py-4 font-bold text-zinc-900">
+                            {p.tujuan}
+                          </TableCell>
+                          <TableCell className="border-r px-6 py-4 text-zinc-700">
+                            <div className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3 text-zinc-400" />
+                              {p.tempat}
+                            </div>
+                          </TableCell>
+                          <TableCell className="border-r px-6 py-4 text-center text-zinc-700">
+                            <div className="text-[11px]">
+                              {new Date(p.start_date).toLocaleDateString(
+                                "id-ID",
+                                { day: "numeric", month: "short" }
+                              )}
+                              {" - "}
+                              {new Date(p.end_date).toLocaleDateString("id-ID", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </div>
+                          </TableCell>
+                          <TableCell className="border-r px-6 py-4 text-zinc-700">
+                            <div className="text-[11px] font-medium">
+                              {p.manager_nama}
+                            </div>
+                            <div className="text-[10px] text-zinc-400">
+                              {p.manager_nip}
+                            </div>
+                          </TableCell>
+                          <TableCell className="border-r px-6 py-4">
+                            <div className="flex flex-col gap-0.5">
+                              {p.anggota.slice(0, 2).map((a, i) => (
+                                <span
+                                  key={i}
+                                  className="text-[11px] font-medium text-zinc-700"
+                                >
+                                  • {a.nama}
+                                </span>
+                              ))}
+                              {p.anggota.length > 2 && (
+                                <span className="text-[10px] text-zinc-400 italic">
+                                  +{p.anggota.length - 2} anggota
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="px-6 py-4 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 rounded-sm hover:bg-emerald-50 hover:text-emerald-600"
+                                title="Cetak SPPD"
+                                onClick={() => handlePrint(p)}
+                              >
+                                <Printer className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 rounded-sm hover:bg-blue-50 hover:text-blue-600"
+                                title="Detail"
+                                onClick={() => handleViewDetail(p)}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 rounded-sm hover:bg-amber-50 hover:text-amber-600"
+                                title="Edit"
+                                onClick={() => handleOpenModal(p)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 rounded-sm hover:bg-red-50 hover:text-red-600"
+                                title="Hapus"
+                                onClick={() => handleDelete(p.nomor)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={8}
+                          className="py-24 text-center font-sans text-zinc-400 italic"
+                        >
+                          Tidak ada data perjalanan dinas yang ditemukan.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* MODAL FORM TAMBAH/EDIT PERJALANAN */}
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogContent className="w-full max-w-3xl rounded-sm border-none shadow-2xl [&>button]:hidden">
+            <DialogHeader className="-mx-6 -mt-6 mb-4 flex flex-row items-center justify-between bg-zinc-900 px-6 py-3 text-white">
+              <DialogTitle className="text-xs font-bold tracking-wider uppercase">
+                {editMode
+                  ? "Edit Perjalanan Dinas"
+                  : "Form Pengajuan Perjalanan Dinas"}
+              </DialogTitle>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogHeader>
+
+            <form
+              onSubmit={handleSubmit}
+              className="max-h-[70vh] space-y-4 overflow-y-auto px-1"
+            >
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-zinc-700 uppercase">
+                    Nomor SPPD
+                  </Label>
+                  <Input
+                    required
+                    disabled={editMode}
+                    value={formData.nomor}
+                    onChange={(e) =>
+                      setFormData({ ...formData, nomor: e.target.value })
+                    }
+                    className="h-9 rounded-sm border-zinc-300 text-xs"
+                    placeholder="Contoh: 004/HR-PLI/PD/VIII/2026"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-zinc-700 uppercase">
+                    Manager
+                  </Label>
+                  <Select
+                    value={formData.manager_nip}
+                    onValueChange={(val) =>
+                      setFormData({ ...formData, manager_nip: val ?? "" })
+                    }
+                    required
+                  >
+                    <SelectTrigger className="h-9 rounded-sm border-zinc-300 text-xs">
+                      <SelectValue placeholder="Pilih Manager" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {karyawanList
+                        .filter((k) => k.jabatan === "Manager")
+                        .map((k) => (
+                          <SelectItem key={k.nip} value={k.nip}>
+                            {k.nama} - {k.nip}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-zinc-700 uppercase">
+                    Tujuan Perjalanan
+                  </Label>
+                  <Input
+                    required
+                    value={formData.tujuan}
+                    onChange={(e) =>
+                      setFormData({ ...formData, tujuan: e.target.value })
+                    }
+                    className="h-9 rounded-sm border-zinc-300 text-xs"
+                    placeholder="Contoh: Asistensi Pelatihan Gresik"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-zinc-700 uppercase">
+                    Tempat
+                  </Label>
+                  <Input
+                    required
+                    value={formData.tempat}
+                    onChange={(e) =>
+                      setFormData({ ...formData, tempat: e.target.value })
+                    }
+                    className="h-9 rounded-sm border-zinc-300 text-xs"
+                    placeholder="Contoh: Gresik"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-zinc-700 uppercase">
+                    Tanggal Mulai
+                  </Label>
+                  <Input
+                    required
+                    type="date"
+                    min={today}
+                    value={formData.start_date}
+                    onChange={(e) =>
+                      setFormData({ ...formData, start_date: e.target.value })
+                    }
+                    className="h-9 rounded-sm border-zinc-300 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-zinc-700 uppercase">
+                    Tanggal Selesai
+                  </Label>
+                  <Input
+                    required
+                    type="date"
+                    min={today}
+                    value={formData.end_date}
+                    onChange={(e) =>
+                      setFormData({ ...formData, end_date: e.target.value })
+                    }
+                    className="h-9 rounded-sm border-zinc-300 text-xs"
+                  />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label className="text-[11px] font-bold text-zinc-700 uppercase">
+                    Keperluan
+                  </Label>
+                  <Textarea
+                    required
+                    value={formData.keperluan}
+                    onChange={(e) =>
+                      setFormData({ ...formData, keperluan: e.target.value })
+                    }
+                    className="resize-none rounded-sm border-zinc-300 text-xs"
+                    rows={2}
+                    placeholder="Contoh: Pelatihan Gresik"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-sm border border-zinc-200 bg-zinc-50/30 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black tracking-wider text-zinc-700 uppercase">
+                    Daftar Karyawan
+                  </span>
+                </div>
+
+                <div className="relative" ref={karyawanDropdownRef}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setKaryawanDropdownOpen(!karyawanDropdownOpen)}
+                    className="h-9 w-full justify-between rounded-sm border-zinc-300 text-xs font-semibold"
+                  >
+                    <span>
+                      {formData.karyawan.length === 0
+                        ? "Pilih Karyawan"
+                        : `${formData.karyawan.length} karyawan dipilih`}
+                    </span>
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+
+                  {karyawanDropdownOpen && (
+                    <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-sm border border-zinc-200 bg-white shadow-lg">
+                      {karyawanList.map((k) => (
+                        <div
+                          key={k.nip}
+                          className="flex cursor-pointer items-center gap-2 border-b border-zinc-100 px-3 py-2 last:border-0 hover:bg-zinc-50"
+                          onClick={() => toggleKaryawan(k.nip)}
+                        >
+                          <Checkbox
+                            checked={formData.karyawan.includes(k.nip)}
+                            onCheckedChange={() => toggleKaryawan(k.nip)}
+                          />
+                          <div className="flex flex-col">
+                            <span className="text-xs font-medium text-zinc-800">
+                              {k.nama}
+                            </span>
+                            <span className="text-[10px] text-zinc-500">
+                              {k.nip} • {k.divisi}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {formData.karyawan.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedKaryawanNames.map((k) => (
+                      <span
+                        key={k!.nip}
+                        className="inline-flex items-center gap-1 rounded-sm bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-700"
+                      >
+                        {k!.nama}
+                        <button
+                          type="button"
+                          onClick={() => toggleKaryawan(k!.nip)}
+                          className="text-zinc-400 hover:text-red-500"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-zinc-100 pt-4">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setKaryawanDropdownOpen(!karyawanDropdownOpen)}
-                  className="h-9 w-full justify-between rounded-sm border-zinc-300 text-xs font-semibold"
+                  onClick={() => setIsModalOpen(false)}
+                  className="h-9 rounded-sm border-zinc-300 text-xs font-semibold"
                 >
-                  <span>
-                    {formData.karyawan.length === 0
-                      ? "Pilih Karyawan"
-                      : `${formData.karyawan.length} karyawan dipilih`}
-                  </span>
-                  <ChevronDown className="h-4 w-4" />
+                  Batal
                 </Button>
-
-                {karyawanDropdownOpen && (
-                  <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-sm border border-zinc-200 bg-white shadow-lg">
-                    {karyawanList.map((k) => (
-                      <div
-                        key={k.nip}
-                        className="flex cursor-pointer items-center gap-2 border-b border-zinc-100 px-3 py-2 last:border-0 hover:bg-zinc-50"
-                        onClick={() => toggleKaryawan(k.nip)}
-                      >
-                        <Checkbox
-                          checked={formData.karyawan.includes(k.nip)}
-                          onCheckedChange={() => toggleKaryawan(k.nip)}
-                        />
-                        <div className="flex flex-col">
-                          <span className="text-xs font-medium text-zinc-800">
-                            {k.nama}
-                          </span>
-                          <span className="text-[10px] text-zinc-500">
-                            {k.nip} • {k.divisi}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="h-9 rounded-sm bg-blue-600 text-xs font-bold text-white hover:bg-blue-700"
+                >
+                  {submitting
+                    ? "Menyimpan..."
+                    : editMode
+                      ? "Simpan Perubahan"
+                      : "Kirim Pengajuan"}
+                </Button>
               </div>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-              {formData.karyawan.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedKaryawanNames.map((k) => (
-                    <span
-                      key={k!.nip}
-                      className="inline-flex items-center gap-1 rounded-sm bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-700"
-                    >
-                      {k!.nama}
-                      <button
-                        type="button"
-                        onClick={() => toggleKaryawan(k!.nip)}
-                        className="text-zinc-400 hover:text-red-500"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 border-t border-zinc-100 pt-4">
-              <Button
+        {/* MODAL DETAIL PERJALANAN */}
+        <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+          <DialogContent className="w-full max-w-2xl rounded-sm border-none shadow-2xl [&>button]:hidden">
+            <DialogHeader className="-mx-6 -mt-6 mb-4 flex flex-row items-center justify-between bg-zinc-900 px-6 py-3 text-white">
+              <DialogTitle className="text-xs font-bold tracking-wider uppercase">
+                Detail Perjalanan Dinas
+              </DialogTitle>
+              <button
                 type="button"
-                variant="outline"
-                onClick={() => setIsModalOpen(false)}
-                className="h-9 rounded-sm border-zinc-300 text-xs font-semibold"
+                onClick={() => setIsDetailOpen(false)}
+                className="text-zinc-400 hover:text-white"
               >
-                Batal
-              </Button>
-              <Button
-                type="submit"
-                disabled={submitting}
-                className="h-9 rounded-sm bg-blue-600 text-xs font-bold text-white hover:bg-blue-700"
-              >
-                {submitting
-                  ? "Menyimpan..."
-                  : editMode
-                    ? "Simpan Perubahan"
-                    : "Kirim Pengajuan"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+                <X className="h-4 w-4" />
+              </button>
+            </DialogHeader>
 
-      {/* MODAL DETAIL PERJALANAN */}
-      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="w-full max-w-2xl rounded-sm border-none shadow-2xl [&>button]:hidden">
-          <DialogHeader className="-mx-6 -mt-6 mb-4 flex flex-row items-center justify-between bg-zinc-900 px-6 py-3 text-white">
-            <DialogTitle className="text-xs font-bold tracking-wider uppercase">
-              Detail Perjalanan Dinas
-            </DialogTitle>
-            <button
-              type="button"
-              onClick={() => setIsDetailOpen(false)}
-              className="text-zinc-400 hover:text-white"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </DialogHeader>
-
-          {selectedPerjalanan && (
-            <div className="space-y-4 px-1">
-              <div className="space-y-2 rounded-sm border border-zinc-200 bg-zinc-50 p-4 text-xs">
-                <div className="flex justify-between">
-                  <span className="font-bold text-zinc-500 uppercase">
-                    Nomor SPPD
-                  </span>
-                  <span className="font-bold text-zinc-900">
-                    {selectedPerjalanan.nomor}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-bold text-zinc-500 uppercase">
-                    Manager
-                  </span>
-                  <div className="text-right">
-                    <span className="block font-bold text-zinc-900">
-                      {selectedPerjalanan.manager_nama}
-                    </span>
-                    <span className="text-[10px] text-zinc-500">
-                      {selectedPerjalanan.manager_nip} •{" "}
-                      {selectedPerjalanan.manager_divisi}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-bold text-zinc-500 uppercase">
-                    Tujuan
-                  </span>
-                  <span className="font-bold text-zinc-900">
-                    {selectedPerjalanan.tujuan}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-bold text-zinc-500 uppercase">
-                    Tempat
-                  </span>
-                  <span className="font-semibold text-zinc-800">
-                    {selectedPerjalanan.tempat}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-bold text-zinc-500 uppercase">
-                    Periode
-                  </span>
-                  <span className="font-semibold text-zinc-800">
-                    {new Date(selectedPerjalanan.start_date).toLocaleDateString(
-                      "id-ID"
-                    )}{" "}
-                    -{" "}
-                    {new Date(selectedPerjalanan.end_date).toLocaleDateString(
-                      "id-ID"
-                    )}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-bold text-zinc-500 uppercase">
-                    Keperluan
-                  </span>
-                  <span className="max-w-md text-right font-semibold text-zinc-800">
-                    {selectedPerjalanan.keperluan}
-                  </span>
-                </div>
-                {(session?.user as any)?.role === "Admin" && (
+            {selectedPerjalanan && (
+              <div className="space-y-4 px-1">
+                <div className="space-y-2 rounded-sm border border-zinc-200 bg-zinc-50 p-4 text-xs">
                   <div className="flex justify-between">
                     <span className="font-bold text-zinc-500 uppercase">
-                      Dibuat Oleh
+                      Nomor SPPD
                     </span>
-                    <span className="font-semibold text-zinc-800">
-                      {selectedPerjalanan.user_nama || "-"}
+                    <span className="font-bold text-zinc-900">
+                      {selectedPerjalanan.nomor}
                     </span>
                   </div>
-                )}
-              </div>
-
-              <div className="overflow-hidden rounded-sm border border-zinc-300 text-xs">
-                <div className="border-b border-zinc-300 bg-zinc-200 p-2 font-bold text-zinc-800">
-                  Daftar Karyawan
+                  <div className="flex justify-between">
+                    <span className="font-bold text-zinc-500 uppercase">
+                      Manager
+                    </span>
+                    <div className="text-right">
+                      <span className="block font-bold text-zinc-900">
+                        {selectedPerjalanan.manager_nama}
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        {selectedPerjalanan.manager_nip} •{" "}
+                        {selectedPerjalanan.manager_divisi}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-bold text-zinc-500 uppercase">
+                      Tujuan
+                    </span>
+                    <span className="font-bold text-zinc-900">
+                      {selectedPerjalanan.tujuan}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-bold text-zinc-500 uppercase">
+                      Tempat
+                    </span>
+                    <span className="font-semibold text-zinc-800">
+                      {selectedPerjalanan.tempat}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-bold text-zinc-500 uppercase">
+                      Periode
+                    </span>
+                    <span className="font-semibold text-zinc-800">
+                      {new Date(selectedPerjalanan.start_date).toLocaleDateString(
+                        "id-ID"
+                      )}{" "}
+                      -{" "}
+                      {new Date(selectedPerjalanan.end_date).toLocaleDateString(
+                        "id-ID"
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-bold text-zinc-500 uppercase">
+                      Keperluan
+                    </span>
+                    <span className="max-w-md text-right font-semibold text-zinc-800">
+                      {selectedPerjalanan.keperluan}
+                    </span>
+                  </div>
+                  {(session?.user as any)?.role === "Admin" && (
+                    <div className="flex justify-between">
+                      <span className="font-bold text-zinc-500 uppercase">
+                        Dibuat Oleh
+                      </span>
+                      <span className="font-semibold text-zinc-800">
+                        {selectedPerjalanan.user_nama || "-"}
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="border-b border-zinc-200 bg-zinc-100 text-[11px] font-bold text-zinc-700">
-                      <th className="w-12 border-r border-zinc-200 p-2 text-center">
-                        No
-                      </th>
-                      <th className="border-r border-zinc-200 p-2">Nama</th>
-                      <th className="border-r border-zinc-200 p-2">NIP</th>
-                      <th className="border-r border-zinc-200 p-2">Divisi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-200">
-                    {selectedPerjalanan.anggota.map((a, idx) => (
-                      <tr key={idx} className="bg-white">
-                        <td className="border-r border-zinc-200 p-2 text-center font-bold text-zinc-400">
-                          {idx + 1}
-                        </td>
-                        <td className="border-r border-zinc-200 p-2 font-medium text-zinc-800">
-                          {a.nama}
-                        </td>
-                        <td className="border-r border-zinc-200 p-2 text-zinc-600">
-                          {a.nip}
-                        </td>
-                        <td className="border-r border-zinc-200 p-2 text-zinc-600">
-                          {a.divisi}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
 
-              <div className="flex justify-end pt-2">
-                <Button
-                  onClick={() => setIsDetailOpen(false)}
-                  className="h-9 rounded-sm bg-zinc-900 text-xs font-bold text-white hover:bg-zinc-800"
-                >
-                  Tutup
-                </Button>
+                <div className="overflow-hidden rounded-sm border border-zinc-300 text-xs">
+                  <div className="border-b border-zinc-300 bg-zinc-200 p-2 font-bold text-zinc-800">
+                    Daftar Karyawan
+                  </div>
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="border-b border-zinc-200 bg-zinc-100 text-[11px] font-bold text-zinc-700">
+                        <th className="w-12 border-r border-zinc-200 p-2 text-center">
+                          No
+                        </th>
+                        <th className="border-r border-zinc-200 p-2">Nama</th>
+                        <th className="border-r border-zinc-200 p-2">NIP</th>
+                        <th className="border-r border-zinc-200 p-2">Divisi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200">
+                      {selectedPerjalanan.anggota.map((a, idx) => (
+                        <tr key={idx} className="bg-white">
+                          <td className="border-r border-zinc-200 p-2 text-center font-bold text-zinc-400">
+                            {idx + 1}
+                          </td>
+                          <td className="border-r border-zinc-200 p-2 font-medium text-zinc-800">
+                            {a.nama}
+                          </td>
+                          <td className="border-r border-zinc-200 p-2 text-zinc-600">
+                            {a.nip}
+                          </td>
+                          <td className="border-r border-zinc-200 p-2 text-zinc-600">
+                            {a.divisi}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-between pt-2">
+                  <Button
+                    onClick={() => handlePrint(selectedPerjalanan)}
+                    variant="outline"
+                    className="h-9 rounded-sm border-zinc-300 text-xs font-semibold gap-1.5"
+                  >
+                    <Printer className="h-4 w-4" /> Cetak SPPD
+                  </Button>
+                  <Button
+                    onClick={() => setIsDetailOpen(false)}
+                    className="h-9 rounded-sm bg-zinc-900 text-xs font-bold text-white hover:bg-zinc-800"
+                  >
+                    Tutup
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </>
   )
 }
