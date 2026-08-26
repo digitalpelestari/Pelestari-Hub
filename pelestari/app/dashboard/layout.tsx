@@ -11,19 +11,19 @@ export default function DashboardLayout({
   return (
     <SidebarProvider>
       {/* Ini yang manggil file AppSidebar yang kamu kirim tadi */}
-      <AppSidebar /> 
-      
-      <main className="w-full">
+      <AppSidebar />
+
+      <main className="w-full min-w-0">
         {/* Tombol buka tutup sidebar */}
-        <div className="flex items-center p-2 border-b bg-white">
+        <div className="flex items-center border-b bg-white p-2">
           <SidebarTrigger />
-          <span className="ml-4 font-semibold text-sm">PT PELESTARI INDONESIA</span>
+          <span className="ml-4 text-sm font-semibold">
+            PT PELESTARI INDONESIA
+          </span>
         </div>
-        
+
         {/* Konten Halaman (Dashboard, Invoices, dll) */}
-        <div className="p-4">
-            {children}
-        </div>
+        <div className="min-w-0 overflow-x-hidden p-4">{children}</div>
       </main>
     </SidebarProvider>
   )

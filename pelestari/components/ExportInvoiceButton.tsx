@@ -68,10 +68,10 @@ export default function ExportInvoiceButton({ data }: ExportProps) {
   };
 
   return (
-    <Button 
+    <Button  
       onClick={handleExport} 
       variant="outline" 
-      className="border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold shadow-sm gap-2"
+      className="border-zinc-300 text-[12px] text-zinc-700 hover:bg-zinc-100 uppercase font-semibold shadow-sm gap-2"
     >
       <FileDown className="w-4 h-4" />
       Export Excel
