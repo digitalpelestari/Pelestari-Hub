@@ -50,6 +50,7 @@ import {
   getPerjalananListAction,
   getPerjalananDetailAction,
   createPerjalananAction,
+  getNextNomorSppdAction,
   updatePerjalananAction,
   deletePerjalananAction,
 } from "@/app/actions/perjalanan-dinas"
@@ -82,6 +83,18 @@ interface PerjalananItem {
   anggota: AnggotaItem[]
   user_nama?: string
   id_user?: string
+}
+
+const toYMD = (value: unknown): string => {
+  if (!value) return ""
+  if (typeof value === "string") return value.split(" ")[0]
+  if (value instanceof Date) {
+    const y = value.getFullYear()
+    const m = String(value.getMonth() + 1).padStart(2, "0")
+    const d = String(value.getDate()).padStart(2, "0")
+    return `${y}-${m}-${d}`
+  }
+  return ""
 }
 
 export default function PerjalananDinasPage() {
@@ -159,6 +172,7 @@ export default function PerjalananDinasPage() {
   const filteredData = useMemo(() => {
     return perjalananList.filter((p) => {
       const matchesSearch =
+        p.nomor.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.tujuan.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.tempat.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.keperluan.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -196,26 +210,37 @@ export default function PerjalananDinasPage() {
     setEditMode(false)
   }
 
-  const handleOpenModal = (perjalanan?: PerjalananItem) => {
+  const handleOpenModal = async (perjalanan?: PerjalananItem) => {
     if (perjalanan) {
       setEditMode(true)
+
       setFormData({
         nomor: perjalanan.nomor,
         manager_nip: perjalanan.manager_nip,
         keperluan: perjalanan.keperluan,
         tujuan: perjalanan.tujuan,
         tempat: perjalanan.tempat,
-        start_date: perjalanan.start_date
-          ? new Date(perjalanan.start_date).toISOString().split("T")[0]
-          : "",
-        end_date: perjalanan.end_date
-          ? new Date(perjalanan.end_date).toISOString().split("T")[0]
-          : "",
+        start_date: toYMD(perjalanan.start_date),
+        end_date: toYMD(perjalanan.end_date),
         karyawan: perjalanan.anggota.map((a) => a.nip),
       })
-    } else {
-      resetForm()
+
+      setIsModalOpen(true)
+      return
     }
+
+    resetForm()
+
+    // Generate nomor untuk ditampilkan
+    const result = await getNextNomorSppdAction()
+
+    if (result.success) {
+      setFormData((prev) => ({
+        ...prev,
+        nomor: result.nomor,
+      }))
+    }
+
     setIsModalOpen(true)
   }
 
@@ -283,7 +308,6 @@ export default function PerjalananDinasPage() {
         resetForm()
       } else {
         const result = await createPerjalananAction({
-          nomor: formData.nomor,
           manager_nip: formData.manager_nip,
           keperluan: formData.keperluan,
           tujuan: formData.tujuan,
@@ -831,22 +855,22 @@ export default function PerjalananDinasPage() {
                       <TableHead className="border-r px-6 py-4 font-bold text-zinc-700">
                         No
                       </TableHead>
-                      <TableHead className="border-r font-bold text-zinc-700">
+                      <TableHead className="border-r text-center font-bold text-zinc-700">
                         Nomor SPPD
                       </TableHead>
-                      <TableHead className="border-r font-bold text-zinc-700">
+                      <TableHead className="border-r text-center font-bold text-zinc-700">
                         Tujuan
                       </TableHead>
-                      <TableHead className="border-r font-bold text-zinc-700">
+                      <TableHead className="border-r text-center font-bold text-zinc-700">
                         Tempat
                       </TableHead>
                       <TableHead className="border-r text-center font-bold text-zinc-700">
                         Periode
                       </TableHead>
-                      <TableHead className="border-r font-bold text-zinc-700">
+                      <TableHead className="text-centerfont-bold border-r text-center text-zinc-700">
                         Manager
                       </TableHead>
-                      <TableHead className="border-r font-bold text-zinc-700">
+                      <TableHead className="border-r text-center font-bold text-zinc-700">
                         Anggota
                       </TableHead>
                       <TableHead className="text-center font-bold text-zinc-700">
@@ -861,23 +885,23 @@ export default function PerjalananDinasPage() {
                           key={p.nomor}
                           className="border-b border-zinc-100 transition-colors hover:bg-zinc-50/80"
                         >
-                          <TableCell className="border-r px-6 py-4 font-bold text-zinc-500">
+                          <TableCell className="border-r px-6 py-4 text-xs font-bold text-zinc-500">
                             {idx + 1}
                           </TableCell>
-                          <TableCell className="border-r px-6 py-4 font-bold text-zinc-900">
+                          <TableCell className="border-r px-6 py-4 text-xs font-bold text-zinc-900">
                             {p.nomor}
                           </TableCell>
-                          <TableCell className="border-r px-6 py-4 font-bold text-zinc-900">
+                          <TableCell className="border-r px-6 py-4 text-xs font-bold text-zinc-900">
                             {p.tujuan}
                           </TableCell>
-                          <TableCell className="border-r px-6 py-4 text-zinc-700">
+                          <TableCell className="border-r px-6 py-4 text-xs text-zinc-700">
                             <div className="flex items-center gap-1">
                               <MapPin className="h-3 w-3 text-zinc-400" />
                               {p.tempat}
                             </div>
                           </TableCell>
-                          <TableCell className="border-r px-6 py-4 text-center text-zinc-700">
-                            <div className="text-[11px]">
+                          <TableCell className="border-r px-6 py-4 text-center text-xs text-zinc-700">
+                            <div className="text-xs">
                               {new Date(p.start_date).toLocaleDateString(
                                 "id-ID",
                                 { day: "numeric", month: "short" }
@@ -893,32 +917,27 @@ export default function PerjalananDinasPage() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="border-r px-6 py-4 text-zinc-700">
-                            <div className="text-[11px] font-medium">
+                          <TableCell className="border-r px-6 py-4 text-xs text-zinc-700">
+                            <div className="text-xs font-medium">
                               {p.manager_nama}
                             </div>
-                            <div className="text-[10px] text-zinc-400">
+                            <div className="text-[11px] text-zinc-400">
                               {p.manager_nip}
                             </div>
                           </TableCell>
-                          <TableCell className="border-r px-6 py-4">
+                          <TableCell className="border-r px-6 py-4 text-xs">
                             <div className="flex flex-col gap-0.5">
-                              {p.anggota.slice(0, 2).map((a, i) => (
+                              {p.anggota.map((a, i) => (
                                 <span
                                   key={i}
-                                  className="text-[11px] font-medium text-zinc-700"
+                                  className="text-xs font-medium text-zinc-700"
                                 >
                                   • {a.nama}
                                 </span>
                               ))}
-                              {p.anggota.length > 2 && (
-                                <span className="text-[10px] text-zinc-400 italic">
-                                  +{p.anggota.length - 2} anggota
-                                </span>
-                              )}
                             </div>
                           </TableCell>
-                          <TableCell className="px-6 py-4 text-center">
+                          <TableCell className="px-6 py-4 text-center text-xs">
                             <div className="flex items-center justify-center gap-1">
                               <Button
                                 size="sm"
@@ -964,7 +983,7 @@ export default function PerjalananDinasPage() {
                       <TableRow>
                         <TableCell
                           colSpan={8}
-                          className="py-24 text-center font-sans text-zinc-400 italic"
+                          className="py-24 text-center font-sans text-xs text-zinc-400 italic"
                         >
                           Tidak ada data perjalanan dinas yang ditemukan.
                         </TableCell>
@@ -1004,15 +1023,12 @@ export default function PerjalananDinasPage() {
                   <Label className="text-[11px] font-bold text-zinc-700 uppercase">
                     Nomor SPPD
                   </Label>
+
                   <Input
-                    required
-                    disabled={editMode}
                     value={formData.nomor}
-                    onChange={(e) =>
-                      setFormData({ ...formData, nomor: e.target.value })
-                    }
-                    className="h-9 rounded-sm border-zinc-300 text-xs"
-                    placeholder="Contoh: 004/HR-PLI/PD/VIII/2026"
+                    readOnly
+                    className="h-9 rounded-sm border-zinc-300 bg-zinc-100 text-xs font-semibold text-zinc-600"
+                    placeholder="Membuat nomor..."
                   />
                 </div>
                 <div className="space-y-1">
@@ -1279,7 +1295,7 @@ export default function PerjalananDinasPage() {
                     <span className="font-bold text-zinc-500 uppercase">
                       Periode
                     </span>
-                    <span className="font-semibold text-zinc-800">
+                    <span className="text-[12px] font-semibold text-zinc-800">
                       {new Date(
                         selectedPerjalanan.start_date
                       ).toLocaleDateString("id-ID")}{" "}

@@ -4,6 +4,89 @@ import { auth } from "@/auth"
 import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
 
+
+const ROMAN_MONTHS = [
+  "I",
+  "II",
+  "III",
+  "IV",
+  "V",
+  "VI",
+  "VII",
+  "VIII",
+  "IX",
+  "X",
+  "XI",
+  "XII",
+]
+
+async function generateNomorSppd() {
+  const now = new Date()
+
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const romanMonth = ROMAN_MONTHS[month - 1]
+
+  const prefix = `HR-PLI/PD/`
+
+  const [rows]: any = await db.execute(
+    `
+      SELECT nomor
+      FROM tb_sppd
+      WHERE nomor LIKE ?
+      ORDER BY CAST(SUBSTRING_INDEX(nomor, '/', 1) AS UNSIGNED) DESC
+      LIMIT 1
+    `,
+    [`%/${prefix}%/${year}`]
+  )
+
+  let sequence = 1
+
+  if (rows.length > 0) {
+    const lastSequence = parseInt(
+      rows[0].nomor.split("/")[0],
+      10
+    )
+
+    sequence = lastSequence + 1
+  }
+
+  return `${String(sequence).padStart(3, "0")}/HR-PLI/PD/${romanMonth}/${year}`
+}
+export async function getNextNomorSppdAction(): Promise<
+  | {
+      success: true
+      nomor: string
+    }
+  | {
+      success: false
+      message: string
+    }
+> {
+  try {
+    const session = await auth()
+
+    if (!session?.user) {
+      return {
+        success: false,
+        message: "Unauthorized",
+      }
+    }
+
+    const nomor = await generateNomorSppd()
+
+    return {
+      success: true,
+      nomor,
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error.message,
+    }
+  }
+}
+
 // =========================================================================
 // 1. ACTION: AMBIL SEMUA DATA KARYAWAN
 // =========================================================================
@@ -146,7 +229,6 @@ export async function getPerjalananDetailAction(nomor: string) {
 // 4. ACTION: BUAT PERJALANAN DINAS BARU
 // =========================================================================
 export async function createPerjalananAction(payload: {
-  nomor: string
   manager_nip: string
   keperluan: string
   tujuan: string
@@ -163,9 +245,9 @@ export async function createPerjalananAction(payload: {
 
   const id_user = session.user.id
 
-  const { nomor, manager_nip, keperluan, tujuan, tempat, start_date, end_date, karyawan } = payload
+  const { manager_nip, keperluan, tujuan, tempat, start_date, end_date, karyawan } = payload
 
-  if (!nomor || !manager_nip || !keperluan || !tujuan || !tempat || !start_date || !end_date) {
+  if (!manager_nip || !keperluan || !tujuan || !tempat || !start_date || !end_date) {
     return { success: false, message: "Semua field utama wajib diisi" }
   }
 
@@ -178,14 +260,7 @@ export async function createPerjalananAction(payload: {
   }
 
   try {
-    const [existing]: any = await db.execute(
-      "SELECT nomor FROM tb_sppd WHERE nomor = ?",
-      [nomor]
-    )
-
-    if (existing.length > 0) {
-      return { success: false, message: "Nomor SPPD sudah ada" }
-    }
+    const nomor = await generateNomorSppd()
 
     await db.execute(
       "INSERT INTO tb_sppd (nomor, id_user, manager_nip, keperluan, tujuan, tempat, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
