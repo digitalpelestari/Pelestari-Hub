@@ -61,7 +61,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           title: "Pengajuan Barang",
           url: "/dashboard/karyawan/pengajuan-barang",
         },
-        { title: "Gajian", url: "/dashboard/karyawan/gajian" },
+        { title: "Riwayat Gaji", url: "/dashboard/karyawan/gajian" },
       ],
     },
 
@@ -127,7 +127,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         { title: "Asset Tracking", url: "/dashboard/finance/asset-tracking" },
       ],
     },
-    
 
     // GA DROPDOWN
     {
@@ -146,11 +145,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: "#",
       icon: <Users />,
       roles: ["ADMIN", "HR"],
-      items: [
-        { title: "Data Karyawan", url: "/dashboard/hr/data-karyawan" },
-      ],
+      items: [{ title: "Data Karyawan", url: "/dashboard/hr/data-karyawan" }],
     },
-     
   ]
 
   const filteredNavMain = navMainData.filter((menu) => {

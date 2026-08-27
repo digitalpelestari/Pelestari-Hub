@@ -6,8 +6,15 @@ import { getJurnalList } from "@/app/actions/jurnal"
 
 export async function exportBukuKasToExcel(startDate?: string, endDate?: string) {
   try {
-    const rawJurnal = await getJurnalList(startDate, endDate)
-    const list = Array.isArray(rawJurnal) ? rawJurnal : []
+const rawJurnal = await getJurnalList(startDate, endDate)
+
+if (!rawJurnal.success) {
+  throw new Error(rawJurnal.message || "Gagal mengambil data jurnal")
+}
+
+const list = Array.isArray(rawJurnal.data)
+  ? rawJurnal.data
+  : []
 
     // 1. Urutkan transaksi dari terlama ke terbaru untuk running saldo
     const sorted = [...list].sort((a: any, b: any) => {
