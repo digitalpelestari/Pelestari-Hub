@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, useMemo } from "react"
+import React, { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+
 import {
   Plus,
   Search,
@@ -27,6 +28,10 @@ import {
   FileText,
   Download,
   X,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react"
 import {
   getJurnalList,
@@ -49,23 +54,90 @@ export default function JurnalUmumListPage() {
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
 
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const pageSizeOptions = [10, 20, 50, 100, 200]
+  const [totalPages, setTotalPages] = useState(0)
+  const [totalData, setTotalData] = useState(0)
+  const [totalAccumulasi, setTotalAccumulasi] = useState({
+    debit: 0,
+    kredit: 0,
+    isBalanced: false,
+  })
+
   const [editingJurnalId, setEditingJurnalId] = useState<number | null>(null)
   const [editHeaderForm, setEditHeaderForm] = useState<any>({})
   const [editItemsForm, setEditItemsForm] = useState<any[]>([])
+  const totalItems = totalData
+  const totalPagesSafe = Math.max(1, totalPages)
+
+  const startRow = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1
+
+  const endRow = Math.min(currentPage * pageSize, totalItems)
+
+  const goToPage = (page: number) => {
+    if (page < 1 || page > totalPagesSafe) return
+    setCurrentPage(page)
+  }
+
+  const pageNumbers = React.useMemo(() => {
+    const pages: (number | "...")[] = []
+    const delta = 1
+
+    for (let i = 1; i <= totalPagesSafe; i++) {
+      if (
+        i === 1 ||
+        i === totalPagesSafe ||
+        (i >= currentPage - delta && i <= currentPage + delta)
+      ) {
+        pages.push(i)
+      } else if (pages[pages.length - 1] !== "...") {
+        pages.push("...")
+      }
+    }
+
+    return pages
+  }, [totalPagesSafe, currentPage])
 
   const loadData = async () => {
     setLoading(true)
-    try {
-      const startParam = startDate ? startDate : undefined
-      const endParam = endDate ? endDate : undefined
 
-      const dataJurnal = await getJurnalList(startParam, endParam)
+    try {
+      const startParam = startDate || undefined
+      const endParam = endDate || undefined
+
+      const dataJurnal = await getJurnalList(
+        startParam,
+        endParam,
+        currentPage,
+        pageSize,
+        searchQuery
+      )
       const dataAkun = await getAkunList()
 
-      setJurnalList(Array.isArray(dataJurnal) ? dataJurnal : [])
-      setAkunList(Array.isArray(dataAkun) ? dataAkun : [])
-    } catch (error) {
+      if (!dataJurnal.success) {
+        throw new Error(dataJurnal.message || "Gagal mengambil data jurnal")
+      }
+
+      setJurnalList(dataJurnal.data || [])
+
+      setTotalPages(dataJurnal.pagination?.totalPages || 0)
+      setTotalData(dataJurnal.pagination?.total || 0)
+      setTotalAccumulasi({
+        debit: Number(dataJurnal.summary?.totalDebit || 0),
+        kredit: Number(dataJurnal.summary?.totalKredit || 0),
+        isBalanced: dataJurnal.summary?.isBalanced || false,
+      })
+
+      // Sesuaikan dengan return getAkunList()
+      setAkunList(Array.isArray(dataAkun) ? dataAkun : dataAkun.data || [])
+    } catch (error: any) {
       console.error("Gagal memuat data pembukuan:", error)
+
+      setJurnalList([])
+      setAkunList([])
+
+      swal.error(error.message || "Gagal memuat data jurnal")
     } finally {
       setLoading(false)
     }
@@ -73,33 +145,7 @@ export default function JurnalUmumListPage() {
 
   useEffect(() => {
     loadData()
-  }, [startDate, endDate])
-
-  const filteredJurnal = useMemo(() => {
-    return jurnalList.filter(
-      (j) =>
-        (j.no_registrasi &&
-          j.no_registrasi.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (j.no_referensi &&
-          j.no_referensi.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (j.keterangan &&
-          j.keterangan.toLowerCase().includes(searchQuery.toLowerCase()))
-    )
-  }, [jurnalList, searchQuery])
-
-  const totalAccumulasi = useMemo(() => {
-    let debit = 0
-    let kredit = 0
-    filteredJurnal.forEach((jurnal) => {
-      if (jurnal.items && Array.isArray(jurnal.items)) {
-        jurnal.items.forEach((item: any) => {
-          debit += Number(item.debit) || 0
-          kredit += Number(item.kredit) || 0
-        })
-      }
-    })
-    return { debit, kredit, isBalanced: debit === kredit && debit > 0 }
-  }, [filteredJurnal])
+  }, [startDate, endDate, currentPage, pageSize, searchQuery])
 
   const startEditJurnal = (jurnal: any) => {
     setEditingJurnalId(jurnal.id)
@@ -298,7 +344,10 @@ export default function JurnalUmumListPage() {
           <Input
             placeholder="Cari No. Regis, Referensi, atau Memo..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setCurrentPage(1)
+            }}
             className="h-10 rounded-lg border-zinc-200 bg-zinc-50/50 pl-9 text-xs focus-visible:ring-1 focus-visible:ring-zinc-900"
           />
         </div>
@@ -312,7 +361,10 @@ export default function JurnalUmumListPage() {
             <input
               type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => {
+                setStartDate(e.target.value)
+                setCurrentPage(1)
+              }}
               className="cursor-pointer bg-transparent text-xs font-medium text-zinc-700 outline-none"
             />
           </div>
@@ -327,7 +379,10 @@ export default function JurnalUmumListPage() {
             <input
               type="date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => {
+                setEndDate(e.target.value)
+                setCurrentPage(1)
+              }}
               className="cursor-pointer bg-transparent text-xs font-medium text-zinc-700 outline-none"
             />
           </div>
@@ -390,8 +445,8 @@ export default function JurnalUmumListPage() {
                     Memuat data transaksi dari server...
                   </TableCell>
                 </TableRow>
-              ) : filteredJurnal.length > 0 ? (
-                filteredJurnal.map((jurnal) => {
+              ) : jurnalList.length > 0 ? (
+                jurnalList.map((jurnal) => {
                   const itemsArray = Array.isArray(jurnal.items)
                     ? jurnal.items
                     : []
@@ -436,7 +491,7 @@ export default function JurnalUmumListPage() {
                                   className="h-8 rounded-md border-zinc-300 bg-white font-mono !text-xs"
                                 />
                               ) : (
-                                <div className="flex items-center gap-1.5 whitespace-nowrap !text-xs">
+                                <div className="flex items-center gap-1.5 !text-xs whitespace-nowrap">
                                   <Calendar className="h-3.5 w-3.5 text-zinc-400" />
                                   {jurnal.tanggal
                                     ? new Date(
@@ -464,7 +519,7 @@ export default function JurnalUmumListPage() {
                                   className="h-8 rounded-md border-zinc-300 bg-white font-mono"
                                 />
                               ) : (
-                                <div className="flex items-center gap-1.5 whitespace-nowrap !text-xs">
+                                <div className="flex items-center gap-1.5 !text-xs whitespace-nowrap">
                                   <Hash className="h-3.5 w-3.5 text-zinc-400" />
                                   {jurnal.no_registrasi || "-"}
                                 </div>
@@ -709,9 +764,116 @@ export default function JurnalUmumListPage() {
           </Table>
         </div>
       </div>
+      {!loading && totalItems > 0 && (
+        <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50/50 px-4 py-3 sm:flex-row">
+          {/* INFO + PAGE SIZE */}
+          <div className="flex items-center gap-3 text-xs text-zinc-500">
+            <span>
+              Menampilkan{" "}
+              <span className="font-semibold text-zinc-700">{startRow}</span>–
+              <span className="font-semibold text-zinc-700">{endRow}</span> dari{" "}
+              <span className="font-semibold text-zinc-700">{totalItems}</span>{" "}
+              data
+            </span>
 
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase">
+                Baris:
+              </span>
+
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value))
+                  setCurrentPage(1)
+                }}
+                className="h-8 cursor-pointer rounded-lg border border-zinc-200 bg-white px-2 text-xs font-medium text-zinc-700 outline-none"
+              >
+                {pageSizeOptions.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* PAGE NAVIGATION */}
+          <div className="flex items-center gap-1">
+            {/* FIRST PAGE */}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => goToPage(1)}
+              disabled={currentPage === 1}
+              className="h-8 w-8 rounded-lg border-zinc-200 disabled:opacity-40"
+            >
+              <ChevronsLeft className="h-3.5 w-3.5" />
+            </Button>
+
+            {/* PREVIOUS */}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="h-8 w-8 rounded-lg border-zinc-200 disabled:opacity-40"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+
+            {/* PAGE NUMBERS */}
+            {pageNumbers.map((p, idx) =>
+              p === "..." ? (
+                <span
+                  key={`ellipsis-${idx}`}
+                  className="px-2 text-xs text-zinc-400"
+                >
+                  ...
+                </span>
+              ) : (
+                <Button
+                  key={p}
+                  variant={p === currentPage ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => goToPage(p as number)}
+                  className={`h-8 min-w-8 rounded-lg px-2 text-xs ${
+                    p === currentPage
+                      ? "bg-zinc-900 text-white hover:bg-zinc-800"
+                      : "border-zinc-200 text-zinc-700"
+                  }`}
+                >
+                  {p}
+                </Button>
+              )
+            )}
+
+            {/* NEXT */}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPagesSafe}
+              className="h-8 w-8 rounded-lg border-zinc-200 disabled:opacity-40"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+
+            {/* LAST PAGE */}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => goToPage(totalPagesSafe)}
+              disabled={currentPage === totalPagesSafe}
+              className="h-8 w-8 rounded-lg border-zinc-200 disabled:opacity-40"
+            >
+              <ChevronsRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
       {/* PANEL INDIKATOR TOTAL KUMULATIF (FOOTER SUMMARY) */}
-      {!loading && filteredJurnal.length > 0 && (
+      {!loading && jurnalList.length > 0 && (
         <div className="flex w-full flex-col items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm md:flex-row">
           <div className="flex items-center gap-3">
             {totalAccumulasi.isBalanced ? (

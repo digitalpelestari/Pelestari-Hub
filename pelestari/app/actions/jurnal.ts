@@ -21,9 +21,19 @@ interface JurnalPayload {
 /**
  * 🚀 ACTION: EKSPOR DATA JURNAL UMUM KE EXCEL (10 KOLOM - DENGAN NO REFERENSI)
  */
-export async function exportJurnalToExcel(startDate?: string, endDate?: string) {
+export async function exportJurnalToExcel(
+  startDate?: string,
+  endDate?: string
+) {
   try {
-    const jurnalList = await getJurnalList(startDate, endDate);
+    const result = await getJurnalList(startDate, endDate);
+    const jurnalList = result.data;
+
+    if (!result.success) {
+      throw new Error(
+        result.message || "Gagal mengambil data jurnal"
+      );
+    }
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Jurnal Pembukuan", {
@@ -82,24 +92,32 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
     const flatRowsToRender: any[] = [];
 
     jurnalList.forEach((jurnal: any) => {
-      const debitItems = (jurnal.items || []).filter((item: any) => Number(item.debit) > 0);
-      const itemsToUse = debitItems.length > 0 ? debitItems : (jurnal.items || []);
-      
-      itemsToUse.forEach((item: any, idx: number) => {
-        flatRowsToRender.push({
-          isFirstInJurnal: idx === 0, 
-          jurnalItemsCount: itemsToUse.length,
-          no_registrasi: jurnal.no_registrasi || "-",
-          no_referensi: jurnal.no_referensi || "-", 
-          tanggal: jurnal.tanggal,
-          kelompok_biaya: (item.nama_kelompok || "BIAYA OPERASIONAL").toUpperCase(),
-          jenis_biaya: (item.nama_akun || "-").toUpperCase(),
-          detail_jenis_biaya: (item.nama_akun || "-").toUpperCase(), 
-          keterangan_memo: (jurnal.keterangan || "-").toUpperCase(), 
-          nominal_murni: Number(item.debit) || Number(item.kredit) || 0
-        });
-      });
+  const itemsToUse = jurnal.items || [];
+
+  itemsToUse.forEach((item: any, idx: number) => {
+    flatRowsToRender.push({
+      isFirstInJurnal: idx === 0,
+      jurnalItemsCount: itemsToUse.length,
+      no_registrasi: jurnal.no_registrasi || "-",
+      no_referensi: jurnal.no_referensi || "-",
+      tanggal: jurnal.tanggal,
+      kelompok_biaya: (
+        item.nama_kelompok || "BIAYA OPERASIONAL"
+      ).toUpperCase(),
+      jenis_biaya: (
+        item.nama_akun || "-"
+      ).toUpperCase(),
+      detail_jenis_biaya: (
+        item.nama_akun || "-"
+      ).toUpperCase(),
+      keterangan_memo: (
+        jurnal.keterangan || "-"
+      ).toUpperCase(),
+      nominal_murni:
+        Number(item.debit) || Number(item.kredit) || 0,
     });
+  });
+});
 
     // 4. ALGORITMA MULTI-LEVEL CONDITIONAL GROUPING
     let i = 0;
@@ -305,58 +323,339 @@ export async function exportJurnalToExcel(startDate?: string, endDate?: string) 
 /**
  * 🛠️ ACTION: FIX - AMBIL DATA JURNAL (MENGGUNAKAN NODE-MAPPING UNTUK MENGHINDARI BUG JSON RE-FORMAT)
  */
-export async function getJurnalList(startDate?: string, endDate?: string) {
+/**
+ * ACTION: AMBIL DATA JURNAL
+ * Support pagination, search, dan filter tanggal.
+ */
+export async function getJurnalList(
+  startDate?: string,
+  endDate?: string,
+  page?: number,
+  pageSize?: number,
+  search?: string
+) {
   try {
-    // 1. Tarik data dari tb_jurnal (Header) secara mandiri
-    let headerQuery = `
-      SELECT id, tanggal, no_registrasi, no_referensi, keterangan 
-      FROM tb_jurnal
-    `;
-    const queryParams: any[] = [];
+    const isPaginationEnabled =
+      page !== undefined && pageSize !== undefined
 
-    if (startDate && endDate && startDate.trim() !== "" && endDate.trim() !== "") {
-      headerQuery += ` WHERE DATE(tanggal) BETWEEN ? AND ? `;
-      queryParams.push(startDate, endDate);
+    const currentPage = Math.max(1, page || 1)
+    const currentPageSize = Math.max(1, pageSize || 20)
+    const offset = (currentPage - 1) * currentPageSize
+
+    const conditions: string[] = []
+    const params: any[] = []
+
+    // =========================================================
+    // FILTER TANGGAL
+    // =========================================================
+
+    if (
+      startDate &&
+      startDate.trim() !== ""
+    ) {
+      conditions.push("DATE(j.tanggal) >= ?")
+      params.push(startDate)
     }
 
-    headerQuery += ` ORDER BY tanggal DESC, id DESC `;
-    const [headers]: any = await db.query(headerQuery, queryParams);
+    if (
+      endDate &&
+      endDate.trim() !== ""
+    ) {
+      conditions.push("DATE(j.tanggal) <= ?")
+      params.push(endDate)
+    }
 
-    if (!headers || headers.length === 0) return [];
+    // =========================================================
+    // SEARCH
+    // =========================================================
 
-    // 2. Tarik seluruh data detail items se-database secara flat
-    const [allItems]: any = await db.query(`
-      SELECT 
-        i.id, 
+   if (search?.trim()) {
+  const searchValue = `%${search.trim()}%`
+
+  conditions.push(`
+    (
+      LOWER(j.no_registrasi) LIKE LOWER(?)
+      OR LOWER(j.no_referensi) LIKE LOWER(?)
+      OR LOWER(j.keterangan) LIKE LOWER(?)
+
+      OR EXISTS (
+        SELECT 1
+        FROM tb_jurnal_item si
+        LEFT JOIN tb_akun sa
+          ON si.no_akun = sa.no_akun
+        WHERE si.jurnal_id = j.id
+          AND (
+            LOWER(si.no_akun) LIKE LOWER(?)
+            OR LOWER(sa.nama_akun) LIKE LOWER(?)
+          )
+      )
+    )
+  `)
+
+  params.push(
+    searchValue,
+    searchValue,
+    searchValue,
+    searchValue,
+    searchValue
+  )
+}
+
+    const whereClause =
+      conditions.length > 0
+        ? `WHERE ${conditions.join(" AND ")}`
+        : ""
+
+    // =========================================================
+    // 1. HITUNG TOTAL DATA
+    // =========================================================
+
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM tb_jurnal j
+      ${whereClause}
+    `
+
+    const [countRows]: any = await db.query(
+      countQuery,
+      params
+    )
+
+    const total = Number(countRows[0]?.total || 0)
+
+    // =========================================================
+// HITUNG TOTAL DEBIT & KREDIT SELURUH DATA
+// Tidak terpengaruh pagination
+// =========================================================
+
+const summaryQuery = `
+  SELECT
+    COALESCE(SUM(i.debit), 0) AS totalDebit,
+    COALESCE(SUM(i.kredit), 0) AS totalKredit
+  FROM tb_jurnal_item i
+  INNER JOIN tb_jurnal j
+    ON i.jurnal_id = j.id
+  ${whereClause}
+`
+// =========================================================
+// HITUNG SALDO AKHIR KAS / BANK
+// Tidak terpengaruh pagination
+// =========================================================
+
+const saldoKasQuery = `
+  SELECT
+    COALESCE(SUM(i.debit), 0) AS totalDebitKas,
+    COALESCE(SUM(i.kredit), 0) AS totalKreditKas
+  FROM tb_jurnal_item i
+  INNER JOIN tb_jurnal j
+    ON i.jurnal_id = j.id
+  WHERE i.no_akun IN ('11100', '11200')
+    ${
+      startDate && startDate.trim() !== ""
+        ? "AND DATE(j.tanggal) >= ?"
+        : ""
+    }
+    ${
+      endDate && endDate.trim() !== ""
+        ? "AND DATE(j.tanggal) <= ?"
+        : ""
+    }
+`
+
+const saldoKasParams: any[] = []
+
+if (startDate && startDate.trim() !== "") {
+  saldoKasParams.push(startDate)
+}
+
+if (endDate && endDate.trim() !== "") {
+  saldoKasParams.push(endDate)
+}
+
+const [saldoKasRows]: any = await db.query(
+  saldoKasQuery,
+  saldoKasParams
+)
+
+const totalDebitKas = Number(
+  saldoKasRows[0]?.totalDebitKas || 0
+)
+
+const totalKreditKas = Number(
+  saldoKasRows[0]?.totalKreditKas || 0
+)
+
+const saldoKas = totalDebitKas - totalKreditKas
+
+const [summaryRows]: any = await db.query(
+  summaryQuery,
+  params
+)
+
+const totalDebit = Number(summaryRows[0]?.totalDebit || 0)
+const totalKredit = Number(summaryRows[0]?.totalKredit || 0)
+
+    // =========================================================
+    // 2. AMBIL HEADER JURNAL
+    // =========================================================
+
+    let headerQuery = `
+      SELECT
+        j.id,
+        j.tanggal,
+        j.no_registrasi,
+        j.no_referensi,
+        j.keterangan
+      FROM tb_jurnal j
+      ${whereClause}
+      ORDER BY j.tanggal DESC, j.id DESC
+    `
+
+    const headerParams = [...params]
+
+    // Pagination hanya jika diminta
+    if (isPaginationEnabled) {
+      headerQuery += `
+        LIMIT ? OFFSET ?
+      `
+
+      headerParams.push(
+        currentPageSize,
+        offset
+      )
+    }
+
+    const [headers]: any = await db.query(
+      headerQuery,
+      headerParams
+    )
+
+    if (!headers || headers.length === 0) {
+      return {
+        success: true,
+        data: [],
+        pagination: {
+          page: currentPage,
+          pageSize: currentPageSize,
+          total,
+          totalPages: Math.ceil(total / currentPageSize),
+        },
+            summary: {
+      totalDebit,
+      totalKredit,
+      isBalanced:
+        totalDebit === totalKredit &&
+        totalDebit > 0,
+    },
+      }
+    }
+
+    // =========================================================
+    // 3. AMBIL ITEM HANYA UNTUK JURNAL YANG DITAMPILKAN
+    // =========================================================
+
+    const jurnalIds = headers.map(
+      (jurnal: any) => jurnal.id
+    )
+
+    const placeholders = jurnalIds
+      .map(() => "?")
+      .join(",")
+
+    const itemQuery = `
+      SELECT
+        i.id,
         i.jurnal_id,
-        i.no_akun, 
-        a.nama_akun, 
-        k.kelompok_biaya AS nama_kelompok, 
-        i.debit, 
+        i.no_akun,
+        a.nama_akun,
+        k.kelompok_biaya AS nama_kelompok,
+        i.debit,
         i.kredit
       FROM tb_jurnal_item i
-      LEFT JOIN tb_akun a ON i.no_akun = a.no_akun
-      LEFT JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
-    `);
+      LEFT JOIN tb_akun a
+        ON i.no_akun = a.no_akun
+      LEFT JOIN tb_kelompok_biaya k
+        ON a.kelompok_biaya_id = k.id
+      WHERE i.jurnal_id IN (${placeholders})
+      ORDER BY i.id ASC
+    `
 
-    // 3. Lakukan mapping manual di Node.js. 
-    // Menggunakan perbandingan eksplisit Number() agar ID besar (30001 dsb) dipetakan dengan tepat tanpa bug pengetikan objek.
-    const structuredJurnal = headers.map((jurnal: any) => {
-      const detailItems = allItems.filter((item: any) => Number(item.jurnal_id) === Number(jurnal.id));
-      return {
+    const [allItems]: any = await db.query(
+      itemQuery,
+      jurnalIds
+    )
+
+    // =========================================================
+    // 4. MAPPING ITEM KE HEADER
+    // =========================================================
+
+    const itemsMap = new Map<number, any[]>()
+
+    for (const item of allItems) {
+      const jurnalId = Number(item.jurnal_id)
+
+      if (!itemsMap.has(jurnalId)) {
+        itemsMap.set(jurnalId, [])
+      }
+
+      itemsMap.get(jurnalId)!.push(item)
+    }
+
+    const structuredJurnal = headers.map(
+      (jurnal: any) => ({
         id: jurnal.id,
         tanggal: jurnal.tanggal,
         no_registrasi: jurnal.no_registrasi,
         no_referensi: jurnal.no_referensi,
         keterangan: jurnal.keterangan,
-        items: detailItems
-      };
-    });
+        items: itemsMap.get(Number(jurnal.id)) || [],
+      })
+      
+    )
+const isBalanced =
+  totalDebit === totalKredit &&
+  totalDebit > 0    
 
-    return structuredJurnal;
+    // =========================================================
+    // 5. RETURN
+    // =========================================================
+
+return {
+  success: true,
+  data: structuredJurnal,
+  summary: {
+    totalDebit,
+    totalKredit,
+    isBalanced,
+    saldoKas,
+  },
+  pagination: {
+    page: currentPage,
+    pageSize: currentPageSize,
+    total,
+    totalPages: Math.ceil(
+      total / currentPageSize
+    ),
+  },  
+}
+
   } catch (error: any) {
-    console.error("GET_JURNAL_LIST_ERROR:", error.message);
-    return [];
+    console.error(
+      "GET_JURNAL_LIST_ERROR:",
+      error.message
+    )
+
+    return {
+      success: false,
+      data: [],
+      pagination: {
+        page: page || 1,
+        pageSize: pageSize || 20,
+        total: 0,
+        totalPages: 0,
+      },
+      message: error.message,
+    }
   }
 }
 

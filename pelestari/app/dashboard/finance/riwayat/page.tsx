@@ -4,15 +4,31 @@
 import React, { useEffect, useState, useMemo } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { 
-  Search, Calendar, ReceiptText, 
-  CalendarDays, Hash, X, RefreshCw, Download 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Search,
+  Calendar,
+  ReceiptText,
+  CalendarDays,
+  Hash,
+  X,
+  RefreshCw,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react"
 import { getJurnalList } from "@/app/actions/jurnal"
 import { exportBukuKasToExcel } from "@/app/actions/export-buku-kas"
 import { swal } from "@/lib/sweetalert"
-
 
 export default function BukuKasPage() {
   const [rawJurnalList, setRawJurnalList] = useState<any[]>([])
@@ -21,58 +37,87 @@ export default function BukuKasPage() {
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [isExporting, setIsExporting] = useState(false)
+  const [saldoKas, setSaldoKas] = useState(0)
+
+  // --- Pagination state ---
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const pageSizeOptions = [10, 20, 50, 100, 200]
 
   const handleDownloadExcel = async () => {
-  setIsExporting(true)
-  try {
-    const res = await exportBukuKasToExcel(startDate || undefined, endDate || undefined)
-    if (!res.success || !res.base64) {
-      swal.error(res.message || "Gagal mengunduh file Excel")
-      return
-    }
+    setIsExporting(true)
+    try {
+      const res = await exportBukuKasToExcel(
+        startDate || undefined,
+        endDate || undefined
+      )
+      if (!res.success || !res.base64) {
+        swal.error(res.message || "Gagal mengunduh file Excel")
+        return
+      }
 
-    const byteCharacters = atob(res.base64)
-    const byteNumbers = new Array(byteCharacters.length)
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i)
-    }
-    const byteArray = new Uint8Array(byteNumbers)
-    const blob = new Blob([byteArray], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    })
+      const byteCharacters = atob(res.base64)
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
 
-    const link = document.createElement("a")
-    link.href = URL.createObjectURL(blob)
-    link.download = res.fileName || "Pengeluaran_Kas.xlsx"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(link.href)
-  } catch (err: any) {
+      const link = document.createElement("a")
+      link.href = URL.createObjectURL(blob)
+      link.download = res.fileName || "Pengeluaran_Kas.xlsx"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(link.href)
+    } catch (err: any) {
       swal.error("Error saat export: " + err.message)
-  } finally {
-    setIsExporting(false)
+    } finally {
+      setIsExporting(false)
+    }
   }
-}
 
   const loadData = async () => {
     setLoading(true)
+
     try {
-      const startParam = startDate || undefined
-      const endParam = endDate || undefined
-      
-      const res = await getJurnalList(startParam, endParam)
-      setRawJurnalList(Array.isArray(res) ? res : [])
+      const res = await getJurnalList(
+        startDate || undefined,
+        endDate || undefined,
+        currentPage,
+        pageSize,
+        search.trim() || undefined
+      )
+
+      if (!res || !res.success) {
+        console.error("Gagal memuat data:", res?.message)
+        setRawJurnalList([])
+        return
+      }
+
+      setRawJurnalList(Array.isArray(res.data) ? res.data : [])
+
+      setSaldoKas(Number(res.summary?.saldoKas || 0))
+
+      setPagination({
+        page: res.pagination?.page ?? currentPage,
+        pageSize: res.pagination?.pageSize ?? pageSize,
+        total: res.pagination?.total ?? 0,
+        totalPages: res.pagination?.totalPages ?? 0,
+      })
     } catch (error) {
       console.error("Gagal memuat data:", error)
+      setRawJurnalList([])
     } finally {
       setLoading(false)
     }
   }
-
   useEffect(() => {
     loadData()
-  }, [startDate, endDate])
+  }, [startDate, endDate, currentPage, pageSize, search])
 
   // 1. Ekstraksi dan transform data jurnal menjadi mutasi kas
   const kasMutasiList = useMemo(() => {
@@ -83,18 +128,18 @@ export default function BukuKasPage() {
       return dateA === dateB ? a.id - b.id : dateA - dateB
     })
 
-
     let runningSaldo = 0
 
     return sorted.map((jurnal: any) => {
       const items = Array.isArray(jurnal.items) ? jurnal.items : []
 
       // Cari baris Kas / Bank
-      const kasItem = items.find((i: any) => 
-        String(i.no_akun) === "11100" || 
-        String(i.no_akun) === "11200" ||
-        (i.nama_akun && i.nama_akun.toLowerCase().includes("kas")) ||
-        (i.nama_akun && i.nama_akun.toLowerCase().includes("petty"))
+      const kasItem = items.find(
+        (i: any) =>
+          String(i.no_akun) === "11100" ||
+          String(i.no_akun) === "11200" ||
+          (i.nama_akun && i.nama_akun.toLowerCase().includes("kas")) ||
+          (i.nama_akun && i.nama_akun.toLowerCase().includes("petty"))
       )
 
       // Cari baris akun operasional/lawan (ATK, Dapur, Ekspedisi, dll)
@@ -102,8 +147,12 @@ export default function BukuKasPage() {
 
       // Uang Masuk ke Kas (Top Up Kas): Kas posisi Debit
       // Uang Keluar dari Kas (Pengeluaran ATK dll): Kas posisi Kredit
-      const debit = kasItem ? Number(kasItem.debit) || 0 : (Number(jurnal.debit) || 0)
-      const kredit = kasItem ? Number(kasItem.kredit) || 0 : (Number(jurnal.kredit) || 0)
+      const debit = kasItem
+        ? Number(kasItem.debit) || 0
+        : Number(jurnal.debit) || 0
+      const kredit = kasItem
+        ? Number(kasItem.kredit) || 0
+        : Number(jurnal.kredit) || 0
 
       runningSaldo = runningSaldo + debit - kredit
       const isTopUp = debit > 0
@@ -112,29 +161,25 @@ export default function BukuKasPage() {
         id: jurnal.id,
         no_registrasi: jurnal.no_registrasi || "-",
         tanggal: jurnal.tanggal,
-        kelompok_biaya: lawanItem.nama_kelompok || lawanItem.kelompok_biaya || (isTopUp ? "Kas / Petty Cash" : "Biaya Operasional"),
-        jenis_biaya: lawanItem.nama_akun || (isTopUp ? "Petty Cash" : "Operasional"),
+        kelompok_biaya:
+          lawanItem.nama_kelompok ||
+          lawanItem.kelompok_biaya ||
+          (isTopUp ? "Kas / Petty Cash" : "Biaya Operasional"),
+        jenis_biaya:
+          lawanItem.nama_akun || (isTopUp ? "Petty Cash" : "Operasional"),
         keterangan: jurnal.keterangan || "-",
         debit: debit,
         kredit: kredit,
         total_saldo: runningSaldo,
-        isTopUp: isTopUp
+        isTopUp: isTopUp,
       }
     })
   }, [rawJurnalList])
 
   // 2. Filter Search
-  const filteredData = useMemo(() => {
-    const q = search.toLowerCase()
-    return kasMutasiList.filter((item) =>
-      item.no_registrasi.toLowerCase().includes(q) ||
-      item.keterangan.toLowerCase().includes(q) ||
-      item.kelompok_biaya.toLowerCase().includes(q) ||
-      item.jenis_biaya.toLowerCase().includes(q)
-    )
-  }, [kasMutasiList, search])
+  const filteredData = kasMutasiList
 
-  // Total akumulasi
+  // Total akumulasi (dihitung dari SELURUH data terfilter, bukan hanya halaman aktif)
   const totalSummary = useMemo(() => {
     let totDebit = 0
     let totKredit = 0
@@ -142,179 +187,284 @@ export default function BukuKasPage() {
       totDebit += d.debit
       totKredit += d.kredit
     })
-    const lastSaldo = filteredData.length > 0 ? filteredData[filteredData.length - 1].total_saldo : 0
+    const lastSaldo =
+      filteredData.length > 0
+        ? filteredData[filteredData.length - 1].total_saldo
+        : 0
     return { totDebit, totKredit, lastSaldo }
   }, [filteredData])
 
+  // --- Reset ke halaman 1 setiap kali filter/search/pageSize berubah ---
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, startDate, endDate, pageSize])
+
+  // --- Data untuk halaman aktif ---
+  // Jaga currentPage tetap valid jika data berkurang (misal setelah filter)
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 0,
+  })
+  const totalItems = pagination.total
+  const totalPages = Math.max(1, pagination.totalPages)
+
+  const startRow = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1
+  const endRow = Math.min(currentPage * pageSize, totalItems)
+
+  const goToPage = (page: number) => {
+    if (page < 1 || page > totalPages) return
+    setCurrentPage(page)
+  }
+
+  // Nomor halaman ringkas (dengan ellipsis) untuk ditampilkan
+  const pageNumbers = useMemo(() => {
+    const pages: (number | "...")[] = []
+    const delta = 1 // jumlah halaman di kiri/kanan currentPage yang ditampilkan
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (
+        i === 1 ||
+        i === totalPages ||
+        (i >= currentPage - delta && i <= currentPage + delta)
+      ) {
+        pages.push(i)
+      } else if (pages[pages.length - 1] !== "...") {
+        pages.push("...")
+      }
+    }
+    return pages
+  }, [totalPages, currentPage])
+
   return (
-    <div className="p-6 w-full space-y-6 bg-zinc-50/50 min-h-screen text-zinc-900 font-sans">
-      
+    <div className="min-h-screen w-full space-y-6 bg-zinc-50/50 p-6 font-sans text-zinc-900">
       {/* HEADER */}
-      <div className="bg-white p-6 rounded-xl border border-zinc-200 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+      <div className="flex flex-col justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-emerald-800 text-white rounded-lg">
+            <div className="rounded-lg bg-emerald-800 p-2 text-white">
               <ReceiptText className="h-5 w-5" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight text-zinc-900">Laporan Pengeluaran Kas (Petty Cash)</h1>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-900">
+              Laporan Pengeluaran Kas (Petty Cash)
+            </h1>
           </div>
-          <p className="text-xs text-zinc-500 pl-9 mt-1">
+          <p className="mt-1 pl-9 text-xs text-zinc-500">
             Rekapitulasi mutasi pengeluaran operasional dan top up saldo kas.
           </p>
         </div>
-        
 
         {/* SUMMARY SALDO */}
-        
+
         <div className="flex items-center gap-3">
-            <Button
-    onClick={handleDownloadExcel}
-    disabled={isExporting || loading}
-    variant="outline"
-    className="h-10 border-zinc-200 text-zinc-700 text-xs font-semibold rounded-lg px-4 gap-2 hover:bg-zinc-50 transition-all shadow-sm"
-  >
-    <Download className="h-4 w-4 text-zinc-500" />
-    {isExporting ? "MENGONVERSI..." : "EKSPOR EXCEL"}
-  </Button>
-          <div className="bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl text-right">
-            <p className="text-[10px] uppercase font-bold text-emerald-700">Total Saldo Terakhir</p>
+          <Button
+            onClick={handleDownloadExcel}
+            disabled={isExporting || loading}
+            variant="outline"
+            className="h-10 gap-2 rounded-lg border-zinc-200 px-4 text-xs font-semibold text-zinc-700 shadow-sm transition-all hover:bg-zinc-50"
+          >
+            <Download className="h-4 w-4 text-zinc-500" />
+            {isExporting ? "MENGONVERSI..." : "EKSPOR EXCEL"}
+          </Button>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-right">
+            <p className="text-[10px] font-bold text-emerald-700 uppercase">
+              Total Saldo Terakhir
+            </p>
             <p className="font-mono text-sm font-bold text-emerald-800">
-              Rp {totalSummary.lastSaldo.toLocaleString("id-ID", { minimumFractionDigits: 2 })}
+              Rp{" "}
+              {saldoKas.toLocaleString("id-ID", {
+                minimumFractionDigits: 2,
+              })}
             </p>
           </div>
         </div>
       </div>
 
       {/* FILTER BAR */}
-      <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="flex flex-col items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm md:flex-row">
         <div className="relative w-full md:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-          <Input 
-            placeholder="Cari no. registrasi, jenis biaya, memo..." 
+          <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+          <Input
+            placeholder="Cari no. registrasi, jenis biaya, memo..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-10 pl-9 text-xs bg-zinc-50/50 border-zinc-200 rounded-lg"
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setCurrentPage(1)
+            }}
+            className="h-10 rounded-lg border-zinc-200 bg-zinc-50/50 pl-9 text-xs"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <div className="flex items-center gap-2 bg-zinc-50/50 border border-zinc-200 rounded-lg px-3 h-10">
+        <div className="flex w-full items-center gap-2 md:w-auto">
+          <div className="flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50/50 px-3">
             <Calendar className="h-4 w-4 text-zinc-400" />
-            <span className="text-[10px] uppercase font-bold text-zinc-400">Dari:</span>
-            <input 
-              type="date" 
-              value={startDate} 
-              onChange={(e) => setStartDate(e.target.value)} 
-              className="outline-none text-xs bg-transparent cursor-pointer font-medium text-zinc-700" 
+            <span className="text-[10px] font-bold text-zinc-400 uppercase">
+              Dari:
+            </span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value)
+                setCurrentPage(1)
+              }}
+              className="cursor-pointer bg-transparent text-xs font-medium text-zinc-700 outline-none"
             />
           </div>
 
           <span className="text-zinc-300">-</span>
 
-          <div className="flex items-center gap-2 bg-zinc-50/50 border border-zinc-200 rounded-lg px-3 h-10">
+          <div className="flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50/50 px-3">
             <Calendar className="h-4 w-4 text-zinc-400" />
-            <span className="text-[10px] uppercase font-bold text-zinc-400">Sampai:</span>
-            <input 
-              type="date" 
-              value={endDate} 
-              onChange={(e) => setEndDate(e.target.value)} 
-              className="outline-none text-xs bg-transparent cursor-pointer font-medium text-zinc-700" 
+            <span className="text-[10px] font-bold text-zinc-400 uppercase">
+              Sampai:
+            </span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value)
+                setCurrentPage(1)
+              }}
+              className="cursor-pointer bg-transparent text-xs font-medium text-zinc-700 outline-none"
             />
           </div>
 
           {(startDate || endDate) && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => { setStartDate(""); setEndDate(""); }}
-              className="h-10 px-2.5 text-rose-600 hover:bg-rose-50 rounded-lg"
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setStartDate("")
+                setEndDate("")
+              }}
+              className="h-10 rounded-lg px-2.5 text-rose-600 hover:bg-rose-50"
             >
               <X className="h-4 w-4" />
             </Button>
           )}
 
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={loadData} 
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={loadData}
             disabled={loading}
-            className="h-10 w-10 border-zinc-200 rounded-lg"
+            className="h-10 w-10 rounded-lg border-zinc-200"
           >
-            <RefreshCw className={`h-4 w-4 text-zinc-600 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-4 w-4 text-zinc-600 ${loading ? "animate-spin" : ""}`}
+            />
           </Button>
         </div>
       </div>
 
       {/* TABLE MIRIP EXCEL */}
-      <div className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
         <div className="w-full overflow-x-auto">
           <Table className="w-full min-w-[1100px] border-collapse">
             <TableHeader className="bg-[#1E5631] text-white">
-              <TableRow className="text-[11px] font-bold uppercase tracking-wider hover:bg-[#1E5631]">
-                <TableHead className="py-3 px-3 w-[50px] text-center text-white border-r border-emerald-900">No</TableHead>
-                <TableHead className="py-3 px-3 w-[120px] text-white border-r border-emerald-900">No Regist</TableHead>
-                <TableHead className="py-3 px-3 w-[100px] text-white border-r border-emerald-900">Tanggal</TableHead>
-                <TableHead className="py-3 px-3 min-w-[180px] text-white border-r border-emerald-900">Kelompok Biaya</TableHead>
-                <TableHead className="py-3 px-3 min-w-[180px] text-white border-r border-emerald-900">Jenis Biaya</TableHead>
-                <TableHead className="py-3 px-4 min-w-[260px] text-white border-r border-emerald-900">Keterangan</TableHead>
-                <TableHead className="py-3 px-3 w-[120px] text-right text-white border-r border-emerald-900">Debit</TableHead>
-                <TableHead className="py-3 px-3 w-[120px] text-right text-white border-r border-emerald-900">Kredit</TableHead>
-                <TableHead className="py-3 px-3 w-[130px] text-right text-white">Total Saldo</TableHead>
+              <TableRow className="text-[11px] font-bold tracking-wider uppercase hover:bg-[#1E5631]">
+                <TableHead className="w-[50px] border-r border-emerald-900 px-3 py-3 text-center text-white">
+                  No
+                </TableHead>
+                <TableHead className="w-[120px] border-r border-emerald-900 px-3 py-3 text-white">
+                  No Regist
+                </TableHead>
+                <TableHead className="w-[100px] border-r border-emerald-900 px-3 py-3 text-white">
+                  Tanggal
+                </TableHead>
+                <TableHead className="min-w-[180px] border-r border-emerald-900 px-3 py-3 text-white">
+                  Kelompok Biaya
+                </TableHead>
+                <TableHead className="min-w-[180px] border-r border-emerald-900 px-3 py-3 text-white">
+                  Jenis Biaya
+                </TableHead>
+                <TableHead className="min-w-[260px] border-r border-emerald-900 px-4 py-3 text-white">
+                  Keterangan
+                </TableHead>
+                <TableHead className="w-[120px] border-r border-emerald-900 px-3 py-3 text-right text-white">
+                  Debit
+                </TableHead>
+                <TableHead className="w-[120px] border-r border-emerald-900 px-3 py-3 text-right text-white">
+                  Kredit
+                </TableHead>
+                <TableHead className="w-[130px] px-3 py-3 text-right text-white">
+                  Total Saldo
+                </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody className="text-xs font-medium divide-y divide-zinc-200">
+            <TableBody className="divide-y divide-zinc-200 text-xs font-medium">
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-36 text-center text-zinc-400 italic">
+                  <TableCell
+                    colSpan={9}
+                    className="h-36 text-center text-zinc-400 italic"
+                  >
                     Memuat data mutasi buku kas...
                   </TableCell>
                 </TableRow>
-              ) : filteredData.length > 0 ? (
-                filteredData.map((row, index) => (
-                  <TableRow 
-                    key={row.id || index} 
-                    className={`transition-colors ${row.isTopUp ? "bg-[#FFEB3B]/30 hover:bg-[#FFEB3B]/50 font-semibold" : "hover:bg-zinc-50"}`}
+              ) : kasMutasiList.length > 0 ? (
+                kasMutasiList.map((row, index) => (
+                  <TableRow
+                    key={row.id || index}
+                    className={`transition-colors ${row.isTopUp ? "bg-[#FFEB3B]/30 font-semibold hover:bg-[#FFEB3B]/50" : "hover:bg-zinc-50"}`}
                   >
-                    <TableCell className="py-2.5 px-3 text-center border-r border-zinc-100 font-mono text-zinc-500">
-                      {index + 1}
+                    <TableCell className="border-r border-zinc-100 px-3 py-2.5 text-center font-mono text-zinc-500">
+                      {(currentPage - 1) * pageSize + index + 1}
                     </TableCell>
 
-                    <TableCell className="py-2.5 px-3 font-mono border-r border-zinc-100 text-zinc-800 whitespace-nowrap">
+                    <TableCell className="border-r border-zinc-100 px-3 py-2.5 font-mono whitespace-nowrap text-zinc-800">
                       {row.no_registrasi}
                     </TableCell>
 
-                    <TableCell className="py-2.5 px-3 font-mono border-r border-zinc-100 text-zinc-600 whitespace-nowrap">
-                      {row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: '2-digit', month: 'short', year: '2-digit' }) : "-"}
+                    <TableCell className="border-r border-zinc-100 px-3 py-2.5 font-mono whitespace-nowrap text-zinc-600">
+                      {row.tanggal
+                        ? new Date(row.tanggal).toLocaleDateString("id-ID", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "2-digit",
+                          })
+                        : "-"}
                     </TableCell>
 
-                    <TableCell className="py-2.5 px-3 border-r border-zinc-100 text-zinc-700">
+                    <TableCell className="border-r border-zinc-100 px-3 py-2.5 text-zinc-700">
                       {row.kelompok_biaya}
                     </TableCell>
 
-                    <TableCell className={`py-2.5 px-3 border-r border-zinc-100 ${row.isTopUp ? "italic text-emerald-800 font-bold" : "text-zinc-800"}`}>
+                    <TableCell
+                      className={`border-r border-zinc-100 px-3 py-2.5 ${row.isTopUp ? "font-bold text-emerald-800 italic" : "text-zinc-800"}`}
+                    >
                       {row.jenis_biaya}
                     </TableCell>
 
-                    <TableCell className="py-2.5 px-4 border-r border-zinc-100 text-zinc-800">
+                    <TableCell className="border-r border-zinc-100 px-4 py-2.5 text-zinc-800">
                       {row.keterangan}
                     </TableCell>
 
-                    <TableCell className="py-2.5 px-3 text-right font-mono border-r border-zinc-100 text-emerald-700 whitespace-nowrap">
-                      {row.debit > 0 ? `Rp ${row.debit.toLocaleString("id-ID")}` : ""}
+                    <TableCell className="border-r border-zinc-100 px-3 py-2.5 text-right font-mono whitespace-nowrap text-emerald-700">
+                      {row.debit > 0
+                        ? `Rp ${row.debit.toLocaleString("id-ID")}`
+                        : ""}
                     </TableCell>
 
-                    <TableCell className="py-2.5 px-3 text-right font-mono border-r border-zinc-100 text-zinc-800 whitespace-nowrap">
-                      {row.kredit > 0 ? `Rp ${row.kredit.toLocaleString("id-ID")}` : ""}
+                    <TableCell className="border-r border-zinc-100 px-3 py-2.5 text-right font-mono whitespace-nowrap text-zinc-800">
+                      {row.kredit > 0
+                        ? `Rp ${row.kredit.toLocaleString("id-ID")}`
+                        : ""}
                     </TableCell>
 
-                    <TableCell className="py-2.5 px-3 text-right font-mono font-bold text-zinc-900 whitespace-nowrap bg-zinc-50/50">
+                    <TableCell className="bg-zinc-50/50 px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap text-zinc-900">
                       Rp {row.total_saldo.toLocaleString("id-ID")}
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-32 text-center text-zinc-400 italic">
+                  <TableCell
+                    colSpan={9}
+                    className="h-32 text-center text-zinc-400 italic"
+                  >
                     Tidak ada catatan pengeluaran kas pada periode ini.
                   </TableCell>
                 </TableRow>
@@ -322,8 +472,112 @@ export default function BukuKasPage() {
             </TableBody>
           </Table>
         </div>
-      </div>
 
+        {/* PAGINATION BAR */}
+        {!loading && totalItems > 0 && (
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-zinc-200 bg-zinc-50/50 px-4 py-3 sm:flex-row">
+            {/* Info + page size selector */}
+            <div className="flex items-center gap-3 text-xs text-zinc-500">
+              <span>
+                Menampilkan{" "}
+                <span className="font-semibold text-zinc-700">{startRow}</span>–
+                <span className="font-semibold text-zinc-700">{endRow}</span>{" "}
+                dari{" "}
+                <span className="font-semibold text-zinc-700">
+                  {totalItems}
+                </span>{" "}
+                data
+              </span>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase">
+                  Baris:
+                </span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setCurrentPage(1)
+                  }}
+                  className="h-8 cursor-pointer rounded-lg border border-zinc-200 bg-white px-2 text-xs font-medium text-zinc-700 outline-none"
+                >
+                  {pageSizeOptions.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Page navigation */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => goToPage(1)}
+                disabled={currentPage === 1}
+                className="h-8 w-8 rounded-lg border-zinc-200 disabled:opacity-40"
+              >
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="h-8 w-8 rounded-lg border-zinc-200 disabled:opacity-40"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+
+              {pageNumbers.map((p, idx) =>
+                p === "..." ? (
+                  <span
+                    key={`ellipsis-${idx}`}
+                    className="px-2 text-xs text-zinc-400"
+                  >
+                    ...
+                  </span>
+                ) : (
+                  <Button
+                    key={p}
+                    variant={p === currentPage ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => goToPage(p as number)}
+                    className={`h-8 min-w-8 rounded-lg px-2 text-xs ${
+                      p === currentPage
+                        ? "border-[#1E5631] bg-[#1E5631] text-white hover:bg-[#1E5631]/90"
+                        : "border-zinc-200 text-zinc-700"
+                    }`}
+                  >
+                    {p}
+                  </Button>
+                )
+              )}
+
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="h-8 w-8 rounded-lg border-zinc-200 disabled:opacity-40"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => goToPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="h-8 w-8 rounded-lg border-zinc-200 disabled:opacity-40"
+              >
+                <ChevronsRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
