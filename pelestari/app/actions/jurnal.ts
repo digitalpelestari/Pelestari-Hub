@@ -718,7 +718,8 @@ export async function updateJurnalItem(itemId: number, payload: {
     }
 
     await connection.commit();
-    revalidatePath("/dashboard/jurnal");
+    revalidatePath("/dashboard/finance/pos/jurnal");
+    revalidatePath("/dashboard/finance/riwayat");
     return { success: true, message: "Seluruh kolom transaksi, No Referensi, dan saldo master berhasil disesuaikan!" };
 
   } catch (error: any) {
@@ -758,7 +759,8 @@ export async function deleteJurnalByHeader(jurnalId: number) {
 
     await connection.commit();
     
-    revalidatePath("/dashboard/jurnal");
+    revalidatePath("/dashboard/finance/pos/jurnal");
+    revalidatePath("/dashboard/finance/riwayat");
     return { success: true, message: "Satu paket transaksi jurnal berhasil dihapus & saldo master dipulihkan!" };
 
   } catch (error: any) {
@@ -821,7 +823,8 @@ export async function createJurnalUmum(payload: JurnalPayload) {
     }
 
     await connection.commit();
-    revalidatePath("/dashboard/jurnal");
+    revalidatePath("/dashboard/finance/pos/jurnal");
+    revalidatePath("/dashboard/finance/riwayat");
     return { success: true, message: "Jurnal Umum Berhasil Disimpan!" };
 
   } catch (error: any) {

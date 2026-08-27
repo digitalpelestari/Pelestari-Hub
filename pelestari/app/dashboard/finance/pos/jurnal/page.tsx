@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
+import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -44,6 +45,7 @@ import Link from "next/link"
 import { swal } from "@/lib/sweetalert"
 
 export default function JurnalUmumListPage() {
+  const pathname = usePathname()
   const [jurnalList, setJurnalList] = useState<any[]>([])
   const [akunList, setAkunList] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState("")
@@ -145,7 +147,7 @@ export default function JurnalUmumListPage() {
 
   useEffect(() => {
     loadData()
-  }, [startDate, endDate, currentPage, pageSize, searchQuery])
+  }, [startDate, endDate, currentPage, pageSize, searchQuery, pathname])
 
   const startEditJurnal = (jurnal: any) => {
     setEditingJurnalId(jurnal.id)
