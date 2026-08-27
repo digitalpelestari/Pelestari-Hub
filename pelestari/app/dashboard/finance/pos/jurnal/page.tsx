@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,7 +48,11 @@ export default function JurnalUmumListPage() {
   const pathname = usePathname()
   const [jurnalList, setJurnalList] = useState<any[]>([])
   const [akunList, setAkunList] = useState<any[]>([])
-  const [searchQuery, setSearchQuery] = useState("")
+
+  // === PERBAIKAN: pisahkan nilai input (langsung) dari query yang dipakai untuk fetch (di-debounce) ===
+  const [searchInput, setSearchInput] = useState("") // nilai yang diketik user, update setiap huruf
+  const [searchQuery, setSearchQuery] = useState("") // nilai yang benar-benar dipakai untuk request, delay 400ms
+
   const [loading, setLoading] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
@@ -77,6 +81,11 @@ export default function JurnalUmumListPage() {
 
   const endRow = Math.min(currentPage * pageSize, totalItems)
 
+  // === PERBAIKAN: request-id counter untuk menghindari race condition ===
+  // Setiap kali loadData dipanggil, id-nya naik. Kalau response yang datang
+  // bukan dari request paling terakhir yang dikirim, hasilnya diabaikan.
+  const requestIdRef = useRef(0)
+
   const goToPage = (page: number) => {
     if (page < 1 || page > totalPagesSafe) return
     setCurrentPage(page)
@@ -101,7 +110,21 @@ export default function JurnalUmumListPage() {
     return pages
   }, [totalPagesSafe, currentPage])
 
+  // === PERBAIKAN: debounce searchInput -> searchQuery ===
+  // User boleh ngetik secepat apapun, tapi searchQuery (yang memicu fetch)
+  // baru berubah 400ms setelah user berhenti mengetik.
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(searchInput)
+      setCurrentPage(1)
+    }, 400)
+
+    return () => clearTimeout(handler)
+  }, [searchInput])
+
   const loadData = async () => {
+    // Tandai request ini sebagai request terbaru
+    const thisRequestId = ++requestIdRef.current
     setLoading(true)
 
     try {
@@ -116,6 +139,12 @@ export default function JurnalUmumListPage() {
         searchQuery
       )
       const dataAkun = await getAkunList()
+
+      // === PERBAIKAN: kalau sudah ada request yang lebih baru dikirim
+      // setelah request ini, buang hasil request ini (jangan di-render).
+      if (thisRequestId !== requestIdRef.current) {
+        return
+      }
 
       if (!dataJurnal.success) {
         throw new Error(dataJurnal.message || "Gagal mengambil data jurnal")
@@ -134,6 +163,11 @@ export default function JurnalUmumListPage() {
       // Sesuaikan dengan return getAkunList()
       setAkunList(Array.isArray(dataAkun) ? dataAkun : dataAkun.data || [])
     } catch (error: any) {
+      // Jangan tampilkan error dari request yang sudah usang
+      if (thisRequestId !== requestIdRef.current) {
+        return
+      }
+
       console.error("Gagal memuat data pembukuan:", error)
 
       setJurnalList([])
@@ -141,12 +175,16 @@ export default function JurnalUmumListPage() {
 
       swal.error(error.message || "Gagal memuat data jurnal")
     } finally {
-      setLoading(false)
+      // Hanya matikan loading kalau ini masih request terbaru
+      if (thisRequestId === requestIdRef.current) {
+        setLoading(false)
+      }
     }
   }
 
   useEffect(() => {
     loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate, endDate, currentPage, pageSize, searchQuery, pathname])
 
   const startEditJurnal = (jurnal: any) => {
@@ -345,10 +383,11 @@ export default function JurnalUmumListPage() {
           <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <Input
             placeholder="Cari No. Regis, Referensi, atau Memo..."
-            value={searchQuery}
+            value={searchInput}
             onChange={(e) => {
-              setSearchQuery(e.target.value)
-              setCurrentPage(1)
+              // PERBAIKAN: hanya update state lokal di sini, tidak langsung fetch.
+              // searchQuery (yang memicu fetch) di-update lewat useEffect debounce di atas.
+              setSearchInput(e.target.value)
             }}
             className="h-10 rounded-lg border-zinc-200 bg-zinc-50/50 pl-9 text-xs focus-visible:ring-1 focus-visible:ring-zinc-900"
           />
