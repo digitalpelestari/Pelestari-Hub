@@ -70,7 +70,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Point of Sale",
       url: "#",
       icon: <Store />,
-      isActive: true,
       roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
         { title: "Jurnal Umum", url: "/dashboard/finance/pos/jurnal" },
@@ -86,7 +85,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Riwayat Transaksi",
       url: "#",
       icon: <History />,
-      isActive: true,
       roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
         { title: "Riwayat Transaksi", url: "/dashboard/finance/riwayat" },
@@ -120,7 +118,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Tracking",
       url: "#",
       icon: <PackageSearch />,
-      isActive: true,
       roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
         { title: "PO Tracking", url: "/dashboard/finance/po-tracking" },

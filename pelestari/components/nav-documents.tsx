@@ -17,6 +17,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { MoreHorizontalIcon, FolderIcon, ShareIcon, Trash2Icon } from "lucide-react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 export function NavDocuments({
   items,
@@ -28,53 +30,61 @@ export function NavDocuments({
   }[]
 }) {
   const { isMobile } = useSidebar()
+  const pathname = usePathname()
+
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <SidebarGroupLabel>Documents</SidebarGroupLabel>
       <SidebarMenu>
-        {items.map((item) => (
-          <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton render={<a href={item.url} />}>
-              {item.icon}
-              <span>{item.name}</span>
-            </SidebarMenuButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuAction
-                    showOnHover
-                    className="aria-expanded:bg-muted"
-                  />
-                }
+        {items.map((item) => {
+          const isActive = pathname === item.url
+          return (
+            <SidebarMenuItem key={item.name}>
+              <SidebarMenuButton
+                render={<Link href={item.url} onClick={(e) => { if (isActive) e.preventDefault() }} />}
+                isActive={isActive}
               >
-                <MoreHorizontalIcon
-                />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-24"
-                side={isMobile ? "bottom" : "right"}
-                align={isMobile ? "end" : "start"}
-              >
-                <DropdownMenuItem>
-                  <FolderIcon
+                {item.icon}
+                <span>{item.name}</span>
+              </SidebarMenuButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <SidebarMenuAction
+                      showOnHover
+                      className="aria-expanded:bg-muted"
+                    />
+                  }
+                >
+                  <MoreHorizontalIcon
                   />
-                  <span>Open</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <ShareIcon
-                  />
-                  <span>Share</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive">
-                  <Trash2Icon
-                  />
-                  <span>Delete</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        ))}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-24"
+                  side={isMobile ? "bottom" : "right"}
+                  align={isMobile ? "end" : "start"}
+                >
+                  <DropdownMenuItem>
+                    <FolderIcon
+                    />
+                    <span>Open</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <ShareIcon
+                    />
+                    <span>Share</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive">
+                    <Trash2Icon
+                    />
+                    <span>Delete</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          )
+        })}
         <SidebarMenuItem>
         </SidebarMenuItem>
       </SidebarMenu>
