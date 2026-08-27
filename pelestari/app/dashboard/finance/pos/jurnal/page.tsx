@@ -49,14 +49,12 @@ export default function JurnalUmumListPage() {
   const [jurnalList, setJurnalList] = useState<any[]>([])
   const [akunList, setAkunList] = useState<any[]>([])
 
-  // === PERBAIKAN: pisahkan nilai input (langsung) dari query yang dipakai untuk fetch (di-debounce) ===
-  const [searchInput, setSearchInput] = useState("") // nilai yang diketik user, update setiap huruf
-  const [searchQuery, setSearchQuery] = useState("") // nilai yang benar-benar dipakai untuk request, delay 400ms
+  const [searchInput, setSearchInput] = useState("") 
+  const [searchQuery, setSearchQuery] = useState("") 
 
   const [loading, setLoading] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
-  // === STATE FILTER RENTANG TANGGAL ===
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
 
@@ -81,9 +79,6 @@ export default function JurnalUmumListPage() {
 
   const endRow = Math.min(currentPage * pageSize, totalItems)
 
-  // === PERBAIKAN: request-id counter untuk menghindari race condition ===
-  // Setiap kali loadData dipanggil, id-nya naik. Kalau response yang datang
-  // bukan dari request paling terakhir yang dikirim, hasilnya diabaikan.
   const requestIdRef = useRef(0)
 
   const goToPage = (page: number) => {
@@ -110,9 +105,6 @@ export default function JurnalUmumListPage() {
     return pages
   }, [totalPagesSafe, currentPage])
 
-  // === PERBAIKAN: debounce searchInput -> searchQuery ===
-  // User boleh ngetik secepat apapun, tapi searchQuery (yang memicu fetch)
-  // baru berubah 400ms setelah user berhenti mengetik.
   useEffect(() => {
     const handler = setTimeout(() => {
       setSearchQuery(searchInput)
@@ -140,8 +132,6 @@ export default function JurnalUmumListPage() {
       )
       const dataAkun = await getAkunList()
 
-      // === PERBAIKAN: kalau sudah ada request yang lebih baru dikirim
-      // setelah request ini, buang hasil request ini (jangan di-render).
       if (thisRequestId !== requestIdRef.current) {
         return
       }
@@ -160,10 +150,8 @@ export default function JurnalUmumListPage() {
         isBalanced: dataJurnal.summary?.isBalanced || false,
       })
 
-      // Sesuaikan dengan return getAkunList()
       setAkunList(Array.isArray(dataAkun) ? dataAkun : dataAkun.data || [])
     } catch (error: any) {
-      // Jangan tampilkan error dari request yang sudah usang
       if (thisRequestId !== requestIdRef.current) {
         return
       }
@@ -175,7 +163,6 @@ export default function JurnalUmumListPage() {
 
       swal.error(error.message || "Gagal memuat data jurnal")
     } finally {
-      // Hanya matikan loading kalau ini masih request terbaru
       if (thisRequestId === requestIdRef.current) {
         setLoading(false)
       }
@@ -184,7 +171,6 @@ export default function JurnalUmumListPage() {
 
   useEffect(() => {
     loadData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate, endDate, currentPage, pageSize, searchQuery, pathname])
 
   const startEditJurnal = (jurnal: any) => {
@@ -385,8 +371,6 @@ export default function JurnalUmumListPage() {
             placeholder="Cari No. Regis, Referensi, atau Memo..."
             value={searchInput}
             onChange={(e) => {
-              // PERBAIKAN: hanya update state lokal di sini, tidak langsung fetch.
-              // searchQuery (yang memicu fetch) di-update lewat useEffect debounce di atas.
               setSearchInput(e.target.value)
             }}
             className="h-10 rounded-lg border-zinc-200 bg-zinc-50/50 pl-9 text-xs focus-visible:ring-1 focus-visible:ring-zinc-900"

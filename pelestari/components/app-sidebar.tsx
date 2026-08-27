@@ -25,6 +25,7 @@ import {
   PackageSearch,
   Building2,
   Settings2,
+  Wallet,
 } from "lucide-react"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -51,7 +52,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Karyawan",
       url: "#",
       icon: <Users />,
-      roles: ["ADMIN", "GA", "FINANCE", "MANAGER FINANCE"],
+      roles: ["ADMIN", "GA", "FINANCE", "MANAGER FINANCE", "HR"],
       items: [
         {
           title: "Perjalanan Dinas",
@@ -65,80 +66,117 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       ],
     },
 
-    // FINANCE DROPDOWN
+    // FINANCE GROUP
     {
-      title: "Point of Sale",
-      url: "#",
-      icon: <Store />,
-      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
-      items: [
-        { title: "Jurnal Umum", url: "/dashboard/finance/pos/jurnal" },
-        { title: "Kasir", url: "/dashboard/finance/pos/kasir" },
-        { title: "Daftar Akun", url: "/dashboard/finance/pos/akun" },
-        {
-          title: "Kelompok Biaya",
-          url: "/dashboard/finance/pos/kelompok-biaya",
-        },
-      ],
-    },
-    {
-      title: "Riwayat Transaksi",
+      title: "Finance",
       url: "#",
       icon: <History />,
       roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
       items: [
-        { title: "Riwayat Transaksi", url: "/dashboard/finance/riwayat" },
-      ],
-    },
-
-    {
-      title: "Invoice",
-      url: "#",
-      icon: <Receipt />,
-      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
-      items: [{ title: "Invoice", url: "/dashboard/finance/invoices" }],
-    },
-    {
-      title: "Laporan",
-      icon: <FileSpreadsheet />,
-      url: "#",
-      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
-      items: [
+        // POINT OF SALE
         {
-          title: "Laporan Neraca",
-          url: "/dashboard/finance/laporan/lap-neraca",
+          title: "Point of Sale",
+          url: "#",
+          icon: <Store />,
+          roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+          items: [
+            { title: "Jurnal Umum", url: "/dashboard/finance/pos/jurnal" },
+            { title: "Kasir", url: "/dashboard/finance/pos/kasir" },
+            { title: "Daftar Akun", url: "/dashboard/finance/pos/akun" },
+            {
+              title: "Kelompok Biaya",
+              url: "/dashboard/finance/pos/kelompok-biaya",
+            },
+          ],
         },
-        {
-          title: "Laporan Laba Rugi",
-          url: "/dashboard/finance/laporan/lap-labarugi",
-        },
-      ],
-    },
-    {
-      title: "Tracking",
-      url: "#",
-      icon: <PackageSearch />,
-      roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
-      items: [
-        { title: "PO Tracking", url: "/dashboard/finance/po-tracking" },
-        { title: "Asset Tracking", url: "/dashboard/finance/asset-tracking" },
-      ],
-    },
 
+        // RIWAYAT TRANSAKSI
+        {
+          title: "Riwayat Transaksi",
+          url: "#",
+          icon: <History />,
+          roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+          items: [
+            {
+              title: "Riwayat Transaksi",
+              url: "/dashboard/finance/riwayat",
+            },
+          ],
+        },
+
+        // INVOICE
+        {
+          title: "Invoice",
+          url: "#",
+          icon: <Receipt />,
+          roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+          items: [
+            {
+              title: "Invoice",
+              url: "/dashboard/finance/invoices",
+            },
+          ],
+        },
+
+        // LAPORAN
+        {
+          title: "Laporan",
+          url: "#",
+          icon: <FileSpreadsheet />,
+          roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+          items: [
+            {
+              title: "Laporan Neraca",
+              url: "/dashboard/finance/laporan/lap-neraca",
+            },
+            {
+              title: "Laporan Laba Rugi",
+              url: "/dashboard/finance/laporan/lap-labarugi",
+            },
+          ],
+        },
+
+        // TRACKING
+        {
+          title: "Tracking",
+          url: "#",
+          icon: <PackageSearch />,
+          roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+          items: [
+            {
+              title: "PO Tracking",
+              url: "/dashboard/finance/po-tracking",
+            },
+            {
+              title: "Asset Tracking",
+              url: "/dashboard/finance/asset-tracking",
+            },
+          ],
+        },
+      ],
+    },
     // GA DROPDOWN
     {
-      title: "Facility Management",
+      title: "GA",
       url: "#",
-      icon: <Building2 />,
+      icon: <History />,
       roles: ["ADMIN", "GA"],
       items: [
-        { title: "Purchase Order", url: "/dashboard/ga/purchase-order" },
-        { title: "Asset", url: "/dashboard/ga/asset" },
-        { title: "Utilities", url: "/dashboard/ga/utilities" },
+        {
+          title: "Facility Management",
+          url: "#",
+          icon: <Building2 />,
+          roles: ["ADMIN", "GA"],
+          items: [
+            { title: "Purchase Order", url: "/dashboard/ga/purchase-order" },
+            { title: "Asset", url: "/dashboard/ga/asset" },
+            { title: "Utilities", url: "/dashboard/ga/utilities" },
+          ],
+        },
       ],
     },
     {
-      title: "Data Karyawan",
+      title: "HR",
       url: "#",
       icon: <Users />,
       roles: ["ADMIN", "HR"],
