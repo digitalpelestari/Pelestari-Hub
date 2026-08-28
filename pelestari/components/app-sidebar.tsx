@@ -160,7 +160,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "GA",
       url: "#",
       icon: <History />,
-      roles: ["ADMIN", "GA"],
+      roles: ["ADMIN", "GA","HR"],
       items: [
         {
           title: "Facility Management",
