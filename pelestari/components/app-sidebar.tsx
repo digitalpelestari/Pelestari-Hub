@@ -180,7 +180,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: "#",
       icon: <Users />,
       roles: ["ADMIN", "HR"],
-      items: [{ title: "Data Karyawan", url: "/dashboard/hr/data-karyawan" }],
+      items: [
+        { title: "Data Karyawan", url: "/dashboard/hr/data-karyawan" },
+        { title: "Absensi", url: "/dashboard/hr/absensi" },
+        { title: "Status Kehadiran", url: "/dashboard/hr/status-kehadiran" },
+      ]
     },
   ]
 
