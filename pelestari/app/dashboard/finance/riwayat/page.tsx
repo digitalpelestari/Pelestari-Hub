@@ -16,26 +16,28 @@ import {
   Search,
   Calendar,
   ReceiptText,
-  CalendarDays,
-  Hash,
+  User,
   X,
   RefreshCw,
   Download,
+  Filter,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react"
-import { getJurnalList } from "@/app/actions/jurnal"
+import { getJurnalList } from "@/app/actions/riwayat-transaksi"
 import { exportBukuKasToExcel } from "@/app/actions/export-buku-kas"
 import { swal } from "@/lib/sweetalert"
 
 export default function BukuKasPage() {
   const [rawJurnalList, setRawJurnalList] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState("")
+  const [searchInput, setSearchInput] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
+  const [selectedType, setSelectedType] = useState<"ALL" | "BK" | "BD" | "KK">("ALL")
   const [isExporting, setIsExporting] = useState(false)
   const [saldoKas, setSaldoKas] = useState(0)
 
@@ -43,6 +45,21 @@ export default function BukuKasPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const pageSizeOptions = [10, 20, 50, 100, 200]
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 0,
+  })
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchInput)
+      setCurrentPage(1)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   const handleDownloadExcel = async () => {
     setIsExporting(true)
@@ -82,14 +99,14 @@ export default function BukuKasPage() {
 
   const loadData = async () => {
     setLoading(true)
-
     try {
       const res = await getJurnalList(
         startDate || undefined,
         endDate || undefined,
         currentPage,
         pageSize,
-        search.trim() || undefined
+        searchQuery.trim() || undefined,
+        selectedType
       )
 
       if (!res || !res.success) {
@@ -99,7 +116,6 @@ export default function BukuKasPage() {
       }
 
       setRawJurnalList(Array.isArray(res.data) ? res.data : [])
-
       setSaldoKas(Number(res.summary?.saldoKas || 0))
 
       setPagination({
@@ -115,13 +131,13 @@ export default function BukuKasPage() {
       setLoading(false)
     }
   }
+
   useEffect(() => {
     loadData()
-  }, [startDate, endDate, currentPage, pageSize, search])
+  }, [startDate, endDate, currentPage, pageSize, searchQuery, selectedType])
 
-  // 1. Ekstraksi dan transform data jurnal menjadi mutasi kas
+  // Ekstraksi data mutasi kas secara dinamis berdasarkan klasifikasi COA KAS/BANK
   const kasMutasiList = useMemo(() => {
-    // Urutkan dari tanggal & ID paling awal ke terbaru untuk running balance yang tepat
     const sorted = [...rawJurnalList].sort((a: any, b: any) => {
       const dateA = new Date(a.tanggal).getTime()
       const dateB = new Date(b.tanggal).getTime()
@@ -133,26 +149,24 @@ export default function BukuKasPage() {
     return sorted.map((jurnal: any) => {
       const items = Array.isArray(jurnal.items) ? jurnal.items : []
 
-      // Cari baris Kas / Bank
-      const kasItem = items.find(
-        (i: any) =>
-          String(i.no_akun) === "11100" ||
-          String(i.no_akun) === "11200" ||
-          (i.nama_akun && i.nama_akun.toLowerCase().includes("kas")) ||
-          (i.nama_akun && i.nama_akun.toLowerCase().includes("petty"))
-      )
+      // Deteksi otomatis akun Kas & Bank berdasarkan kelompok akun
+      const kasItem = items.find((i: any) => {
+        const kelompok = String(i.nama_kelompok || i.kelompok_biaya || "").toUpperCase()
+        const nama = String(i.nama_akun || "").toUpperCase()
+        return (
+          kelompok.includes("KAS") ||
+          kelompok.includes("BANK") ||
+          nama.includes("KAS") ||
+          nama.includes("BANK") ||
+          nama.includes("PETTY")
+        )
+      })
 
-      // Cari baris akun operasional/lawan (ATK, Dapur, Ekspedisi, dll)
+      // Akun lawan transaksi
       const lawanItem = items.find((i: any) => i !== kasItem) || items[0] || {}
 
-      // Uang Masuk ke Kas (Top Up Kas): Kas posisi Debit
-      // Uang Keluar dari Kas (Pengeluaran ATK dll): Kas posisi Kredit
-      const debit = kasItem
-        ? Number(kasItem.debit) || 0
-        : Number(jurnal.debit) || 0
-      const kredit = kasItem
-        ? Number(kasItem.kredit) || 0
-        : Number(jurnal.kredit) || 0
+      const debit = kasItem ? Number(kasItem.debit) || 0 : 0
+      const kredit = kasItem ? Number(kasItem.kredit) || 0 : 0
 
       runningSaldo = runningSaldo + debit - kredit
       const isTopUp = debit > 0
@@ -160,13 +174,14 @@ export default function BukuKasPage() {
       return {
         id: jurnal.id,
         no_registrasi: jurnal.no_registrasi || "-",
+        penerima: jurnal.penerima || "-",
         tanggal: jurnal.tanggal,
         kelompok_biaya:
           lawanItem.nama_kelompok ||
           lawanItem.kelompok_biaya ||
-          (isTopUp ? "Kas / Petty Cash" : "Biaya Operasional"),
+          (isTopUp ? "Kas / Bank" : "Biaya Operasional"),
         jenis_biaya:
-          lawanItem.nama_akun || (isTopUp ? "Petty Cash" : "Operasional"),
+          lawanItem.nama_akun || (isTopUp ? "Penerimaan / Top Up" : "Operasional"),
         keterangan: jurnal.keterangan || "-",
         debit: debit,
         kredit: kredit,
@@ -176,40 +191,17 @@ export default function BukuKasPage() {
     })
   }, [rawJurnalList])
 
-  // 2. Filter Search
-  const filteredData = kasMutasiList
-
-  // Total akumulasi (dihitung dari SELURUH data terfilter, bukan hanya halaman aktif)
-  const totalSummary = useMemo(() => {
-    let totDebit = 0
-    let totKredit = 0
-    filteredData.forEach((d) => {
-      totDebit += d.debit
-      totKredit += d.kredit
-    })
-    const lastSaldo =
-      filteredData.length > 0
-        ? filteredData[filteredData.length - 1].total_saldo
-        : 0
-    return { totDebit, totKredit, lastSaldo }
-  }, [filteredData])
-
-  // --- Reset ke halaman 1 setiap kali filter/search/pageSize berubah ---
-  useEffect(() => {
+  const handleResetFilter = () => {
+    setStartDate("")
+    setEndDate("")
+    setSearchInput("")
+    setSearchQuery("")
+    setSelectedType("ALL")
     setCurrentPage(1)
-  }, [search, startDate, endDate, pageSize])
+  }
 
-  // --- Data untuk halaman aktif ---
-  // Jaga currentPage tetap valid jika data berkurang (misal setelah filter)
-  const [pagination, setPagination] = useState({
-    page: 1,
-    pageSize: 10,
-    total: 0,
-    totalPages: 0,
-  })
   const totalItems = pagination.total
   const totalPages = Math.max(1, pagination.totalPages)
-
   const startRow = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1
   const endRow = Math.min(currentPage * pageSize, totalItems)
 
@@ -218,10 +210,9 @@ export default function BukuKasPage() {
     setCurrentPage(page)
   }
 
-  // Nomor halaman ringkas (dengan ellipsis) untuk ditampilkan
   const pageNumbers = useMemo(() => {
     const pages: (number | "...")[] = []
-    const delta = 1 // jumlah halaman di kiri/kanan currentPage yang ditampilkan
+    const delta = 1
 
     for (let i = 1; i <= totalPages; i++) {
       if (
@@ -239,7 +230,7 @@ export default function BukuKasPage() {
 
   return (
     <div className="min-h-screen w-full space-y-6 bg-zinc-50/50 p-6 font-sans text-zinc-900">
-      {/* HEADER */}
+      {/* HEADER UTAMA */}
       <div className="flex flex-col justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2.5">
@@ -256,7 +247,6 @@ export default function BukuKasPage() {
         </div>
 
         {/* SUMMARY SALDO */}
-
         <div className="flex items-center gap-3">
           <Button
             onClick={handleDownloadExcel}
@@ -267,7 +257,7 @@ export default function BukuKasPage() {
             <Download className="h-4 w-4 text-zinc-500" />
             {isExporting ? "MENGONVERSI..." : "EKSPOR EXCEL"}
           </Button>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-right">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-right shadow-xs">
             <p className="text-[10px] font-bold text-emerald-700 uppercase">
               Total Saldo Terakhir
             </p>
@@ -281,22 +271,87 @@ export default function BukuKasPage() {
         </div>
       </div>
 
-      {/* FILTER BAR */}
-      <div className="flex flex-col items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm md:flex-row">
-        <div className="relative w-full md:w-80">
-          <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-          <Input
-            placeholder="Cari no. registrasi, jenis biaya, memo..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setCurrentPage(1)
-            }}
-            className="h-10 rounded-lg border-zinc-200 bg-zinc-50/50 pl-9 text-xs"
-          />
+      {/* FILTER BAR BERSIH & MODERN */}
+      <div className="flex flex-col items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm xl:flex-row">
+        <div className="flex w-full flex-col gap-3 md:flex-row md:items-center xl:w-auto">
+          {/* SEARCH INPUT */}
+          <div className="relative w-full md:w-72">
+            <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+            <Input
+              placeholder="Cari regis, biaya, penerima, memo..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="h-10 rounded-lg border-zinc-200 bg-zinc-50/50 pl-9 text-xs focus-visible:ring-1 focus-visible:ring-zinc-900"
+            />
+          </div>
+
+          {/* TOGGLE TIPE: ALL, BK, BD, KK */}
+          <div className="flex items-center gap-1.5 overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-100/60 p-1">
+            <div className="flex items-center gap-1 px-2 text-zinc-400">
+              <Filter className="h-3.5 w-3.5" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Tipe:</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedType("ALL")
+                setCurrentPage(1)
+              }}
+              className={`rounded-md px-3 py-1.5 text-xs font-bold transition-all ${
+                selectedType === "ALL"
+                  ? "bg-white text-zinc-900 shadow-xs"
+                  : "text-zinc-500 hover:text-zinc-900"
+              }`}
+            >
+              Semua
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedType("BK")
+                setCurrentPage(1)
+              }}
+              className={`rounded-md px-3 py-1.5 text-xs font-bold transition-all ${
+                selectedType === "BK"
+                  ? "bg-rose-600 text-white shadow-xs"
+                  : "text-zinc-500 hover:text-rose-600"
+              }`}
+            >
+              BK
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedType("BD")
+                setCurrentPage(1)
+              }}
+              className={`rounded-md px-3 py-1.5 text-xs font-bold transition-all ${
+                selectedType === "BD"
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "text-zinc-500 hover:text-blue-600"
+              }`}
+            >
+              BD
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedType("KK")
+                setCurrentPage(1)
+              }}
+              className={`rounded-md px-3 py-1.5 text-xs font-bold transition-all ${
+                selectedType === "KK"
+                  ? "bg-amber-600 text-white shadow-xs"
+                  : "text-zinc-500 hover:text-amber-600"
+              }`}
+            >
+              KK
+            </button>
+          </div>
         </div>
 
-        <div className="flex w-full items-center gap-2 md:w-auto">
+        {/* DATE RANGE FILTER */}
+        <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto">
           <div className="flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50/50 px-3">
             <Calendar className="h-4 w-4 text-zinc-400" />
             <span className="text-[10px] font-bold text-zinc-400 uppercase">
@@ -331,15 +386,13 @@ export default function BukuKasPage() {
             />
           </div>
 
-          {(startDate || endDate) && (
+          {(startDate || endDate || selectedType !== "ALL" || searchInput) && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setStartDate("")
-                setEndDate("")
-              }}
+              onClick={handleResetFilter}
               className="h-10 rounded-lg px-2.5 text-rose-600 hover:bg-rose-50"
+              title="Reset Filter"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -351,6 +404,7 @@ export default function BukuKasPage() {
             onClick={loadData}
             disabled={loading}
             className="h-10 w-10 rounded-lg border-zinc-200"
+            title="Muat Ulang Data"
           >
             <RefreshCw
               className={`h-4 w-4 text-zinc-600 ${loading ? "animate-spin" : ""}`}
@@ -359,10 +413,10 @@ export default function BukuKasPage() {
         </div>
       </div>
 
-      {/* TABLE MIRIP EXCEL */}
+      {/* TABEL DATA MUTASI (STRUKTUR 10 KOLOM) */}
       <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
         <div className="w-full overflow-x-auto">
-          <Table className="w-full min-w-[1100px] border-collapse">
+          <Table className="w-full min-w-[1200px] border-collapse">
             <TableHeader className="border-b border-zinc-200 bg-zinc-50/70">
               <TableRow className="text-[11px] font-bold tracking-wider text-zinc-600 uppercase">
                 <TableHead className="w-[50px] border-r border-zinc-200 px-3 py-3.5 text-center text-zinc-600">
@@ -374,14 +428,18 @@ export default function BukuKasPage() {
                 <TableHead className="w-[100px] border-r border-zinc-200 px-3 py-3.5 text-zinc-600">
                   Tanggal
                 </TableHead>
-                <TableHead className="min-w-[180px] border-r border-zinc-200 px-3 py-3.5 text-zinc-600">
+                <TableHead className="min-w-[170px] border-r border-zinc-200 px-3 py-3.5 text-zinc-600">
                   Kelompok Biaya
                 </TableHead>
-                <TableHead className="min-w-[180px] border-r border-zinc-200 px-3 py-3.5 text-zinc-600">
+                <TableHead className="min-w-[170px] border-r border-zinc-200 px-3 py-3.5 text-zinc-600">
                   Jenis Biaya
                 </TableHead>
-                <TableHead className="min-w-[260px] border-r border-zinc-200 px-4 py-3.5 text-zinc-600">
+                <TableHead className="min-w-[240px] border-r border-zinc-200 px-4 py-3.5 text-zinc-600">
                   Keterangan
+                </TableHead>
+                {/* PENERIMA */}
+                <TableHead className="w-[150px] border-r border-zinc-200 px-3 py-3.5 text-zinc-600">
+                  Penerima
                 </TableHead>
                 <TableHead className="w-[120px] border-r border-zinc-200 px-3 py-3.5 text-right text-zinc-600">
                   Debit
@@ -398,7 +456,7 @@ export default function BukuKasPage() {
               {loading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="h-36 text-center text-zinc-400 italic"
                   >
                     Memuat data mutasi buku kas...
@@ -408,14 +466,30 @@ export default function BukuKasPage() {
                 kasMutasiList.map((row, index) => (
                   <TableRow
                     key={row.id || index}
-                    className={`transition-colors ${row.isTopUp ? "bg-[#FFEB3B]/30 font-semibold hover:bg-[#FFEB3B]/50" : "hover:bg-zinc-50"}`}
+                    className={`transition-colors ${
+                      row.isTopUp
+                        ? "bg-[#FFEB3B]/30 font-semibold hover:bg-[#FFEB3B]/50"
+                        : "hover:bg-zinc-50"
+                    }`}
                   >
                     <TableCell className="border-r border-zinc-100 px-3 py-2.5 text-center font-mono text-zinc-500">
                       {(currentPage - 1) * pageSize + index + 1}
                     </TableCell>
 
-                    <TableCell className="border-r border-zinc-100 px-3 py-2.5 font-mono whitespace-nowrap text-zinc-800">
-                      {row.no_registrasi}
+                    <TableCell className="border-r border-zinc-100 px-3 py-2.5 font-mono whitespace-nowrap">
+                      <span
+                        className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                          row.no_registrasi.startsWith("BK")
+                            ? "border border-rose-100 bg-rose-50 text-rose-700"
+                            : row.no_registrasi.startsWith("BD")
+                            ? "border border-blue-100 bg-blue-50 text-blue-700"
+                            : row.no_registrasi.startsWith("KK")
+                            ? "border border-amber-100 bg-amber-50 text-amber-700"
+                            : "bg-zinc-100 text-zinc-700"
+                        }`}
+                      >
+                        {row.no_registrasi}
+                      </span>
                     </TableCell>
 
                     <TableCell className="border-r border-zinc-100 px-3 py-2.5 font-mono whitespace-nowrap text-zinc-600">
@@ -433,13 +507,28 @@ export default function BukuKasPage() {
                     </TableCell>
 
                     <TableCell
-                      className={`border-r border-zinc-100 px-3 py-2.5 ${row.isTopUp ? "font-bold text-emerald-800 italic" : "text-zinc-800"}`}
+                      className={`border-r border-zinc-100 px-3 py-2.5 ${
+                        row.isTopUp
+                          ? "font-bold text-emerald-800 italic"
+                          : "text-zinc-800"
+                      }`}
                     >
                       {row.jenis_biaya}
                     </TableCell>
 
+                    {/* KETERANGAN */}
                     <TableCell className="border-r border-zinc-100 px-4 py-2.5 text-zinc-800">
                       {row.keterangan}
+                    </TableCell>
+
+                    {/* PENERIMA */}
+                    <TableCell className="border-r border-zinc-100 px-3 py-2.5 text-zinc-700">
+                      <div className="flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                        <span className="font-semibold text-zinc-800 uppercase">
+                          {row.penerima || "-"}
+                        </span>
+                      </div>
                     </TableCell>
 
                     <TableCell className="border-r border-zinc-100 px-3 py-2.5 text-right font-mono whitespace-nowrap text-emerald-700">
@@ -462,10 +551,10 @@ export default function BukuKasPage() {
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="h-32 text-center text-zinc-400 italic"
                   >
-                    Tidak ada catatan pengeluaran kas pada periode ini.
+                    Tidak ada catatan mutasi kas pada filter ini.
                   </TableCell>
                 </TableRow>
               )}
@@ -476,16 +565,13 @@ export default function BukuKasPage() {
         {/* PAGINATION BAR */}
         {!loading && totalItems > 0 && (
           <div className="flex flex-col items-center justify-between gap-3 border-t border-zinc-200 bg-zinc-50/50 px-4 py-3 sm:flex-row">
-            {/* Info + page size selector */}
             <div className="flex items-center gap-3 text-xs text-zinc-500">
               <span>
                 Menampilkan{" "}
                 <span className="font-semibold text-zinc-700">{startRow}</span>–
                 <span className="font-semibold text-zinc-700">{endRow}</span>{" "}
                 dari{" "}
-                <span className="font-semibold text-zinc-700">
-                  {totalItems}
-                </span>{" "}
+                <span className="font-semibold text-zinc-700">{totalItems}</span>{" "}
                 data
               </span>
 

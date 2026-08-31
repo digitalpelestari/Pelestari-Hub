@@ -21,6 +21,7 @@ import {
   Landmark,
   Hash,
   Bookmark,
+  User,
   CheckCircle2,
   AlertTriangle,
   Pencil,
@@ -177,6 +178,7 @@ export default function JurnalUmumListPage() {
         : "",
       no_registrasi: jurnal.no_registrasi || "",
       no_referensi: jurnal.no_referensi || "",
+      penerima: jurnal.penerima || "",
       keterangan: jurnal.keterangan || "",
     })
     setEditItemsForm(JSON.parse(JSON.stringify(jurnal.items || [])))
@@ -192,7 +194,6 @@ export default function JurnalUmumListPage() {
     setEditHeaderForm((prev: any) => ({ ...prev, [field]: value }))
   }
 
-  // Tombol manual untuk generate atau switch prefix BD/BK
   const handleChangePrefixEdit = async (type: "BD" | "BK") => {
     const res = await generateNoRegistrasiOtomatis(type)
     if (res.success && res.code) {
@@ -200,7 +201,6 @@ export default function JurnalUmumListPage() {
     }
   }
 
-  // Handler murni input detail transaksi baris (tanpa trigger nomor registrasi dan tanpa auto-nol)
   const handleItemChange = (itemIndex: number, field: string, value: any) => {
     setEditItemsForm((prev) => {
       const updated = [...prev]
@@ -249,6 +249,7 @@ export default function JurnalUmumListPage() {
           tanggal: editHeaderForm.tanggal,
           no_registrasi: editHeaderForm.no_registrasi,
           no_referensi: editHeaderForm.no_referensi,
+          penerima: editHeaderForm.penerima,
           keterangan_umum: editHeaderForm.keterangan,
           no_akun: item.no_akun,
           debit: Number(item.debit) || 0,
@@ -369,7 +370,7 @@ export default function JurnalUmumListPage() {
         <div className="relative w-full md:w-80">
           <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <Input
-            placeholder="Cari No. Regis, Referensi, atau Memo..."
+            placeholder="Cari No. Regis, Referensi, Penerima, atau Memo..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="h-10 rounded-lg border-zinc-200 bg-zinc-50/50 pl-9 text-xs focus-visible:ring-1 focus-visible:ring-zinc-900"
@@ -426,15 +427,18 @@ export default function JurnalUmumListPage() {
       {/* TABEL DATA JURNAL */}
       <div className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
         <div className="w-full overflow-x-auto">
-          <Table className="w-full min-w-[1000px] border-collapse">
+          <Table className="w-full min-w-[1100px] border-collapse">
             <TableHeader className="border-b border-zinc-200 bg-zinc-50/70">
               <TableRow className="text-[11px] font-bold tracking-wider text-zinc-600 uppercase">
                 <TableHead className="w-[110px] px-4 py-3.5">Tanggal</TableHead>
-                <TableHead className="w-[170px] px-4 py-3.5">
+                <TableHead className="w-[160px] px-4 py-3.5">
                   No. Registrasi
                 </TableHead>
                 <TableHead className="w-[130px] px-4 py-3.5">
                   No. Referensi
+                </TableHead>
+                <TableHead className="w-[140px] px-4 py-3.5">
+                  Penerima
                 </TableHead>
                 <TableHead className="w-[200px] px-4 py-3.5">
                   Keterangan (Memo)
@@ -457,7 +461,7 @@ export default function JurnalUmumListPage() {
               {loading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={10}
+                    colSpan={11}
                     className="h-40 text-center text-zinc-400 italic"
                   >
                     Memuat data transaksi dari server...
@@ -492,6 +496,7 @@ export default function JurnalUmumListPage() {
                       >
                         {idx === 0 && (
                           <>
+                            {/* TANGGAL */}
                             <TableCell
                               rowSpan={totalItems}
                               className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top font-mono !text-sm text-zinc-600"
@@ -515,6 +520,7 @@ export default function JurnalUmumListPage() {
                               )}
                             </TableCell>
 
+                            {/* NO. REGISTRASI */}
                             <TableCell
                               rowSpan={totalItems}
                               className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top font-mono !text-sm font-semibold text-blue-600"
@@ -564,6 +570,7 @@ export default function JurnalUmumListPage() {
                               )}
                             </TableCell>
 
+                            {/* NO. REFERENSI */}
                             <TableCell
                               rowSpan={totalItems}
                               className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top font-mono text-emerald-600"
@@ -588,6 +595,35 @@ export default function JurnalUmumListPage() {
                               )}
                             </TableCell>
 
+                            {/* PENERIMA */}
+                            <TableCell
+                              rowSpan={totalItems}
+                              className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top text-xs text-zinc-700"
+                            >
+                              {isJurnalEditing ? (
+                                <Input
+                                  type="text"
+                                  placeholder="Nama Penerima..."
+                                  value={editHeaderForm.penerima || ""}
+                                  onChange={(e) =>
+                                    handleHeaderChange(
+                                      "penerima",
+                                      e.target.value
+                                    )
+                                  }
+                                  className="h-8 rounded-md border-zinc-300 bg-white font-mono !text-xs"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <User className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                  <span className="font-semibold text-zinc-800 uppercase break-words">
+                                    {jurnal.penerima || "-"}
+                                  </span>
+                                </div>
+                              )}
+                            </TableCell>
+
+                            {/* KETERANGAN */}
                             <TableCell
                               rowSpan={totalItems}
                               className="w-[200px] max-w-[200px] min-w-0 border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top text-xs text-zinc-600"
@@ -794,7 +830,7 @@ export default function JurnalUmumListPage() {
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={10}
+                    colSpan={11}
                     className="h-32 text-center text-zinc-400 italic"
                   >
                     Tidak ada rekaman transaksi jurnal pada rentang waktu ini.

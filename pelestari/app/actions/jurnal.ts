@@ -14,12 +14,13 @@ interface JurnalPayload {
   tanggal: string;
   noRegistrasi: string;
   noReferensi: string; 
+  penerima?: string;
   keterangan: string;
   items: JurnalItemPayload[];
 }
 
 /**
- * 🚀 ACTION: EKSPOR DATA JURNAL UMUM KE EXCEL (10 KOLOM - DENGAN NO REFERENSI)
+ * 🚀 ACTION: EKSPOR DATA JURNAL UMUM KE EXCEL (11 KOLOM - DENGAN NO REFERENSI & PENERIMA)
  */
 export async function exportJurnalToExcel(
   startDate?: string,
@@ -40,14 +41,14 @@ export async function exportJurnalToExcel(
       views: [{ showGridLines: true }]
     });
 
-    // 1. Header Judul Atas Laporan (Rentang Kolom Diperlebar jadi A s/d J)
-    worksheet.mergeCells("A1", "J1");
+    // 1. Header Judul Atas Laporan (Rentang Kolom Diperlebar jadi A s/d K)
+    worksheet.mergeCells("A1", "K1");
     const titleCell = worksheet.getCell("A1");
     titleCell.value = "REKAPITULASI JURNAL UMUM PEMBUKUAN";
     titleCell.font = { name: "Segoe UI", size: 14, bold: true, color: { argb: "111827" } };
     titleCell.alignment = { vertical: "middle", horizontal: "left" };
 
-    worksheet.mergeCells("A2", "J2");
+    worksheet.mergeCells("A2", "K2");
     const subtitleCell = worksheet.getCell("A2");
     
     const infoTanggal = startDate && endDate 
@@ -58,10 +59,11 @@ export async function exportJurnalToExcel(
 
     worksheet.getRow(3).height = 12;
 
-    // 2. Struktur Baru: Menjadi 10 Kolom dengan adanya No Referensi
+    // 2. Struktur Baru: Menjadi 11 Kolom dengan adanya No Referensi & Penerima
     const tableHeaders = [
       "NO Register", 
       "No Referensi", 
+      "Penerima",
       "Tanggal", 
       "Kelompok Biaya", 
       "Total", 
@@ -92,32 +94,33 @@ export async function exportJurnalToExcel(
     const flatRowsToRender: any[] = [];
 
     jurnalList.forEach((jurnal: any) => {
-  const itemsToUse = jurnal.items || [];
+      const itemsToUse = jurnal.items || [];
 
-  itemsToUse.forEach((item: any, idx: number) => {
-    flatRowsToRender.push({
-      isFirstInJurnal: idx === 0,
-      jurnalItemsCount: itemsToUse.length,
-      no_registrasi: jurnal.no_registrasi || "-",
-      no_referensi: jurnal.no_referensi || "-",
-      tanggal: jurnal.tanggal,
-      kelompok_biaya: (
-        item.nama_kelompok || "BIAYA OPERASIONAL"
-      ).toUpperCase(),
-      jenis_biaya: (
-        item.nama_akun || "-"
-      ).toUpperCase(),
-      detail_jenis_biaya: (
-        item.nama_akun || "-"
-      ).toUpperCase(),
-      keterangan_memo: (
-        jurnal.keterangan || "-"
-      ).toUpperCase(),
-      nominal_murni:
-        Number(item.debit) || Number(item.kredit) || 0,
+      itemsToUse.forEach((item: any, idx: number) => {
+        flatRowsToRender.push({
+          isFirstInJurnal: idx === 0,
+          jurnalItemsCount: itemsToUse.length,
+          no_registrasi: jurnal.no_registrasi || "-",
+          no_referensi: jurnal.no_referensi || "-",
+          penerima: jurnal.penerima || "-",
+          tanggal: jurnal.tanggal,
+          kelompok_biaya: (
+            item.nama_kelompok || "BIAYA OPERASIONAL"
+          ).toUpperCase(),
+          jenis_biaya: (
+            item.nama_akun || "-"
+          ).toUpperCase(),
+          detail_jenis_biaya: (
+            item.nama_akun || "-"
+          ).toUpperCase(),
+          keterangan_memo: (
+            jurnal.keterangan || "-"
+          ).toUpperCase(),
+          nominal_murni:
+            Number(item.debit) || Number(item.kredit) || 0,
+        });
+      });
     });
-  });
-});
 
     // 4. ALGORITMA MULTI-LEVEL CONDITIONAL GROUPING
     let i = 0;
@@ -169,6 +172,7 @@ export async function exportJurnalToExcel(
       row.values = [
         flatRow.isFirstInJurnal ? flatRow.no_registrasi : "",
         flatRow.isFirstInJurnal ? flatRow.no_referensi : "", 
+        flatRow.isFirstInJurnal ? flatRow.penerima : "",
         flatRow.isFirstInJurnal ? new Date(flatRow.tanggal).toLocaleDateString("id-ID") : "",
         flatRow.kelompok_biaya,
         flatRow.total_kelompok_value,
@@ -181,7 +185,7 @@ export async function exportJurnalToExcel(
 
       const cellBgColor = flatRow.no_registrasi.charCodeAt(flatRow.no_registrasi.length - 1) % 2 === 0 ? "FFFFFF" : "FBFBFC";
 
-      for (let colIdx = 1; colIdx <= 10; colIdx++) {
+      for (let colIdx = 1; colIdx <= 11; colIdx++) {
         const cell = row.getCell(colIdx);
         cell.font = { name: "Segoe UI", size: 10, color: { argb: "27272A" } };
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: cellBgColor } };
@@ -192,14 +196,14 @@ export async function exportJurnalToExcel(
           right: { style: "thin", color: { argb: "E4E4E7" } }
         };
 
-        if (colIdx === 1 || colIdx === 2 || colIdx === 3) {
+        if (colIdx === 1 || colIdx === 2 || colIdx === 3 || colIdx === 4) {
           cell.alignment = { vertical: "middle", horizontal: "center" };
           if (colIdx === 1 || colIdx === 2) {
             cell.font = { name: "Consolas", size: 9, bold: true, color: { argb: colIdx === 1 ? "1D4ED8" : "047857" } };
           }
-        } else if (colIdx === 4 || colIdx === 6 || colIdx === 8 || colIdx === 9) {
+        } else if (colIdx === 5 || colIdx === 7 || colIdx === 9 || colIdx === 10) {
           cell.alignment = { vertical: "middle", horizontal: "left" };
-        } else if (colIdx === 5 || colIdx === 7 || colIdx === 10) {
+        } else if (colIdx === 6 || colIdx === 8 || colIdx === 11) {
           cell.alignment = { vertical: "middle", horizontal: "right" };
           cell.numFmt = "#,##0;(#,##0);\"-\"";
         }
@@ -218,8 +222,8 @@ export async function exportJurnalToExcel(
       const kKey = `${kStart}-${kEnd}`;
 
       if (kEnd > kStart && !processedKelompok.has(kKey)) {
-        worksheet.mergeCells(`D${kStart}:D${kEnd}`);
         worksheet.mergeCells(`E${kStart}:E${kEnd}`);
+        worksheet.mergeCells(`F${kStart}:F${kEnd}`);
         processedKelompok.add(kKey);
       }
 
@@ -228,13 +232,13 @@ export async function exportJurnalToExcel(
       const jKey = `${jStart}-${jEnd}`;
 
       if (jEnd > jStart && !processedJenis.has(jKey)) {
-        worksheet.mergeCells(`F${jStart}:F${jEnd}`);
         worksheet.mergeCells(`G${jStart}:G${jEnd}`);
+        worksheet.mergeCells(`H${jStart}:H${jEnd}`);
         processedJenis.add(jKey);
       }
     });
 
-    // Merge vertikal No Register, No Referensi & Tanggal transaksi bawaan
+    // Merge vertikal No Register, No Referensi, Penerima & Tanggal
     let internalScanIdx = 5;
     flatRowsToRender.forEach((r) => {
       if (r.isFirstInJurnal && r.jurnalItemsCount > 1) {
@@ -243,19 +247,20 @@ export async function exportJurnalToExcel(
           worksheet.mergeCells(`A${internalScanIdx}:A${subEnd}`);
           worksheet.mergeCells(`B${internalScanIdx}:B${subEnd}`);
           worksheet.mergeCells(`C${internalScanIdx}:C${subEnd}`);
+          worksheet.mergeCells(`D${internalScanIdx}:D${subEnd}`);
         } catch (e) {}
       }
       internalScanIdx++;
     });
 
-    // Perataan posisi teks alignment tengah/kanan/kiri untuk kolom hasil merge cells
+    // Perataan posisi teks alignment
     for (let r = 5; r < currentRowIdx; r++) {
-      ["A", "B", "C", "D", "E", "F", "G"].forEach((col) => {
+      ["A", "B", "C", "D", "E", "F", "G", "H"].forEach((col) => {
         const targetCell = worksheet.getCell(`${col}${r}`);
         if (targetCell) {
           let hAlign: "left" | "center" | "right" = "center";
-          if (col === "D" || col === "F") hAlign = "left";
-          if (col === "E" || col === "G") hAlign = "right";
+          if (col === "E" || col === "G") hAlign = "left";
+          if (col === "F" || col === "H") hAlign = "right";
 
           targetCell.alignment = { 
             vertical: "middle", 
@@ -266,23 +271,23 @@ export async function exportJurnalToExcel(
       });
     }
 
-    // 7. Baris Grand Total Laporan Paling Bawah (Kolom J)
+    // 7. Baris Grand Total Laporan Paling Bawah (Kolom K)
     const footerRow = worksheet.getRow(currentRowIdx);
     footerRow.height = 26;
-    worksheet.mergeCells(`A${currentRowIdx}:I${currentRowIdx}`);
+    worksheet.mergeCells(`A${currentRowIdx}:J${currentRowIdx}`);
     
     const labelCell = footerRow.getCell(1);
     labelCell.value = "TOTAL KESELURUHAN LAPORAN  ";
     labelCell.font = { name: "Segoe UI", size: 10, bold: true };
     labelCell.alignment = { vertical: "middle", horizontal: "right" };
 
-    const totalFormulaCell = footerRow.getCell(10); 
-    totalFormulaCell.value = { formula: `=SUM(J5:J${currentRowIdx - 1})`, date1904: false }; 
+    const totalFormulaCell = footerRow.getCell(11); 
+    totalFormulaCell.value = { formula: `=SUM(K5:K${currentRowIdx - 1})`, date1904: false }; 
     totalFormulaCell.font = { name: "Segoe UI", size: 10, bold: true };
     totalFormulaCell.numFmt = "#,##0;(#,##0);\"-\"";
     totalFormulaCell.alignment = { vertical: "middle", horizontal: "right" };
 
-    for (let col = 1; col <= 10; col++) {
+    for (let col = 1; col <= 11; col++) {
       const c = footerRow.getCell(col);
       c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "F4F4F5" } };
       c.border = {
@@ -291,18 +296,19 @@ export async function exportJurnalToExcel(
       };
     }
 
-    // 8. Skala Lebar Kolom Presisi (10 Kolom)
+    // 8. Skala Lebar Kolom Presisi (11 Kolom)
     worksheet.columns = [
       { width: 16 }, // A: NO register
       { width: 16 }, // B: No Referensi 
-      { width: 14 }, // C: Tanggal
-      { width: 28 }, // D: Kelompok Biaya
-      { width: 16 }, // E: Total Kelompok
-      { width: 24 }, // F: Jenis Biaya
-      { width: 16 }, // G: Nominal Jenis Biaya
-      { width: 24 }, // H: Detail Jenis Biaya
-      { width: 26 }, // I: Keterangan
-      { width: 16 }  // J: Detail Nominal
+      { width: 20 }, // C: Penerima
+      { width: 14 }, // D: Tanggal
+      { width: 28 }, // E: Kelompok Biaya
+      { width: 16 }, // F: Total Kelompok
+      { width: 24 }, // G: Jenis Biaya
+      { width: 16 }, // H: Nominal Jenis Biaya
+      { width: 24 }, // I: Detail Jenis Biaya
+      { width: 26 }, // J: Keterangan
+      { width: 16 }  // K: Detail Nominal
     ];
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -321,10 +327,7 @@ export async function exportJurnalToExcel(
 }
 
 /**
- * 🛠️ ACTION: FIX - AMBIL DATA JURNAL (MENGGUNAKAN NODE-MAPPING UNTUK MENGHINDARI BUG JSON RE-FORMAT)
- */
-/**
- * ACTION: AMBIL DATA JURNAL
+ * 🛠️ ACTION: AMBIL DATA JURNAL
  * Support pagination, search, dan filter tanggal.
  */
 export async function getJurnalList(
@@ -369,37 +372,39 @@ export async function getJurnalList(
     // SEARCH
     // =========================================================
 
-   if (search?.trim()) {
-  const searchValue = `%${search.trim()}%`
+    if (search?.trim()) {
+      const searchValue = `%${search.trim()}%`
 
-  conditions.push(`
-    (
-      LOWER(j.no_registrasi) LIKE LOWER(?)
-      OR LOWER(j.no_referensi) LIKE LOWER(?)
-      OR LOWER(j.keterangan) LIKE LOWER(?)
+      conditions.push(`
+        (
+          LOWER(j.no_registrasi) LIKE LOWER(?)
+          OR LOWER(j.no_referensi) LIKE LOWER(?)
+          OR LOWER(j.penerima) LIKE LOWER(?)
+          OR LOWER(j.keterangan) LIKE LOWER(?)
 
-      OR EXISTS (
-        SELECT 1
-        FROM tb_jurnal_item si
-        LEFT JOIN tb_akun sa
-          ON si.no_akun = sa.no_akun
-        WHERE si.jurnal_id = j.id
-          AND (
-            LOWER(si.no_akun) LIKE LOWER(?)
-            OR LOWER(sa.nama_akun) LIKE LOWER(?)
+          OR EXISTS (
+            SELECT 1
+            FROM tb_jurnal_item si
+            LEFT JOIN tb_akun sa
+              ON si.no_akun = sa.no_akun
+            WHERE si.jurnal_id = j.id
+              AND (
+                LOWER(si.no_akun) LIKE LOWER(?)
+                OR LOWER(sa.nama_akun) LIKE LOWER(?)
+              )
           )
-      )
-    )
-  `)
+        )
+      `)
 
-  params.push(
-    searchValue,
-    searchValue,
-    searchValue,
-    searchValue,
-    searchValue
-  )
-}
+      params.push(
+        searchValue,
+        searchValue,
+        searchValue,
+        searchValue,
+        searchValue,
+        searchValue
+      )
+    }
 
     const whereClause =
       conditions.length > 0
@@ -424,79 +429,78 @@ export async function getJurnalList(
     const total = Number(countRows[0]?.total || 0)
 
     // =========================================================
-// HITUNG TOTAL DEBIT & KREDIT SELURUH DATA
-// Tidak terpengaruh pagination
-// =========================================================
+    // HITUNG TOTAL DEBIT & KREDIT SELURUH DATA
+    // =========================================================
 
-const summaryQuery = `
-  SELECT
-    COALESCE(SUM(i.debit), 0) AS totalDebit,
-    COALESCE(SUM(i.kredit), 0) AS totalKredit
-  FROM tb_jurnal_item i
-  INNER JOIN tb_jurnal j
-    ON i.jurnal_id = j.id
-  ${whereClause}
-`
-// =========================================================
-// HITUNG SALDO AKHIR KAS / BANK
-// Tidak terpengaruh pagination
-// =========================================================
-
-const saldoKasQuery = `
-  SELECT
-    COALESCE(SUM(i.debit), 0) AS totalDebitKas,
-    COALESCE(SUM(i.kredit), 0) AS totalKreditKas
-  FROM tb_jurnal_item i
-  INNER JOIN tb_jurnal j
-    ON i.jurnal_id = j.id
-  WHERE i.no_akun IN ('11100', '11200')
-    ${
-      startDate && startDate.trim() !== ""
-        ? "AND DATE(j.tanggal) >= ?"
-        : ""
-    }
-    ${
-      endDate && endDate.trim() !== ""
-        ? "AND DATE(j.tanggal) <= ?"
-        : ""
-    }
-`
-
-const saldoKasParams: any[] = []
-
-if (startDate && startDate.trim() !== "") {
-  saldoKasParams.push(startDate)
-}
-
-if (endDate && endDate.trim() !== "") {
-  saldoKasParams.push(endDate)
-}
-
-const [saldoKasRows]: any = await db.query(
-  saldoKasQuery,
-  saldoKasParams
-)
-
-const totalDebitKas = Number(
-  saldoKasRows[0]?.totalDebitKas || 0
-)
-
-const totalKreditKas = Number(
-  saldoKasRows[0]?.totalKreditKas || 0
-)
-
-const saldoKas = totalDebitKas - totalKreditKas
-
-const [summaryRows]: any = await db.query(
-  summaryQuery,
-  params
-)
-
-const totalDebit = Number(summaryRows[0]?.totalDebit || 0)
-const totalKredit = Number(summaryRows[0]?.totalKredit || 0)
+    const summaryQuery = `
+      SELECT
+        COALESCE(SUM(i.debit), 0) AS totalDebit,
+        COALESCE(SUM(i.kredit), 0) AS totalKredit
+      FROM tb_jurnal_item i
+      INNER JOIN tb_jurnal j
+        ON i.jurnal_id = j.id
+      ${whereClause}
+    `
 
     // =========================================================
-    // 2. AMBIL HEADER JURNAL
+    // HITUNG SALDO AKHIR KAS / BANK
+    // =========================================================
+
+    const saldoKasQuery = `
+      SELECT
+        COALESCE(SUM(i.debit), 0) AS totalDebitKas,
+        COALESCE(SUM(i.kredit), 0) AS totalKreditKas
+      FROM tb_jurnal_item i
+      INNER JOIN tb_jurnal j
+        ON i.jurnal_id = j.id
+      WHERE i.no_akun IN ('11100', '11200')
+        ${
+          startDate && startDate.trim() !== ""
+            ? "AND DATE(j.tanggal) >= ?"
+            : ""
+        }
+        ${
+          endDate && endDate.trim() !== ""
+            ? "AND DATE(j.tanggal) <= ?"
+            : ""
+        }
+    `
+
+    const saldoKasParams: any[] = []
+
+    if (startDate && startDate.trim() !== "") {
+      saldoKasParams.push(startDate)
+    }
+
+    if (endDate && endDate.trim() !== "") {
+      saldoKasParams.push(endDate)
+    }
+
+    const [saldoKasRows]: any = await db.query(
+      saldoKasQuery,
+      saldoKasParams
+    )
+
+    const totalDebitKas = Number(
+      saldoKasRows[0]?.totalDebitKas || 0
+    )
+
+    const totalKreditKas = Number(
+      saldoKasRows[0]?.totalKreditKas || 0
+    )
+
+    const saldoKas = totalDebitKas - totalKreditKas
+
+    const [summaryRows]: any = await db.query(
+      summaryQuery,
+      params
+    )
+
+    const totalDebit = Number(summaryRows[0]?.totalDebit || 0)
+    const totalKredit = Number(summaryRows[0]?.totalKredit || 0)
+
+    // =========================================================
+    // 2. AMBIL HEADER JURNAL (DENGAN PENERIMA)
     // =========================================================
 
     let headerQuery = `
@@ -505,6 +509,7 @@ const totalKredit = Number(summaryRows[0]?.totalKredit || 0)
         j.tanggal,
         j.no_registrasi,
         j.no_referensi,
+        j.penerima,
         j.keterangan
       FROM tb_jurnal j
       ${whereClause}
@@ -513,7 +518,6 @@ const totalKredit = Number(summaryRows[0]?.totalKredit || 0)
 
     const headerParams = [...params]
 
-    // Pagination hanya jika diminta
     if (isPaginationEnabled) {
       headerQuery += `
         LIMIT ? OFFSET ?
@@ -540,13 +544,13 @@ const totalKredit = Number(summaryRows[0]?.totalKredit || 0)
           total,
           totalPages: Math.ceil(total / currentPageSize),
         },
-            summary: {
-      totalDebit,
-      totalKredit,
-      isBalanced:
-        totalDebit === totalKredit &&
-        totalDebit > 0,
-    },
+        summary: {
+          totalDebit,
+          totalKredit,
+          isBalanced:
+            totalDebit === totalKredit &&
+            totalDebit > 0,
+        },
       }
     }
 
@@ -607,37 +611,38 @@ const totalKredit = Number(summaryRows[0]?.totalKredit || 0)
         tanggal: jurnal.tanggal,
         no_registrasi: jurnal.no_registrasi,
         no_referensi: jurnal.no_referensi,
+        penerima: jurnal.penerima || "-",
         keterangan: jurnal.keterangan,
         items: itemsMap.get(Number(jurnal.id)) || [],
       })
-      
     )
-const isBalanced =
-  totalDebit === totalKredit &&
-  totalDebit > 0    
+
+    const isBalanced =
+      totalDebit === totalKredit &&
+      totalDebit > 0    
 
     // =========================================================
     // 5. RETURN
     // =========================================================
 
-return {
-  success: true,
-  data: structuredJurnal,
-  summary: {
-    totalDebit,
-    totalKredit,
-    isBalanced,
-    saldoKas,
-  },
-  pagination: {
-    page: currentPage,
-    pageSize: currentPageSize,
-    total,
-    totalPages: Math.ceil(
-      total / currentPageSize
-    ),
-  },  
-}
+    return {
+      success: true,
+      data: structuredJurnal,
+      summary: {
+        totalDebit,
+        totalKredit,
+        isBalanced,
+        saldoKas,
+      },
+      pagination: {
+        page: currentPage,
+        pageSize: currentPageSize,
+        total,
+        totalPages: Math.ceil(
+          total / currentPageSize
+        ),
+      },  
+    }
 
   } catch (error: any) {
     console.error(
@@ -660,13 +665,14 @@ return {
 }
 
 /**
- * 🛠️ ACTION: UPDATE MASSAL JURNAL (DENGAN NO_REFERENSI)
+ * 🛠️ ACTION: UPDATE MASSAL JURNAL (DENGAN NO_REFERENSI & PENERIMA)
  */
 export async function updateJurnalItem(itemId: number, payload: {
   jurnal_id: number;
   tanggal: string;
   no_registrasi: string;
   no_referensi: string; 
+  penerima?: string;
   keterangan_umum: string;
   no_akun: string;
   debit: number;
@@ -682,9 +688,17 @@ export async function updateJurnalItem(itemId: number, payload: {
         tanggal = ?, 
         no_registrasi = ?, 
         no_referensi = ?, 
+        penerima = ?,
         keterangan = ? 
        WHERE id = ?`,
-      [payload.tanggal, payload.no_registrasi, payload.no_referensi, payload.keterangan_umum, payload.jurnal_id]
+      [
+        payload.tanggal, 
+        payload.no_registrasi, 
+        payload.no_referensi, 
+        payload.penerima || "", 
+        payload.keterangan_umum, 
+        payload.jurnal_id
+      ]
     );
 
     const [oldRows]: any = await connection.query(
@@ -720,7 +734,7 @@ export async function updateJurnalItem(itemId: number, payload: {
     await connection.commit();
     revalidatePath("/dashboard/finance/pos/jurnal");
     revalidatePath("/dashboard/finance/riwayat");
-    return { success: true, message: "Seluruh kolom transaksi, No Referensi, dan saldo master berhasil disesuaikan!" };
+    return { success: true, message: "Seluruh kolom transaksi, No Referensi, Penerima, dan saldo master berhasil disesuaikan!" };
 
   } catch (error: any) {
     await connection.rollback();
@@ -773,7 +787,7 @@ export async function deleteJurnalByHeader(jurnalId: number) {
 }
 
 /**
- * 🛠️ ACTION: TAMBAH ENTRI JURNAL BARU (DENGAN NO_REFERENSI)
+ * 🛠️ ACTION: TAMBAH ENTRI JURNAL BARU (DENGAN NO_REFERENSI & PENERIMA)
  */
 export async function createJurnalUmum(payload: JurnalPayload) {
   const connection = await db.getConnection();
@@ -782,13 +796,14 @@ export async function createJurnalUmum(payload: JurnalPayload) {
     await connection.beginTransaction();
 
     const headerQuery = `
-      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, keterangan) 
-      VALUES (?, ?, ?, ?)
+      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, penerima, keterangan) 
+      VALUES (?, ?, ?, ?, ?)
     `;
     const [headerResult]: any = await connection.query(headerQuery, [
       payload.tanggal,
       payload.noRegistrasi, 
       payload.noReferensi, 
+      payload.penerima || "",
       payload.keterangan
     ]);
 

@@ -24,6 +24,7 @@ interface JournalForm {
   tanggal: string;
   noRegistrasi: string;
   noReferensi: string; 
+  penerima: string;
   keterangan: string;
   items: JournalItem[];
 }
@@ -35,6 +36,7 @@ export default function KasirJurnalPage() {
     tanggal: new Date().toISOString().split("T")[0],
     noRegistrasi: "", 
     noReferensi: "", 
+    penerima: "",
     keterangan: "",
     items: [
       { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 },
@@ -54,9 +56,9 @@ export default function KasirJurnalPage() {
   const totalKredit = form.items.reduce((sum, item) => sum + (Number(item.kredit) || 0), 0)
   const isBalanced = totalDebit === totalKredit && totalDebit > 0
 
-  // Generator yang HANYA berjalan ketika Badge + BK / + BD diklik secara manual
-  const handleGenerateManual = async (tipe: "BK" | "BD") => {
-    const res = await generateNoRegistrasiOtomatis(tipe);
+  // Generator manual saat tombol +BK / +BD / +KK diklik
+  const handleGenerateManual = async (tipe: "BK" | "BD" | "KK") => {
+    const res = await generateNoRegistrasiOtomatis(tipe as any);
     if (res.success && res.code) {
       setForm(prev => ({ ...prev, noRegistrasi: res.code }));
     }
@@ -67,7 +69,7 @@ export default function KasirJurnalPage() {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
-  // Handler nominal murni (TIDAK menyentuh noRegistrasi sama sekali)
+  // Handler nominal murni tanpa side effect ke nomor registrasi
   const handleItemChange = (index: number, field: keyof JournalItem, value: string | number) => {
     const updatedItems = [...form.items]
 
@@ -111,6 +113,7 @@ export default function KasirJurnalPage() {
         tanggal: new Date().toISOString().split("T")[0],
         noRegistrasi: "", 
         noReferensi: "", 
+        penerima: "",
         keterangan: "",
         items: [
           { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 },
@@ -153,50 +156,68 @@ export default function KasirJurnalPage() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         
-        {/* HEADER TRANSAKSI */}
+        {/* HEADER TRANSAKSI (5 KOLOM RESPONSIF) */}
         <Card className="border shadow-sm bg-zinc-50/50 rounded-sm">
-          <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+          <CardContent className="p-4 grid grid-cols-1 md:grid-cols-5 gap-4 text-xs">
             
+            {/* 1. TANGGAL */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black uppercase italic text-zinc-500 ml-1">Tanggal Transaksi *</label>
               <Input type="date" name="tanggal" value={form.tanggal} onChange={handleHeaderChange} required className="h-10 font-bold bg-white border-zinc-300 rounded-sm" />
             </div>
             
-            {/* INPUT NO. REGISTRASI */}
+            {/* 2. NO. REGISTRASI + 3 BADGE (BK / BD / KK) */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black uppercase italic text-zinc-500 ml-1 flex items-center justify-between">
                 <span>No. Registrasi / Bukti</span>
               </label>
               <div className="relative">
                 <Input 
-                  placeholder="BK/BD" 
+                  placeholder="BK/BD/KK" 
                   name="noRegistrasi" 
                   value={form.noRegistrasi} 
                   onChange={handleHeaderChange} 
-                  className="h-10 font-bold bg-white border-zinc-300 rounded-sm pr-16 font-mono text-zinc-700" 
+                  className="h-10 font-bold bg-white border-zinc-300 rounded-sm pr-24 font-mono text-zinc-700" 
                 />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
                   <Badge 
                     onClick={() => handleGenerateManual("BK")} 
-                    className="cursor-pointer bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[8px] font-bold rounded-[2px] px-1.5 py-0.5"
+                    className="cursor-pointer bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[8px] font-bold rounded-[2px] px-1 py-0.5"
+                    title="Bank Keluar"
                   >
-                    + BK
+                    +BK
                   </Badge>
                   <Badge 
                     onClick={() => handleGenerateManual("BD")} 
-                    className="cursor-pointer bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[8px] font-bold rounded-[2px] px-1.5 py-0.5"
+                    className="cursor-pointer bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[8px] font-bold rounded-[2px] px-1 py-0.5"
+                    title="Bank Masuk / Debet"
                   >
-                    + BD
+                    +BD
+                  </Badge>
+                  <Badge 
+                    onClick={() => handleGenerateManual("KK")} 
+                    className="cursor-pointer bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-[8px] font-bold rounded-[2px] px-1 py-0.5"
+                    title="Kas Keluar"
+                  >
+                    +KK
                   </Badge>
                 </div>
               </div>
             </div>
 
+            {/* 3. NO. REFERENSI */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black uppercase italic text-zinc-500 ml-1">No. Referensi / Nota Asli</label>
               <Input placeholder="Contoh: INV-9921, REF-KAS" name="noReferensi" value={form.noReferensi} onChange={handleHeaderChange} className="h-10 font-bold bg-white border-zinc-300 rounded-sm" />
             </div>
+
+            {/* 4. PENERIMA / VENDOR */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase italic text-zinc-500 ml-1">Penerima</label>
+              <Input placeholder="Nama Toko / Penerima..." name="penerima" value={form.penerima} onChange={handleHeaderChange} className="h-10 font-bold bg-white border-zinc-300 rounded-sm" />
+            </div>
             
+            {/* 5. KETERANGAN */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black uppercase italic text-zinc-500 ml-1">Keterangan Umum</label>
               <Input placeholder="Deskripsi ringkas transaksi..." name="keterangan" value={form.keterangan} onChange={handleHeaderChange} className="h-10 font-bold bg-white border-zinc-300 rounded-sm" />
