@@ -24,7 +24,7 @@ const list = Array.isArray(rawJurnal.data)
     })
 
     const workbook = new ExcelJS.Workbook()
-    const worksheet = workbook.addWorksheet("Pengeluaran Kas")
+    const worksheet = workbook.addWorksheet("PT Peduli Lestari Indonesia Laporan Uang Masuk dan Keluar")
 
     // 2. Set Lebar Kolom
     worksheet.columns = [
@@ -42,7 +42,7 @@ const list = Array.isArray(rawJurnal.data)
     // 3. Header Title Bar
     worksheet.mergeCells("A1:I1")
     const titleCell = worksheet.getCell("A1")
-    titleCell.value = `Pengeluaran Kas (${startDate || "Awal"} s/d ${endDate || "Sekarang"})`
+    titleCell.value = `PT Peduli Lestari Indonesia Laporan Uang Masuk dan Keluar (${startDate || "Awal"} s/d ${endDate || "Sekarang"})`
     titleCell.font = { name: "Calibri", size: 12, bold: true }
     titleCell.alignment = { horizontal: "center", vertical: "middle" }
 
@@ -152,7 +152,7 @@ const list = Array.isArray(rawJurnal.data)
     return {
       success: true,
       base64,
-      fileName: `Pengeluaran_Kas_${startDate || "All"}_sd_${endDate || "Now"}.xlsx`,
+      fileName: `PT Pelestari Uang Masuk dan Keluar_${startDate || "All"}_sd_${endDate || "Now"}.xlsx`,
     }
   } catch (error: any) {
     console.error("Gagal export excel:", error)
