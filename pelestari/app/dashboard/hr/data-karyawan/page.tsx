@@ -65,6 +65,7 @@ const initialForm: KaryawanData = {
   no_bpjs_kesehatan: "",
   no_bpjs_ketenagakerjaan: "",
   tanggal_masuk: "",
+  status_karyawan: 1,
 }
 
 // Helper untuk format tanggal input form (YYYY-MM-DD)
@@ -101,6 +102,7 @@ export default function KaryawanPage() {
   const [karyawanList, setKaryawanList] = useState<KaryawanData[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [filterDivisi, setFilterDivisi] = useState("ALL")
+  const [filterStatus, setFilterStatus] = useState("ALL")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -138,9 +140,10 @@ export default function KaryawanPage() {
         (k.nik || "").includes(searchQuery)
 
       const matchDivisi = filterDivisi === "ALL" || k.divisi === filterDivisi
-      return matchSearch && matchDivisi
+      const matchStatus = filterStatus === "ALL" || (k.status_karyawan ?? 1) === (filterStatus === "aktif" ? 1 : 0)
+      return matchSearch && matchDivisi && matchStatus
     })
-  }, [karyawanList, searchQuery, filterDivisi])
+  }, [karyawanList, searchQuery, filterDivisi, filterStatus])
 
   const divisions = useMemo(() => {
     return Array.from(new Set((karyawanList || []).map((k) => k.divisi))).filter(Boolean)
@@ -223,7 +226,14 @@ export default function KaryawanPage() {
             <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase">
               Total Karyawan
             </CardTitle>
-            <Users className="h-4 w-4 text-zinc-600" />
+            <div className="flex items-center gap-1.5">
+              <span className="rounded-[3px] bg-emerald-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-800">
+                Aktif {karyawanList.filter((k) => (k.status_karyawan ?? 1) === 1).length}
+              </span>
+              <span className="rounded-[3px] bg-zinc-200 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-zinc-600">
+                Non-Aktif {karyawanList.filter((k) => (k.status_karyawan ?? 1) === 0).length}
+              </span>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="font-mono text-2xl font-black text-zinc-900">
@@ -292,13 +302,30 @@ export default function KaryawanPage() {
               </SelectContent>
             </Select>
 
-            {(searchQuery || filterDivisi !== "ALL") && (
+            <Select
+              value={filterStatus}
+              onValueChange={(val) => setFilterStatus(val ?? "ALL")}
+            >
+              <SelectTrigger className="h-9 w-[150px] rounded-sm border-zinc-200 bg-white text-xs shadow-sm">
+                <span className="text-left">
+                  {filterStatus === "ALL" ? "Semua Status" : filterStatus === "aktif" ? "Aktif" : "Non-Aktif"}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Semua Status</SelectItem>
+                <SelectItem value="aktif">Aktif</SelectItem>
+                <SelectItem value="non-aktif">Non-Aktif</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {(searchQuery || filterDivisi !== "ALL" || filterStatus !== "ALL") && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setSearchQuery("")
                   setFilterDivisi("ALL")
+                  setFilterStatus("ALL")
                 }}
                 className="h-9 rounded-sm border border-dashed border-zinc-300 text-xs text-zinc-500 hover:bg-zinc-100"
               >
@@ -325,6 +352,7 @@ export default function KaryawanPage() {
                     <TableHead className="border-r font-bold text-zinc-700">Kontak</TableHead>
                     <TableHead className="border-r font-bold text-zinc-700">Bank & Rekening</TableHead>
                     <TableHead className="border-r font-bold text-zinc-700">Tgl Masuk</TableHead>
+                    <TableHead className="border-r font-bold text-zinc-700">Status</TableHead>
                     <TableHead className="text-center font-bold text-zinc-700">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -353,6 +381,15 @@ export default function KaryawanPage() {
                         </TableCell>
                         <TableCell className="border-r px-4 py-3 text-zinc-600">
                           {formatDateForView(k.tanggal_masuk)}
+                        </TableCell>
+                        <TableCell className="border-r px-4 py-3 text-center">
+                          <span className={`inline-block rounded-[3px] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${
+                            (k.status_karyawan ?? 1) === 1
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-zinc-200 text-zinc-600"
+                          }`}>
+                            {(k.status_karyawan ?? 1) === 1 ? "Aktif" : "Non-Aktif"}
+                          </span>
                         </TableCell>
                         <TableCell className="px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-1">
@@ -389,7 +426,7 @@ export default function KaryawanPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-16 text-center text-zinc-400 italic">
+                      <TableCell colSpan={8} className="py-16 text-center text-zinc-400 italic">
                         Data karyawan tidak ditemukan di database.
                       </TableCell>
                     </TableRow>
@@ -475,6 +512,25 @@ export default function KaryawanPage() {
                   placeholder="IT / Finance / Human Resources"
                   className="h-9 rounded-sm border-zinc-300 text-xs"
                 />
+              </div>
+
+              {/* STATUS KARYAWAN */}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold uppercase">Status Karyawan</Label>
+                <Select
+                  value={(formData.status_karyawan ?? 1) === 1 ? "aktif" : "non-aktif"}
+                  onValueChange={(val) => setFormData({ ...formData, status_karyawan: val === "aktif" ? 1 : 0 })}
+                >
+                  <SelectTrigger className="h-9 w-full rounded-sm border-zinc-300 bg-white text-xs">
+                    <span className="text-left">
+                      {(formData.status_karyawan ?? 1) === 1 ? "Aktif" : "Non-Aktif"}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="aktif">Aktif</SelectItem>
+                    <SelectItem value="non-aktif">Non-Aktif</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1">
@@ -640,6 +696,16 @@ export default function KaryawanPage() {
                   <span className="block text-[10px] font-bold text-zinc-400 uppercase">Jabatan & Divisi</span>
                   <span className="font-semibold text-zinc-800">
                     {selectedKaryawan.jabatan} ({selectedKaryawan.divisi})
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold text-zinc-400 uppercase">Status Karyawan</span>
+                  <span className={`inline-block rounded-[3px] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${
+                    (selectedKaryawan.status_karyawan ?? 1) === 1
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-zinc-200 text-zinc-600"
+                  }`}>
+                    {(selectedKaryawan.status_karyawan ?? 1) === 1 ? "Aktif" : "Non-Aktif"}
                   </span>
                 </div>
                 <div>

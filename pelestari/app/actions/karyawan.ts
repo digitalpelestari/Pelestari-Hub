@@ -19,6 +19,7 @@ export interface KaryawanData {
   no_bpjs_kesehatan: string
   no_bpjs_ketenagakerjaan: string
   tanggal_masuk: string
+  status_karyawan: number
 }
 
 // 1. GET ALL
@@ -27,7 +28,7 @@ export async function getKaryawanListAction() {
     const [rows]: any = await db.query(
       "SELECT * FROM tb_karyawan ORDER BY nip ASC"
     )
-    return { success: true, data: rows as KaryawanData[] }
+    return { success: true, data: (rows as KaryawanData[]) || [] }
   } catch (error: any) {
     console.error("Error getKaryawanList:", error)
     return { success: false, message: error.message || "Gagal mengambil data dari database" }
@@ -55,8 +56,9 @@ export async function createKaryawanAction(payload: KaryawanData) {
       INSERT INTO tb_karyawan (
         nip, nama, divisi, jabatan, email, nik, 
         no_rekening, nama_bank, tempat_lahir, tanggal_lahir, 
-        alamat, no_hp, no_bpjs_kesehatan, no_bpjs_ketenagakerjaan, tanggal_masuk
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        alamat, no_hp, no_bpjs_kesehatan, no_bpjs_ketenagakerjaan, tanggal_masuk,
+        status_karyawan
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
     const values = [
       payload.nip,
@@ -74,6 +76,7 @@ export async function createKaryawanAction(payload: KaryawanData) {
       payload.no_bpjs_kesehatan,
       payload.no_bpjs_ketenagakerjaan,
       payload.tanggal_masuk || null,
+      payload.status_karyawan ?? 1,
     ]
 
     await db.query(query, values)
@@ -92,7 +95,8 @@ export async function updateKaryawanAction(nip: string, payload: Partial<Karyawa
       UPDATE tb_karyawan SET 
         nama = ?, divisi = ?, jabatan = ?, email = ?, nik = ?, 
         no_rekening = ?, nama_bank = ?, tempat_lahir = ?, tanggal_lahir = ?, 
-        alamat = ?, no_hp = ?, no_bpjs_kesehatan = ?, no_bpjs_ketenagakerjaan = ?, tanggal_masuk = ?
+        alamat = ?, no_hp = ?, no_bpjs_kesehatan = ?, no_bpjs_ketenagakerjaan = ?, tanggal_masuk = ?,
+        status_karyawan = ?
       WHERE nip = ?
     `
     const values = [
@@ -110,6 +114,7 @@ export async function updateKaryawanAction(nip: string, payload: Partial<Karyawa
       payload.no_bpjs_kesehatan,
       payload.no_bpjs_ketenagakerjaan,
       payload.tanggal_masuk || null,
+      payload.status_karyawan ?? 1,
       nip,
     ]
 
