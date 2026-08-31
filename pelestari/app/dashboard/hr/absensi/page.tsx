@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo } from "react"
 import {
   Plus,
-  Search,
   Pencil,
   Trash2,
   Eye,
@@ -115,8 +114,6 @@ export default function AbsensiPage() {
   const [absensiList, setAbsensiList] = useState<AbsensiHarianData[]>([])
   const [karyawanList, setKaryawanList] = useState<KaryawanData[]>([])
   const [statusList, setStatusList] = useState<StatusKehadiranData[]>([])
-  const [searchQuery, setSearchQuery] = useState("")
-  const [filterStatus, setFilterStatus] = useState("ALL")
   const [filterDari, setFilterDari] = useState("")
   const [filterSampai, setFilterSampai] = useState("")
   const [isFiltering, setIsFiltering] = useState(false)
@@ -128,17 +125,40 @@ export default function AbsensiPage() {
   const [formData, setFormData] = useState(initialForm)
   const [batchEntries, setBatchEntries] = useState<BatchEntry[]>([])
   const [batchDate, setBatchDate] = useState("")
-  const [existingBatchAbsensi, setExistingBatchAbsensi] = useState<AbsensiHarianData[]>([])
+  const [existingBatchAbsensi, setExistingBatchAbsensi] = useState<
+    AbsensiHarianData[]
+  >([])
 
-  const getTodayString = () => {
+  const getDefaultFilterRange = () => {
     const today = new Date()
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+    const year = today.getFullYear()
+    const month = today.getMonth()
+    const day = today.getDate()
+
+    let dari: Date
+    let sampai: Date
+
+    if (day >= 26) {
+      dari = new Date(year, month, 26)
+      sampai = new Date(year, month + 1, 25)
+    } else {
+      dari = new Date(year, month - 1, 26)
+      sampai = new Date(year, month, 25)
+    }
+
+    return {
+      dari: `${dari.getFullYear()}-${String(dari.getMonth() + 1).padStart(2, "0")}-${String(dari.getDate()).padStart(2, "0")}`,
+      sampai: `${sampai.getFullYear()}-${String(sampai.getMonth() + 1).padStart(2, "0")}-${String(sampai.getDate()).padStart(2, "0")}`,
+    }
   }
 
+  const getDefaultDari = () => getDefaultFilterRange().dari
+  const getDefaultSampai = () => getDefaultFilterRange().sampai
+
   useEffect(() => {
-    const todayStr = getTodayString()
-    setFilterDari(todayStr)
-    setFilterSampai(todayStr)
+    const { dari, sampai } = getDefaultFilterRange()
+    setFilterDari(dari)
+    setFilterSampai(sampai)
     setIsFiltering(false)
     fetchData()
   }, [])
@@ -174,36 +194,27 @@ export default function AbsensiPage() {
   }
 
   const filteredData = useMemo(() => {
-    const isDefaultToday =
-      filterDari &&
-      filterSampai &&
-      filterDari === filterSampai &&
-      filterDari ===
-        `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`
+    const defaultRange = getDefaultFilterRange()
+    const isDefaultRange =
+      filterDari === defaultRange.dari && filterSampai === defaultRange.sampai
 
-    if (!isDefaultToday && (filterDari || filterSampai || filterStatus !== "ALL" || searchQuery)) {
+    if (
+      !isDefaultRange &&
+      (filterDari !== defaultRange.dari || filterSampai !== defaultRange.sampai)
+    ) {
       setIsFiltering(true)
-    } else if (isDefaultToday && !searchQuery && filterStatus === "ALL") {
+    } else if (isDefaultRange) {
       setIsFiltering(false)
     }
 
     return (absensiList || []).filter((a) => {
-      const matchSearch =
-        (a.nama || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (a.nip || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (a.divisi || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (a.jabatan || "").toLowerCase().includes(searchQuery.toLowerCase())
-
-      const matchStatus =
-        filterStatus === "ALL" || a.nama_status === filterStatus
-
       const matchTanggal =
         (!filterDari || a.tanggal >= filterDari) &&
         (!filterSampai || a.tanggal <= filterSampai)
 
-      return matchSearch && matchStatus && matchTanggal
+      return matchTanggal
     })
-  }, [absensiList, searchQuery, filterStatus, filterDari, filterSampai])
+  }, [absensiList, filterDari, filterSampai])
 
   const statusColor = (namaStatus?: string) => {
     switch (namaStatus) {
@@ -219,6 +230,89 @@ export default function AbsensiPage() {
         return "bg-zinc-100 text-zinc-700"
     }
   }
+
+  const getDayName = (dateString: string) => {
+    const d = new Date(dateString + "T00:00:00")
+    return d.toLocaleDateString("id-ID", { weekday: "long" })
+  }
+
+  const getDateRange = (start: string, end: string) => {
+    if (!start || !end) return []
+    const dates: string[] = []
+    const current = new Date(start + "T00:00:00")
+    const last = new Date(end + "T00:00:00")
+    while (current <= last) {
+      dates.push(
+        `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`
+      )
+      current.setDate(current.getDate() + 1)
+    }
+    return dates
+  }
+
+  const formatPeriode = (dari: string, sampai: string) => {
+    if (!dari || !sampai) return ""
+    const start = new Date(dari + "T00:00:00")
+    const end = new Date(sampai + "T00:00:00")
+    const fmt = (d: Date) =>
+      d.toLocaleDateString("id-ID", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    return `Periode ${fmt(start)} - ${fmt(end)}`
+  }
+
+  const groupedAbsensi = useMemo(() => {
+    const defaultRange = getDefaultFilterRange()
+    const dateRange = getDateRange(
+      filterDari || defaultRange.dari,
+      filterSampai || defaultRange.sampai
+    )
+
+    const grouped = new Map<
+      string,
+      {
+        karyawan_nip: string
+        nama: string
+        nip: string
+        divisi: string
+        absensi: Record<
+          string,
+          {
+            jam_masuk: string | null
+            jam_keluar: string | null
+            status_id: number
+            id: number
+          }
+        >
+      }
+    >()
+
+    filteredData.forEach((a) => {
+      if (!grouped.has(a.karyawan_nip)) {
+        grouped.set(a.karyawan_nip, {
+          karyawan_nip: a.karyawan_nip,
+          nama: a.nama,
+          nip: a.nip,
+          divisi: a.divisi,
+          absensi: {},
+        })
+      }
+      const group = grouped.get(a.karyawan_nip)!
+      group.absensi[a.tanggal] = {
+        jam_masuk: a.jam_masuk,
+        jam_keluar: a.jam_keluar,
+        status_id: a.status_id,
+        id: a.id,
+      }
+    })
+
+    return {
+      grouped: Array.from(grouped.values()),
+      dateRange,
+    }
+  }, [filteredData, filterDari, filterSampai])
 
   const loadExistingAbsensi = async (tanggal: string) => {
     let existing: AbsensiHarianData[] = []
@@ -284,7 +378,9 @@ export default function AbsensiPage() {
     }
   }
 
-  const handleBatchDateChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBatchDateChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const newDate = e.target.value
     setBatchDate(newDate)
 
@@ -349,15 +445,15 @@ export default function AbsensiPage() {
           (r) => r.status === "fulfilled" && r.value.success
         ).length
         const failed = results.filter(
-          (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.success)
+          (r) =>
+            r.status === "rejected" ||
+            (r.status === "fulfilled" && !r.value.success)
         )
 
         if (succeeded === 0) {
           const errorMessages = failed
             .map((r) =>
-              r.status === "rejected"
-                ? r.reason?.message
-                : r.value?.message
+              r.status === "rejected" ? r.reason?.message : r.value?.message
             )
             .filter(Boolean)
           throw new Error(errorMessages[0] || "Gagal menyimpan data absensi")
@@ -368,9 +464,7 @@ export default function AbsensiPage() {
             `${succeeded} data berhasil, ${failed.length} data gagal`
           )
         } else {
-          swal.success(
-            `${succeeded} data absensi berhasil disimpan`
-          )
+          swal.success(`${succeeded} data absensi berhasil disimpan`)
         }
       }
       await fetchData()
@@ -407,7 +501,7 @@ export default function AbsensiPage() {
 
   return (
     <div className="space-y-6 p-6 font-sans">
-      {/* HEADER */}  
+      {/* HEADER */}
       <div className="flex flex-col gap-4 border-b border-zinc-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-black tracking-tighter text-black uppercase">
@@ -426,106 +520,10 @@ export default function AbsensiPage() {
         </Button>
       </div>
 
-      {/* STAT CARDS */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Card className="rounded-sm border border-zinc-200 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase">
-              Total Hadir
-            </CardTitle>
-            <UserCheck className="h-4 w-4 text-emerald-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-mono text-2xl font-black text-emerald-600">
-              {totalHadir}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-sm border border-zinc-200 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase">
-              Total Izin
-            </CardTitle>
-            <CalendarDays className="h-4 w-4 text-amber-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-mono text-2xl font-black text-amber-600">
-              {totalIzin}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-sm border border-zinc-200 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase">
-              Total Sakit
-            </CardTitle>
-            <UserX className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-mono text-2xl font-black text-blue-600">
-              {totalSakit}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-sm border border-zinc-200 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase">
-              Total Alpha
-            </CardTitle>
-            <UserX className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-mono text-2xl font-black text-red-600">
-              {totalAlpha}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* FILTER & SEARCH */}
+      {/* FILTER TANGGAL */}
       <Card className="overflow-hidden rounded-sm border-zinc-200 shadow-md">
         <CardHeader className="space-y-4 border-b bg-zinc-50/50 pb-4">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[240px] flex-1 space-y-1">
-              <span className="block text-[10px] font-semibold text-zinc-500 uppercase">
-                Cari
-              </span>
-              <div className="relative">
-                <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-                <Input
-                  placeholder="Cari NIP, nama, jabatan..."
-                  className="h-9 rounded-sm border-zinc-200 bg-white pl-10 text-xs shadow-sm focus-visible:ring-1 focus-visible:ring-black"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="w-[160px] space-y-1">
-              <span className="block text-[10px] font-semibold text-zinc-500 uppercase">
-                Status
-              </span>
-              <Select
-                value={filterStatus}
-                onValueChange={(val) => setFilterStatus(val ?? "ALL")}
-              >
-                <SelectTrigger className="h-9 w-full rounded-sm border-zinc-200 bg-white text-xs shadow-sm">
-                  <SelectValue placeholder="Semua Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Semua Status</SelectItem>
-                  {statusList.map((s) => (
-                    <SelectItem key={s.id} value={s.nama_status}>
-                      {s.nama_status}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             <div className="min-w-[160px] space-y-1">
               <span className="block text-[10px] font-semibold text-zinc-500 uppercase">
                 Dari Tanggal
@@ -556,19 +554,15 @@ export default function AbsensiPage() {
               />
             </div>
 
-            {(searchQuery ||
-              filterStatus !== "ALL" ||
-              filterDari !== "" ||
-              filterSampai !== "") && (
+            {(filterDari !== getDefaultFilterRange().dari ||
+              filterSampai !== getDefaultFilterRange().sampai) && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setSearchQuery("")
-                  setFilterStatus("ALL")
-                  const todayStr = getTodayString()
-                  setFilterDari(todayStr)
-                  setFilterSampai(todayStr)
+                  const { dari, sampai } = getDefaultFilterRange()
+                  setFilterDari(dari)
+                  setFilterSampai(sampai)
                   setIsFiltering(false)
                 }}
                 className="h-9 rounded-sm border border-dashed border-zinc-300 text-xs text-zinc-500 hover:bg-zinc-100"
@@ -589,100 +583,128 @@ export default function AbsensiPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader className="bg-zinc-100/80">
-                  <TableRow className="border-b border-zinc-200 text-xs tracking-wider uppercase">
-                    <TableHead className="border-r px-4 py-3 font-bold text-zinc-700">
+                  <TableRow className="border-b border-zinc-200 text-xs">
+                    <TableHead
+                      colSpan={4 + groupedAbsensi.dateRange.length * 2}
+                      className="border-r px-4 py-2 text-center text-lg font-bold text-zinc-600"
+                    >
+                      {formatPeriode(filterDari, filterSampai)}
+                    </TableHead>
+                  </TableRow>
+                  <TableRow className="border-b border-zinc-200 text-xs">
+                    <TableHead
+                      rowSpan={3}
+                      className="border-r px-4 py-3 font-bold text-zinc-700"
+                    >
                       No
                     </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Tanggal
+                    <TableHead
+                      rowSpan={3}
+                      className="border-r px-4 py-3 font-bold text-zinc-700"
+                    >
+                      Nama
                     </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Nama Karyawan
+                    <TableHead
+                      rowSpan={3}
+                      className="border-r px-4 py-3 font-bold text-zinc-700"
+                    >
+                      NIP
                     </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Status
+                    <TableHead
+                      rowSpan={3}
+                      className="border-r px-4 py-3 font-bold text-zinc-700"
+                    >
+                      Divisi
                     </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Jam Masuk
-                    </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Jam Pulang
-                    </TableHead>
-                    <TableHead className="text-center font-bold text-zinc-700">
-                      Aksi
-                    </TableHead>
+                    {groupedAbsensi.dateRange.map((tanggal) => (
+                      <TableHead
+                        key={tanggal}
+                        colSpan={2}
+                        className="border-r px-2 py-2 text-center font-bold text-zinc-700"
+                      >
+                        <div className="text-sm leading-none">
+                          {new Date(tanggal + "T00:00:00").getDate()}
+                        </div>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                  <TableRow className="border-b border-zinc-200 text-xs">
+                    {groupedAbsensi.dateRange.map((tanggal) => (
+                      <TableHead
+                        key={tanggal}
+                        colSpan={2}
+                        className="border-r px-2 py-2 text-center font-bold text-zinc-700"
+                      >
+                        <div className="text-xs font-bold">
+                          {getDayName(tanggal)}
+                        </div>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                  <TableRow className="border-b border-zinc-200 text-xs tracking-wider uppercase">
+                    {groupedAbsensi.dateRange.map((tanggal) => (
+                      <React.Fragment key={tanggal}>
+                        <TableHead
+                          key={tanggal + "-masuk"}
+                          className="border-r px-2 py-2 font-bold text-zinc-700"
+                        >
+                          Masuk
+                        </TableHead>
+                        <TableHead
+                          key={tanggal + "-keluar"}
+                          className="border-r px-2 py-2 font-bold text-zinc-700"
+                        >
+                          Keluar
+                        </TableHead>
+                      </React.Fragment>
+                    ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredData.length > 0 ? (
-                    filteredData.map((a, idx) => {
+                  {groupedAbsensi.grouped.length > 0 ? (
+                    groupedAbsensi.grouped.map((group, idx) => {
+                      const firstRecord =
+                        group.absensi[groupedAbsensi.dateRange[0]]
+                      const recordId = firstRecord?.id
                       return (
                         <TableRow
-                          key={a.id}
+                          key={group.karyawan_nip}
                           className="border-b border-zinc-100 hover:bg-zinc-50/80"
                         >
                           <TableCell className="border-r px-4 py-3 font-bold text-zinc-500">
                             {idx + 1}
                           </TableCell>
-                          <TableCell className="border-r px-4 py-3 text-zinc-600">
-                            {formatDateForView(a.tanggal)}
-                          </TableCell>
                           <TableCell className="border-r px-4 py-3">
                             <div className="font-bold text-zinc-900">
-                              {a.nama}
+                              {group.nama}
                             </div>
                           </TableCell>
-                          <TableCell className="border-r px-4 py-3">
-                            <span
-                              className={`inline-block rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase ${statusColor(a.nama_status)}`}
-                            >
-                              {a.nama_status}
-                            </span>
-                          </TableCell>
                           <TableCell className="border-r px-4 py-3 font-mono text-zinc-600">
-                            {a.jam_masuk || "-"}
+                            {group.nip}
                           </TableCell>
-                          <TableCell className="border-r px-4 py-3 font-mono text-zinc-600">
-                            {a.jam_keluar || "-"}
+                          <TableCell className="border-r px-4 py-3 text-zinc-600">
+                            {group.divisi}
                           </TableCell>
-                          <TableCell className="px-4 py-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 rounded-sm hover:bg-blue-50 hover:text-blue-600"
-                                onClick={() => {
-                                  setSelectedAbsensi(a)
-                                  setIsDetailOpen(true)
-                                }}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 rounded-sm hover:bg-amber-50 hover:text-amber-600"
-                                onClick={() => handleOpenForm(a)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 rounded-sm hover:bg-red-50 hover:text-red-600"
-                                onClick={() => handleDelete(a.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
+                          {groupedAbsensi.dateRange.map((tanggal) => {
+                            const data = group.absensi[tanggal]
+                            return (
+                              <React.Fragment key={tanggal}>
+                                <TableCell className="border-r px-2 py-3 font-mono text-zinc-600">
+                                  {data?.jam_masuk || "-"}
+                                </TableCell>
+                                <TableCell className="border-r px-2 py-3 font-mono text-zinc-600">
+                                  {data?.jam_keluar || "-"}
+                                </TableCell>
+                              </React.Fragment>
+                            )
+                          })}
                         </TableRow>
                       )
                     })
                   ) : (
                     <TableRow>
                       <TableCell
-                        colSpan={7}
+                        colSpan={4 + groupedAbsensi.dateRange.length * 2}
                         className="py-16 text-center text-zinc-400 italic"
                       >
                         {isFiltering
@@ -908,7 +930,7 @@ export default function AbsensiPage() {
                                 </div>
                               </div>
                               {entry.existingId != null && (
-                                <span className="rounded-sm bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-blue-700">
+                                <span className="rounded-sm bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 uppercase">
                                   Update
                                 </span>
                               )}
