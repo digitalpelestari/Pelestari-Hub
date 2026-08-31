@@ -126,21 +126,29 @@ export default function KasirJurnalPage() {
   return (
     <div className="p-6 w-full space-y-6 font-sans text-zinc-900">
       
-      {/* HEADER */}
-      <div className="flex items-center justify-between border-b border-zinc-200 pb-4">
-        <div>
-          <h1 className="text-2xl font-black uppercase tracking-tighter italic text-black flex items-center gap-2">
-            <FileText className="h-6 w-6" /> Buat Jurnal Umum Baru
-          </h1>
-          <p className="text-[9px] font-bold text-zinc-400 tracking-widest uppercase italic mt-0.5">
+      {/* HEADER BAR UTAMA */}
+      <div className="flex w-full flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-zinc-900 p-2 text-white">
+              <FileText className="h-5 w-5" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-900">
+              Buat Jurnal Umum Baru
+            </h1>
+          </div>
+          <p className="pl-9 text-xs text-zinc-500">
             Double-Entry Accounting Input System
           </p>
         </div>
-        <Link href="/dashboard/finance/pos/jurnal">
-          <Button variant="outline" size="sm" className="h-8 text-[10px] font-black rounded-sm border-zinc-300">
-            <ArrowLeft className="mr-1 h-3 w-3" /> LIHAT RIWAYAT JURNAL
-          </Button>
-        </Link>
+
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard/finance/pos/jurnal">
+            <Button variant="outline" className="h-10 gap-2 rounded-lg border-zinc-200 px-4 text-xs font-semibold text-zinc-700 transition-all hover:bg-zinc-50">
+              <ArrowLeft className="h-4 w-4 text-zinc-500" /> LIHAT RIWAYAT JURNAL
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">

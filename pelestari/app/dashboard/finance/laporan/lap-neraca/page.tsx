@@ -51,33 +51,38 @@ export default function NeracaPage() {
   return (
     <div className="p-6 w-full space-y-6 font-sans text-zinc-900">
       
-      {/* 1. BAR ACTION ATAS */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 pb-4 w-full">
-        <div>
-          <h1 className="text-2xl font-black uppercase tracking-tighter italic text-black flex items-center gap-2">
-            <Scale className="h-6 w-6 text-zinc-800" /> Laporan Neraca Keuangan
-          </h1>
-          <p className="text-[9px] font-bold text-zinc-400 tracking-widest uppercase italic mt-0.5">
+      {/* HEADER BAR UTAMA */}
+      <div className="flex w-full flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-zinc-900 p-2 text-white">
+              <Scale className="h-5 w-5" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-900">
+              Laporan Neraca Keuangan
+            </h1>
+          </div>
+          <p className="pl-9 text-xs text-zinc-500">
             PT Peduli Lestari Indonesia Balance Sheet Statement
           </p>
         </div>
-        
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+
+        <div className="flex items-center gap-3">
           <select 
             value={currentYear} 
             onChange={(e) => setCurrentYear(e.target.value)}
-            className="h-9 px-3 text-xs font-black bg-white border border-zinc-300 rounded-sm outline-none focus:border-black cursor-pointer uppercase italic"
+            className="h-9 px-3 text-xs font-black bg-white border border-zinc-300 rounded-sm outline-none focus:border-black cursor-pointer uppercase"
           >
             <option value="2026">Tahun Buku 2026</option>
             <option value="2025">Tahun Buku 2025</option>
           </select>
 
-          <Button variant="outline" size="sm" onClick={fetchData} className="h-9 border-zinc-300 text-zinc-700 text-xs font-black rounded-sm px-4 bg-white">
-            <RefreshCw className="h-3.5 w-3.5 mr-1" /> RELOAD
+          <Button variant="outline" onClick={fetchData} className="h-10 gap-2 rounded-lg border-zinc-200 px-4 text-xs font-semibold text-zinc-700 transition-all hover:bg-zinc-50">
+            <RefreshCw className="h-4 w-4 text-zinc-500" /> RELOAD
           </Button>
           
-          <Button size="sm" className="h-9 bg-black text-white text-xs font-black italic rounded-sm px-4 hover:bg-zinc-800 shadow-sm">
-            <FileSpreadsheet className="h-4 w-4 mr-1.5" /> EKSPOR EXCEL
+          <Button className="h-10 gap-2 rounded-lg bg-zinc-900 px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-zinc-800">
+            <FileSpreadsheet className="h-4 w-4" /> EKSPOR EXCEL
           </Button>
         </div>
       </div>

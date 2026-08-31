@@ -77,11 +77,18 @@ export default function KelompokBiayaPage() {
   return (
     <div className="p-6 w-full space-y-6 font-sans text-zinc-900">
       
-      {/* HEADER */}
-      <div className="flex items-center justify-between border-b border-zinc-200 pb-4">
-        <div>
-          <h1 className="text-2xl font-black uppercase tracking-tighter italic text-black">Master Kelompok Biaya</h1>
-          <p className="text-[9px] font-bold text-zinc-400 tracking-widest uppercase italic mt-0.5">
+      {/* HEADER BAR UTAMA */}
+      <div className="flex w-full flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-zinc-900 p-2 text-white">
+              <List className="h-5 w-5" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-900">
+              Master Kelompok Biaya
+            </h1>
+          </div>
+          <p className="pl-9 text-xs text-zinc-500">
             Finance Parameters System
           </p>
         </div>

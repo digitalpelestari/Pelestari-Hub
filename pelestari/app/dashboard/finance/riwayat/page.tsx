@@ -243,7 +243,7 @@ export default function BukuKasPage() {
       <div className="flex flex-col justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-emerald-800 p-2 text-white">
+            <div className="rounded-lg bg-zinc-900 p-2 text-white">
               <ReceiptText className="h-5 w-5" />
             </div>
             <h1 className="text-xl font-bold tracking-tight text-zinc-900">
@@ -363,33 +363,33 @@ export default function BukuKasPage() {
       <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
         <div className="w-full overflow-x-auto">
           <Table className="w-full min-w-[1100px] border-collapse">
-            <TableHeader className="bg-[#1E5631] text-white">
-              <TableRow className="text-[11px] font-bold tracking-wider uppercase hover:bg-[#1E5631]">
-                <TableHead className="w-[50px] border-r border-emerald-900 px-3 py-3 text-center text-white">
+            <TableHeader className="border-b border-zinc-200 bg-zinc-50/70">
+              <TableRow className="text-[11px] font-bold tracking-wider text-zinc-600 uppercase">
+                <TableHead className="w-[50px] border-r border-zinc-200 px-3 py-3.5 text-center text-zinc-600">
                   No
                 </TableHead>
-                <TableHead className="w-[120px] border-r border-emerald-900 px-3 py-3 text-white">
+                <TableHead className="w-[120px] border-r border-zinc-200 px-3 py-3.5 text-zinc-600">
                   No Regist
                 </TableHead>
-                <TableHead className="w-[100px] border-r border-emerald-900 px-3 py-3 text-white">
+                <TableHead className="w-[100px] border-r border-zinc-200 px-3 py-3.5 text-zinc-600">
                   Tanggal
                 </TableHead>
-                <TableHead className="min-w-[180px] border-r border-emerald-900 px-3 py-3 text-white">
+                <TableHead className="min-w-[180px] border-r border-zinc-200 px-3 py-3.5 text-zinc-600">
                   Kelompok Biaya
                 </TableHead>
-                <TableHead className="min-w-[180px] border-r border-emerald-900 px-3 py-3 text-white">
+                <TableHead className="min-w-[180px] border-r border-zinc-200 px-3 py-3.5 text-zinc-600">
                   Jenis Biaya
                 </TableHead>
-                <TableHead className="min-w-[260px] border-r border-emerald-900 px-4 py-3 text-white">
+                <TableHead className="min-w-[260px] border-r border-zinc-200 px-4 py-3.5 text-zinc-600">
                   Keterangan
                 </TableHead>
-                <TableHead className="w-[120px] border-r border-emerald-900 px-3 py-3 text-right text-white">
+                <TableHead className="w-[120px] border-r border-zinc-200 px-3 py-3.5 text-right text-zinc-600">
                   Debit
                 </TableHead>
-                <TableHead className="w-[120px] border-r border-emerald-900 px-3 py-3 text-right text-white">
+                <TableHead className="w-[120px] border-r border-zinc-200 px-3 py-3.5 text-right text-zinc-600">
                   Kredit
                 </TableHead>
-                <TableHead className="w-[130px] px-3 py-3 text-right text-white">
+                <TableHead className="w-[130px] px-3 py-3.5 text-right text-zinc-600">
                   Total Saldo
                 </TableHead>
               </TableRow>
@@ -547,7 +547,7 @@ export default function BukuKasPage() {
                     onClick={() => goToPage(p as number)}
                     className={`h-8 min-w-8 rounded-lg px-2 text-xs ${
                       p === currentPage
-                        ? "border-[#1E5631] bg-[#1E5631] text-white hover:bg-[#1E5631]/90"
+                        ? "bg-zinc-900 text-white hover:bg-zinc-800"
                         : "border-zinc-200 text-zinc-700"
                     }`}
                   >

@@ -351,18 +351,23 @@ export default function InvoiceListPage() {
 
   return (
     <div className="space-y-6 p-6">
-      {/* TITLE HEADER */}
-      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="font-sans text-xl font-bold tracking-tight text-zinc-900">
-            Daftar Invoice Pelestari
-          </h1>
-          <p className="text-[12px] tracking-wide text-muted-foreground italic">
+      {/* HEADER BAR UTAMA */}
+      <div className="flex w-full flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-zinc-900 p-2 text-white">
+              <FileText className="h-5 w-5" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-900">
+              Daftar Invoice Pelestari
+            </h1>
+          </div>
+          <p className="pl-9 text-xs text-zinc-500">
             Data sinkron otomatis dengan database MySQL & Cloudflare R2.
           </p>
         </div>
 
-        <div className="flex w-full items-center justify-end gap-2 sm:w-auto print:hidden">
+        <div className="flex items-center gap-3">
           <input
             type="file"
             accept=".xlsx, .xls"
@@ -376,12 +381,12 @@ export default function InvoiceListPage() {
             variant="outline"
             disabled={isImporting}
             onClick={() => fileInputRef.current?.click()}
-            className="h-9 rounded-sm border-zinc-300 text-xs font-semibold uppercase text-zinc-700 shadow-sm hover:bg-zinc-100"
+            className="h-10 gap-2 rounded-lg border-zinc-200 px-4 text-xs font-semibold text-zinc-700 uppercase transition-all hover:bg-zinc-50"
           >
             {isImporting ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <FileUp className="mr-1.5 h-3.5 w-3.5" />
+              <FileUp className="h-4 w-4 text-zinc-500" />
             )}
             {isImporting ? "Mengimpor..." : "Import Excel"}
           </Button>
@@ -389,8 +394,8 @@ export default function InvoiceListPage() {
           <ExportInvoiceButton data={filteredInvoices} />
 
           <Link href="/dashboard/finance/invoices/create">
-            <Button className="h-9 rounded-sm bg-black px-4 text-xs uppercase font-semibold text-white shadow-sm hover:bg-zinc-800">
-              <Plus className="mr-1.5 h-4 w-4" /> Tambah Invoice
+            <Button className="h-10 gap-2 rounded-lg bg-zinc-900 px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-zinc-800">
+              <Plus className="h-4 w-4" /> Tambah Invoice
             </Button>
           </Link>
         </div>
