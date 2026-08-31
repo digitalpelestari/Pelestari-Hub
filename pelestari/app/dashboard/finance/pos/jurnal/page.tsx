@@ -39,6 +39,7 @@ import {
   updateJurnalItem,
   deleteJurnalByHeader,
   exportJurnalToExcel,
+  generateNoRegistrasiOtomatis,
 } from "@/app/actions/jurnal"
 import { getAkunList } from "@/app/actions/akun"
 import Link from "next/link"
@@ -49,8 +50,8 @@ export default function JurnalUmumListPage() {
   const [jurnalList, setJurnalList] = useState<any[]>([])
   const [akunList, setAkunList] = useState<any[]>([])
 
-  const [searchInput, setSearchInput] = useState("") 
-  const [searchQuery, setSearchQuery] = useState("") 
+  const [searchInput, setSearchInput] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
 
   const [loading, setLoading] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
@@ -76,7 +77,6 @@ export default function JurnalUmumListPage() {
   const totalPagesSafe = Math.max(1, totalPages)
 
   const startRow = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1
-
   const endRow = Math.min(currentPage * pageSize, totalItems)
 
   const requestIdRef = useRef(0)
@@ -115,7 +115,6 @@ export default function JurnalUmumListPage() {
   }, [searchInput])
 
   const loadData = async () => {
-    // Tandai request ini sebagai request terbaru
     const thisRequestId = ++requestIdRef.current
     setLoading(true)
 
@@ -141,7 +140,6 @@ export default function JurnalUmumListPage() {
       }
 
       setJurnalList(dataJurnal.data || [])
-
       setTotalPages(dataJurnal.pagination?.totalPages || 0)
       setTotalData(dataJurnal.pagination?.total || 0)
       setTotalAccumulasi({
@@ -157,10 +155,8 @@ export default function JurnalUmumListPage() {
       }
 
       console.error("Gagal memuat data pembukuan:", error)
-
       setJurnalList([])
       setAkunList([])
-
       swal.error(error.message || "Gagal memuat data jurnal")
     } finally {
       if (thisRequestId === requestIdRef.current) {
@@ -196,6 +192,15 @@ export default function JurnalUmumListPage() {
     setEditHeaderForm((prev: any) => ({ ...prev, [field]: value }))
   }
 
+  // Tombol manual untuk generate atau switch prefix BD/BK
+  const handleChangePrefixEdit = async (type: "BD" | "BK") => {
+    const res = await generateNoRegistrasiOtomatis(type)
+    if (res.success && res.code) {
+      setEditHeaderForm((prev: any) => ({ ...prev, no_registrasi: res.code }))
+    }
+  }
+
+  // Handler murni input detail transaksi baris (tanpa trigger nomor registrasi dan tanpa auto-nol)
   const handleItemChange = (itemIndex: number, field: string, value: any) => {
     setEditItemsForm((prev) => {
       const updated = [...prev]
@@ -211,9 +216,6 @@ export default function JurnalUmumListPage() {
       } else {
         updated[itemIndex][field] = value
       }
-
-      if (field === "debit" && Number(value) > 0) updated[itemIndex].kredit = 0
-      if (field === "kredit" && Number(value) > 0) updated[itemIndex].debit = 0
 
       return updated
     })
@@ -339,8 +341,7 @@ export default function JurnalUmumListPage() {
             </h1>
           </div>
           <p className="pl-9 text-xs text-zinc-500">
-            Kelola, pantau, dan audit seluruh rekaman transaksi buku besar
-            secara real-time.
+            Kelola, pantau, dan audit seluruh rekaman transaksi buku besar secara real-time.
           </p>
         </div>
 
@@ -363,16 +364,14 @@ export default function JurnalUmumListPage() {
         </div>
       </div>
 
-      {/* FILTER BAR (SEARCH & DATE RANGE) */}
+      {/* FILTER BAR */}
       <div className="flex w-full flex-col items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm md:flex-row">
         <div className="relative w-full md:w-80">
           <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <Input
             placeholder="Cari No. Regis, Referensi, atau Memo..."
             value={searchInput}
-            onChange={(e) => {
-              setSearchInput(e.target.value)
-            }}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="h-10 rounded-lg border-zinc-200 bg-zinc-50/50 pl-9 text-xs focus-visible:ring-1 focus-visible:ring-zinc-900"
           />
         </div>
@@ -424,14 +423,14 @@ export default function JurnalUmumListPage() {
         </div>
       </div>
 
-      {/* TABEL DATA JURNAL DENGAN SCROLL HORIZONTAL YANG AMAN */}
+      {/* TABEL DATA JURNAL */}
       <div className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
         <div className="w-full overflow-x-auto">
           <Table className="w-full min-w-[1000px] border-collapse">
             <TableHeader className="border-b border-zinc-200 bg-zinc-50/70">
               <TableRow className="text-[11px] font-bold tracking-wider text-zinc-600 uppercase">
                 <TableHead className="w-[110px] px-4 py-3.5">Tanggal</TableHead>
-                <TableHead className="w-[130px] px-4 py-3.5">
+                <TableHead className="w-[170px] px-4 py-3.5">
                   No. Registrasi
                 </TableHead>
                 <TableHead className="w-[130px] px-4 py-3.5">
@@ -440,15 +439,9 @@ export default function JurnalUmumListPage() {
                 <TableHead className="w-[200px] px-4 py-3.5">
                   Keterangan (Memo)
                 </TableHead>
-                <TableHead className="w-[90px] px-4 py-3.5">
-                  Kode Akun
-                </TableHead>
-                <TableHead className="w-[150px] px-4 py-3.5">
-                  Nama Akun
-                </TableHead>
-                <TableHead className="w-[120px] px-4 py-3.5">
-                  Tipe Akun
-                </TableHead>
+                <TableHead className="w-[90px] px-4 py-3.5">Kode Akun</TableHead>
+                <TableHead className="w-[150px] px-4 py-3.5">Nama Akun</TableHead>
+                <TableHead className="w-[120px] px-4 py-3.5">Tipe Akun</TableHead>
                 <TableHead className="w-[120px] px-4 py-3.5 text-right">
                   Debit (Rp)
                 </TableHead>
@@ -508,10 +501,7 @@ export default function JurnalUmumListPage() {
                                   type="date"
                                   value={editHeaderForm.tanggal || ""}
                                   onChange={(e) =>
-                                    handleHeaderChange(
-                                      "tanggal",
-                                      e.target.value
-                                    )
+                                    handleHeaderChange("tanggal", e.target.value)
                                   }
                                   className="h-8 rounded-md border-zinc-300 bg-white font-mono !text-xs"
                                 />
@@ -519,9 +509,7 @@ export default function JurnalUmumListPage() {
                                 <div className="flex items-center gap-1.5 !text-xs whitespace-nowrap">
                                   <Calendar className="h-3.5 w-3.5 text-zinc-400" />
                                   {jurnal.tanggal
-                                    ? new Date(
-                                        jurnal.tanggal
-                                      ).toLocaleDateString("id-ID")
+                                    ? new Date(jurnal.tanggal).toLocaleDateString("id-ID")
                                     : "-"}
                                 </div>
                               )}
@@ -532,17 +520,42 @@ export default function JurnalUmumListPage() {
                               className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top font-mono !text-sm font-semibold text-blue-600"
                             >
                               {isJurnalEditing ? (
-                                <Input
-                                  type="text"
-                                  value={editHeaderForm.no_registrasi || ""}
-                                  onChange={(e) =>
-                                    handleHeaderChange(
-                                      "no_registrasi",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="h-8 rounded-md border-zinc-300 bg-white font-mono"
-                                />
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleChangePrefixEdit("BD")}
+                                      className="h-6 px-1.5 text-[10px] font-bold text-blue-600 hover:bg-blue-50"
+                                      title="Generate BD Baru"
+                                    >
+                                      + BD
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleChangePrefixEdit("BK")}
+                                      className="h-6 px-1.5 text-[10px] font-bold text-rose-600 hover:bg-rose-50"
+                                      title="Generate BK Baru"
+                                    >
+                                      + BK
+                                    </Button>
+                                  </div>
+                                  <Input
+                                    type="text"
+                                    placeholder="Ketik manual..."
+                                    value={editHeaderForm.no_registrasi || ""}
+                                    onChange={(e) =>
+                                      handleHeaderChange(
+                                        "no_registrasi",
+                                        e.target.value
+                                      )
+                                    }
+                                    className="h-8 rounded-md border-zinc-300 bg-white font-mono text-xs"
+                                  />
+                                </div>
                               ) : (
                                 <div className="flex items-center gap-1.5 !text-xs whitespace-nowrap">
                                   <Hash className="h-3.5 w-3.5 text-zinc-400" />
@@ -594,7 +607,6 @@ export default function JurnalUmumListPage() {
                               ) : (
                                 <div className="flex w-full min-w-0 items-start gap-1.5">
                                   <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400" />
-
                                   <span className="min-w-0 flex-1 text-xs [overflow-wrap:anywhere] break-words whitespace-normal uppercase">
                                     {jurnal.keterangan || "-"}
                                   </span>
@@ -635,7 +647,11 @@ export default function JurnalUmumListPage() {
                         </TableCell>
 
                         <TableCell
-                          className={`border-r border-zinc-100 px-4 py-3 font-medium uppercase ${item.kredit > 0 ? "pl-8 text-zinc-500 italic" : "text-zinc-900"}`}
+                          className={`border-r border-zinc-100 px-4 py-3 font-medium uppercase ${
+                            item.kredit > 0
+                              ? "pl-8 text-zinc-500 italic"
+                              : "text-zinc-900"
+                          }`}
                         >
                           {isJurnalEditing ? (
                             <Input
@@ -789,9 +805,10 @@ export default function JurnalUmumListPage() {
           </Table>
         </div>
       </div>
+
+      {/* PAGINATION */}
       {!loading && totalItems > 0 && (
         <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50/50 px-4 py-3 sm:flex-row">
-          {/* INFO + PAGE SIZE */}
           <div className="flex items-center gap-3 text-xs text-zinc-500">
             <span>
               Menampilkan{" "}
@@ -823,9 +840,7 @@ export default function JurnalUmumListPage() {
             </div>
           </div>
 
-          {/* PAGE NAVIGATION */}
           <div className="flex items-center gap-1">
-            {/* FIRST PAGE */}
             <Button
               variant="outline"
               size="icon"
@@ -836,7 +851,6 @@ export default function JurnalUmumListPage() {
               <ChevronsLeft className="h-3.5 w-3.5" />
             </Button>
 
-            {/* PREVIOUS */}
             <Button
               variant="outline"
               size="icon"
@@ -847,7 +861,6 @@ export default function JurnalUmumListPage() {
               <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
 
-            {/* PAGE NUMBERS */}
             {pageNumbers.map((p, idx) =>
               p === "..." ? (
                 <span
@@ -873,7 +886,6 @@ export default function JurnalUmumListPage() {
               )
             )}
 
-            {/* NEXT */}
             <Button
               variant="outline"
               size="icon"
@@ -884,7 +896,6 @@ export default function JurnalUmumListPage() {
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
 
-            {/* LAST PAGE */}
             <Button
               variant="outline"
               size="icon"
@@ -897,7 +908,8 @@ export default function JurnalUmumListPage() {
           </div>
         </div>
       )}
-      {/* PANEL INDIKATOR TOTAL KUMULATIF (FOOTER SUMMARY) */}
+
+      {/* FOOTER SUMMARY */}
       {!loading && jurnalList.length > 0 && (
         <div className="flex w-full flex-col items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm md:flex-row">
           <div className="flex items-center gap-3">

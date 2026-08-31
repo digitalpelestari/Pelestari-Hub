@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Save, X, FileText, ArrowLeft, Wand2 } from "lucide-react"
-import { createJurnalUmum, generateNoRegistrasiOtomatis } from "@/app/actions/jurnal" // <-- Import generator baru
+import { Plus, Save, X, FileText, ArrowLeft } from "lucide-react"
+import { createJurnalUmum, generateNoRegistrasiOtomatis } from "@/app/actions/jurnal"
 import { getAkunList } from "@/app/actions/akun"
 import Link from "next/link"
 import { swal } from "@/lib/sweetalert"
@@ -50,27 +50,13 @@ export default function KasirJurnalPage() {
     loadAkun()
   }, [])
 
-  const totalDebit = form.items.reduce((sum, item) => sum + item.debit, 0)
-  const totalKredit = form.items.reduce((sum, item) => sum + item.kredit, 0)
+  const totalDebit = form.items.reduce((sum, item) => sum + (Number(item.debit) || 0), 0)
+  const totalKredit = form.items.reduce((sum, item) => sum + (Number(item.kredit) || 0), 0)
   const isBalanced = totalDebit === totalKredit && totalDebit > 0
 
-  // 🔥 FUNGSI OTOMATISASI UNTUK GENERATE KODE NOMOR REGISTRASI
-  const handleAutoGenerateCode = async (forcedType?: "BK" | "BD") => {
-    let tipeDipilih: "BK" | "BD" = "BK"; // Default fallback
-
-    if (forcedType) {
-      tipeDipilih = forcedType;
-    } else {
-      // Deteksi otomatis berdasarkan nilai baris pertama (index 0)
-      const barisPertama = form.items[0];
-      if (barisPertama.debit > 0) {
-        tipeDipilih = "BD"; // Debet masuk
-      } else if (barisPertama.kredit > 0) {
-        tipeDipilih = "BK"; // Kredit keluar
-      }
-    }
-
-    const res = await generateNoRegistrasiOtomatis(tipeDipilih);
+  // Generator yang HANYA berjalan ketika Badge + BK / + BD diklik secara manual
+  const handleGenerateManual = async (tipe: "BK" | "BD") => {
+    const res = await generateNoRegistrasiOtomatis(tipe);
     if (res.success && res.code) {
       setForm(prev => ({ ...prev, noRegistrasi: res.code }));
     }
@@ -81,6 +67,7 @@ export default function KasirJurnalPage() {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
+  // Handler nominal murni (TIDAK menyentuh noRegistrasi sama sekali)
   const handleItemChange = (index: number, field: keyof JournalItem, value: string | number) => {
     const updatedItems = [...form.items]
 
@@ -93,26 +80,7 @@ export default function KasirJurnalPage() {
       updatedItems[index] = { ...updatedItems[index], [field]: value }
     }
 
-    if (field === "debit" && Number(value) > 0) {
-      updatedItems[index].kredit = 0;
-      // Jika yang diubah baris pertama, langsung trigger generate kode tipe BD
-      if (index === 0) triggerInstantCode("BD");
-    }
-    if (field === "kredit" && Number(value) > 0) {
-      updatedItems[index].debit = 0;
-      // Jika yang diubah baris pertama, langsung trigger generate kode tipe BK
-      if (index === 0) triggerInstantCode("BK");
-    }
-
     setForm((prev) => ({ ...prev, items: updatedItems }))
-  }
-
-  // Fungsi pembantu biar generate kodenya sinkron dengan ketikan nominal uang pertama
-  const triggerInstantCode = async (tipe: "BK" | "BD") => {
-    const res = await generateNoRegistrasiOtomatis(tipe);
-    if (res.success && res.code) {
-      setForm(prev => ({ ...prev, noRegistrasi: res.code }));
-    }
   }
 
   const addRow = () => {
@@ -186,14 +154,14 @@ export default function KasirJurnalPage() {
               <Input type="date" name="tanggal" value={form.tanggal} onChange={handleHeaderChange} required className="h-10 font-bold bg-white border-zinc-300 rounded-sm" />
             </div>
             
-            {/* INPUT NO. REGISTRASI DENGAN TOMBOL GENERATE MANUAL JIKA INGIN DIKLIK */}
+            {/* INPUT NO. REGISTRASI */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black uppercase italic text-zinc-500 ml-1 flex items-center justify-between">
                 <span>No. Registrasi / Bukti</span>
               </label>
               <div className="relative">
                 <Input 
-                  placeholder="Format: BK_001/06/26" 
+                  placeholder="BK/BD" 
                   name="noRegistrasi" 
                   value={form.noRegistrasi} 
                   onChange={handleHeaderChange} 
@@ -201,14 +169,14 @@ export default function KasirJurnalPage() {
                 />
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
                   <Badge 
-                    onClick={() => handleAutoGenerateCode("BK")} 
-                    className="cursor-pointer bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[8px] font-bold rounded-[2px] px-1 py-0"
+                    onClick={() => handleGenerateManual("BK")} 
+                    className="cursor-pointer bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[8px] font-bold rounded-[2px] px-1.5 py-0.5"
                   >
                     + BK
                   </Badge>
                   <Badge 
-                    onClick={() => handleAutoGenerateCode("BD")} 
-                    className="cursor-pointer bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[8px] font-bold rounded-[2px] px-1 py-0"
+                    onClick={() => handleGenerateManual("BD")} 
+                    className="cursor-pointer bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[8px] font-bold rounded-[2px] px-1.5 py-0.5"
                   >
                     + BD
                   </Badge>
@@ -228,7 +196,7 @@ export default function KasirJurnalPage() {
           </CardContent>
         </Card>
 
-        {/* ... SISA CODINGAN TABLE DATA ITEM SAMA SEPERTI SEBELUMNYA ... */}
+        {/* TABLE DATA ITEM */}
         <div className="border border-zinc-300 rounded-sm overflow-hidden bg-white shadow-sm">
           <Table>
             <TableHeader className="bg-zinc-100">
@@ -248,8 +216,8 @@ export default function KasirJurnalPage() {
                     <Input 
                       list={`coa-codes-${index}`}
                       placeholder="Ketik/Pilih Kode..." 
-                      value={item.accountCode}
-                      onChange={(e) => handleItemChange(index, "accountCode", e.target.value)}
+                      value={item.accountCode} 
+                      onChange={(e) => handleItemChange(index, "accountCode", e.target.value)} 
                       required
                       className="h-9 text-xs font-mono font-bold bg-transparent border-none shadow-none focus-visible:ring-0"
                     />
