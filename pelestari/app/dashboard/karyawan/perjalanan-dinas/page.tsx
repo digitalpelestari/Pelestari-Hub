@@ -1042,9 +1042,15 @@ export default function PerjalananDinasPage() {
                     }
                     required
                   >
-                    <SelectTrigger className="h-9 rounded-sm border-zinc-300 text-xs">
-                      <SelectValue placeholder="Pilih Manager" />
-                    </SelectTrigger>
+                  <SelectTrigger className="h-9 rounded-sm border-zinc-300 text-xs">
+                    {formData.manager_nip ? (
+                      <span className="text-xs">
+                        {karyawanList.find((k) => k.nip === formData.manager_nip)?.nama}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-zinc-500">Pilih Manager</span>
+                    )}
+                  </SelectTrigger>
                     <SelectContent>
                       {karyawanList
                         .filter((k) => {
@@ -1055,9 +1061,9 @@ export default function PerjalananDinasPage() {
                             jabatan.includes("manager")
                           )
                         })
-                        .map((k) => (
+                          .map((k) => (
                           <SelectItem key={k.nip} value={k.nip}>
-                            {k.nama} - {k.nip}
+                            {k.nama}
                           </SelectItem>
                         ))}
                     </SelectContent>

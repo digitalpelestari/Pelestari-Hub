@@ -6,7 +6,6 @@ import { revalidatePath } from "next/cache"
 export interface AbsensiHarianData {
   id: number
   karyawan_nip: string
-  periode_id: number
   tanggal: string
   jam_masuk: string | null
   jam_keluar: string | null
@@ -17,12 +16,10 @@ export interface AbsensiHarianData {
   divisi: string
   jabatan: string
   nama_status: string
-  kategori: string
 }
 
 export interface CreateAbsensiHarianPayload {
   karyawan_nip: string
-  periode_id: number
   tanggal: string
   jam_masuk?: string | null
   jam_keluar?: string | null
@@ -32,7 +29,6 @@ export interface CreateAbsensiHarianPayload {
 
 export interface UpdateAbsensiHarianPayload {
   karyawan_nip?: string
-  periode_id?: number
   tanggal?: string
   jam_masuk?: string | null
   jam_keluar?: string | null
@@ -44,7 +40,10 @@ function normalizeAbsensiDate(date: Date | string | null): string {
   if (!date) return ""
 
   if (date instanceof Date) {
-    return date.toISOString().split("T")[0]
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
   }
 
   return String(date).substring(0, 10)
@@ -55,7 +54,6 @@ async function getAbsensiBaseQuery() {
     SELECT
       a.id,
       a.karyawan_nip,
-      a.periode_id,
       a.tanggal,
       a.jam_masuk,
       a.jam_keluar,
@@ -65,8 +63,7 @@ async function getAbsensiBaseQuery() {
       k.nama,
       k.divisi,
       k.jabatan,
-      s.nama_status,
-      s.kategori
+      s.nama_status
     FROM tb_absensi_harian a
     LEFT JOIN tb_karyawan k ON a.karyawan_nip = k.nip
     LEFT JOIN tb_status_kehadiran s ON a.status_id = s.id
@@ -126,19 +123,6 @@ export async function getAbsensiByKaryawan(karyawanNip: number) {
   }
 }
 
-export async function getAbsensiByPeriode(periodeId: number) {
-  try {
-    const [rows]: any = await db.query(
-      `${await getAbsensiBaseQuery()} WHERE a.periode_id = ? ORDER BY a.tanggal ASC`,
-      [periodeId]
-    )
-    return { success: true, data: rows as AbsensiHarianData[] }
-  } catch (error: any) {
-    console.error("Error getAbsensiByPeriode:", error)
-    return { success: false, message: error.message || "Gagal mengambil data absensi periode", data: [] }
-  }
-}
-
 export async function getAbsensiByTanggal(tanggal: string) {
   try {
     const [rows]: any = await db.query(
@@ -153,8 +137,8 @@ export async function getAbsensiByTanggal(tanggal: string) {
 }
 
 export async function createAbsensiHarian(payload: CreateAbsensiHarianPayload) {
-  if (!payload.karyawan_nip || !payload.periode_id || !payload.tanggal || !payload.status_id) {
-    return { success: false, message: "karyawan_nip, periode_id, tanggal, dan status_id wajib diisi" }
+  if (!payload.karyawan_nip || !payload.tanggal || !payload.status_id) {
+    return { success: false, message: "karyawan_nip, tanggal, dan status_id wajib diisi" }
   }
 
   try {
@@ -164,22 +148,6 @@ export async function createAbsensiHarian(payload: CreateAbsensiHarianPayload) {
     )
     if (!karyawanRows.length) {
       return { success: false, message: "Karyawan tidak ditemukan" }
-    }
-
-    const [periodeRows]: any = await db.query(
-      "SELECT tanggal_mulai, tanggal_selesai FROM tb_periode_absensi WHERE id = ? LIMIT 1",
-      [payload.periode_id]
-    )
-    if (!periodeRows.length) {
-      return { success: false, message: "Periode absensi tidak ditemukan" }
-    }
-
-    const periode = periodeRows[0]
-    if (payload.tanggal < periode.tanggal_mulai || payload.tanggal > periode.tanggal_selesai) {
-      return {
-        success: false,
-        message: `Tanggal ${payload.tanggal} tidak berada dalam rentang periode (${periode.tanggal_mulai} s/d ${periode.tanggal_selesai})`
-      }
     }
 
     const [statusRows]: any = await db.query(
@@ -202,11 +170,10 @@ export async function createAbsensiHarian(payload: CreateAbsensiHarianPayload) {
     }
 
     await db.query(
-      `INSERT INTO tb_absensi_harian (karyawan_nip, periode_id, tanggal, jam_masuk, jam_keluar, status_id, keterangan)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tb_absensi_harian (karyawan_nip, tanggal, jam_masuk, jam_keluar, status_id, keterangan)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         payload.karyawan_nip,
-        payload.periode_id,
         payload.tanggal,
         payload.jam_masuk || null,
         payload.jam_keluar || null,
@@ -227,13 +194,13 @@ export async function createAbsensiHarian(payload: CreateAbsensiHarianPayload) {
 }
 
 export async function updateAbsensiHarian(id: number, payload: UpdateAbsensiHarianPayload) {
-  if (!payload.karyawan_nip && !payload.periode_id && !payload.tanggal && payload.status_id === undefined) {
+  if (!payload.karyawan_nip && !payload.tanggal && payload.status_id === undefined) {
     return { success: false, message: "Tidak ada data yang diperbarui" }
   }
 
   try {
     const [existingRows]: any = await db.query(
-      "SELECT karyawan_nip, periode_id, tanggal FROM tb_absensi_harian WHERE id = ? LIMIT 1",
+      "SELECT karyawan_nip, tanggal FROM tb_absensi_harian WHERE id = ? LIMIT 1",
       [id]
     )
     if (!existingRows.length) {
@@ -242,7 +209,6 @@ export async function updateAbsensiHarian(id: number, payload: UpdateAbsensiHari
 
     const existing = existingRows[0]
     const karyawanNip = payload.karyawan_nip ?? existing.karyawan_nip
-    const periodeId = payload.periode_id ?? existing.periode_id
     const tanggal = payload.tanggal ?? existing.tanggal
     const statusId = payload.status_id ?? existing.status_id
 
@@ -252,22 +218,6 @@ export async function updateAbsensiHarian(id: number, payload: UpdateAbsensiHari
     )
     if (!karyawanRows.length) {
       return { success: false, message: "Karyawan tidak ditemukan" }
-    }
-
-    const [periodeRows]: any = await db.query(
-      "SELECT tanggal_mulai, tanggal_selesai FROM tb_periode_absensi WHERE id = ? LIMIT 1",
-      [periodeId]
-    )
-    if (!periodeRows.length) {
-      return { success: false, message: "Periode absensi tidak ditemukan" }
-    }
-
-    const periode = periodeRows[0]
-    if (tanggal < periode.tanggal_mulai || tanggal > periode.tanggal_selesai) {
-      return {
-        success: false,
-        message: `Tanggal ${tanggal} tidak berada dalam rentang periode (${periode.tanggal_mulai} s/d ${periode.tanggal_selesai})`
-      }
     }
 
     const [statusRows]: any = await db.query(
@@ -295,10 +245,6 @@ export async function updateAbsensiHarian(id: number, payload: UpdateAbsensiHari
     if (payload.karyawan_nip !== undefined) {
       fields.push("karyawan_nip = ?")
       values.push(payload.karyawan_nip)
-    }
-    if (payload.periode_id !== undefined) {
-      fields.push("periode_id = ?")
-      values.push(payload.periode_id)
     }
     if (payload.tanggal !== undefined) {
       fields.push("tanggal = ?")

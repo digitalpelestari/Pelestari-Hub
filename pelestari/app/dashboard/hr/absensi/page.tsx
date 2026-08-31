@@ -15,7 +15,6 @@ import {
   CalendarDays,
   UserCheck,
   UserX,
-  CalendarRange,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -46,6 +45,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   getAbsensiHarian,
   getAbsensiHarianById,
+  getAbsensiByTanggal,
   createAbsensiHarian,
   updateAbsensiHarian,
   deleteAbsensiHarian,
@@ -53,10 +53,6 @@ import {
   CreateAbsensiHarianPayload,
   UpdateAbsensiHarianPayload,
 } from "@/app/actions/absensi-harian"
-import {
-  getPeriodeAbsensi,
-  PeriodeAbsensiData,
-} from "@/app/actions/periode-absensi"
 import {
   getStatusKehadiran,
   StatusKehadiranData,
@@ -71,12 +67,20 @@ const initialForm: CreateAbsensiHarianPayload & {
   nama_status?: string
 } = {
   karyawan_nip: "",
-  periode_id: 0,
   tanggal: "",
   jam_masuk: "",
   jam_keluar: "",
   status_id: 0,
-  keterangan: "",
+}
+
+interface BatchEntry {
+  karyawan_nip: string
+  nama: string
+  jabatan: string
+  jam_masuk: string
+  jam_keluar: string
+  status_id: number
+  existingId?: number | null
 }
 
 const formatDateForInput = (dateString?: string) => {
@@ -110,33 +114,43 @@ export default function AbsensiPage() {
   const [submitting, setSubmitting] = useState(false)
   const [absensiList, setAbsensiList] = useState<AbsensiHarianData[]>([])
   const [karyawanList, setKaryawanList] = useState<KaryawanData[]>([])
-  const [periodeList, setPeriodeList] = useState<PeriodeAbsensiData[]>([])
   const [statusList, setStatusList] = useState<StatusKehadiranData[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState("ALL")
-  const [filterBulan, setFilterBulan] = useState("ALL")
-  const [filterPeriode, setFilterPeriode] = useState("ALL")
+  const [filterDari, setFilterDari] = useState("")
+  const [filterSampai, setFilterSampai] = useState("")
+  const [isFiltering, setIsFiltering] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [selectedAbsensi, setSelectedAbsensi] =
     useState<AbsensiHarianData | null>(null)
   const [formData, setFormData] = useState(initialForm)
+  const [batchEntries, setBatchEntries] = useState<BatchEntry[]>([])
+  const [batchDate, setBatchDate] = useState("")
+  const [existingBatchAbsensi, setExistingBatchAbsensi] = useState<AbsensiHarianData[]>([])
+
+  const getTodayString = () => {
+    const today = new Date()
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+  }
 
   useEffect(() => {
+    const todayStr = getTodayString()
+    setFilterDari(todayStr)
+    setFilterSampai(todayStr)
+    setIsFiltering(false)
     fetchData()
   }, [])
 
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [absensiRes, karyawanRes, periodeRes, statusRes] =
-        await Promise.all([
-          getAbsensiHarian(),
-          getKaryawanListAction(),
-          getPeriodeAbsensi(),
-          getStatusKehadiran(),
-        ])
+      const [absensiRes, karyawanRes, statusRes] = await Promise.all([
+        getAbsensiHarian(),
+        getKaryawanListAction(),
+        getStatusKehadiran(),
+      ])
 
       if (absensiRes.success && absensiRes.data) {
         setAbsensiList(absensiRes.data)
@@ -146,10 +160,6 @@ export default function AbsensiPage() {
 
       if (karyawanRes.success && karyawanRes.data) {
         setKaryawanList(karyawanRes.data)
-      }
-
-      if (periodeRes.success && periodeRes.data) {
-        setPeriodeList(periodeRes.data)
       }
 
       if (statusRes.success && statusRes.data) {
@@ -164,6 +174,19 @@ export default function AbsensiPage() {
   }
 
   const filteredData = useMemo(() => {
+    const isDefaultToday =
+      filterDari &&
+      filterSampai &&
+      filterDari === filterSampai &&
+      filterDari ===
+        `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`
+
+    if (!isDefaultToday && (filterDari || filterSampai || filterStatus !== "ALL" || searchQuery)) {
+      setIsFiltering(true)
+    } else if (isDefaultToday && !searchQuery && filterStatus === "ALL") {
+      setIsFiltering(false)
+    }
+
     return (absensiList || []).filter((a) => {
       const matchSearch =
         (a.nama || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -174,23 +197,13 @@ export default function AbsensiPage() {
       const matchStatus =
         filterStatus === "ALL" || a.nama_status === filterStatus
 
-      const matchBulan =
-        filterBulan === "ALL" ||
-        (a.tanggal && a.tanggal.substring(0, 7) === filterBulan)
+      const matchTanggal =
+        (!filterDari || a.tanggal >= filterDari) &&
+        (!filterSampai || a.tanggal <= filterSampai)
 
-      const matchPeriode =
-        filterPeriode === "ALL" || String(a.periode_id) === filterPeriode
-
-      return matchSearch && matchStatus && matchBulan && matchPeriode
+      return matchSearch && matchStatus && matchTanggal
     })
-  }, [absensiList, searchQuery, filterStatus, filterBulan, filterPeriode])
-
-  const months = useMemo(() => {
-    const set = new Set(
-      (absensiList || []).map((a) => a.tanggal?.substring(0, 7)).filter(Boolean)
-    )
-    return Array.from(set).sort().reverse()
-  }, [absensiList])
+  }, [absensiList, searchQuery, filterStatus, filterDari, filterSampai])
 
   const statusColor = (namaStatus?: string) => {
     switch (namaStatus) {
@@ -207,27 +220,76 @@ export default function AbsensiPage() {
     }
   }
 
-  const handleOpenForm = (item?: AbsensiHarianData) => {
+  const loadExistingAbsensi = async (tanggal: string) => {
+    let existing: AbsensiHarianData[] = []
+    try {
+      const res = await getAbsensiByTanggal(tanggal)
+      if (res.success && res.data) {
+        existing = res.data
+      }
+    } catch (err) {
+      console.error("Gagal mengambil data absensi existing:", err)
+    }
+    setExistingBatchAbsensi(existing)
+
+    const existingMap = new Map(existing.map((e) => [e.nip, e]))
+    setBatchEntries((prev) =>
+      prev.map((entry) => {
+        const existingData = existingMap.get(entry.karyawan_nip)
+        return {
+          ...entry,
+          jam_masuk: existingData?.jam_masuk || "",
+          jam_keluar: existingData?.jam_keluar || "",
+          status_id: existingData?.status_id || 0,
+          existingId: existingData?.id ?? null,
+        }
+      })
+    )
+  }
+
+  const handleOpenForm = async (item?: AbsensiHarianData) => {
     if (item) {
       setEditMode(true)
       setFormData({
         karyawan_nip: item.karyawan_nip,
-        periode_id: item.periode_id,
         tanggal: item.tanggal,
         jam_masuk: item.jam_masuk || "",
         jam_keluar: item.jam_keluar || "",
         status_id: item.status_id,
-        keterangan: item.keterangan || "",
         nip: item.nip,
         nama: item.nama,
         jabatan: item.jabatan,
         nama_status: item.nama_status,
       })
+      setIsModalOpen(true)
     } else {
       setEditMode(false)
-      setFormData(initialForm)
+      const today = new Date()
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+      setBatchDate(todayStr)
+
+      const entries: BatchEntry[] = karyawanList.map((k) => ({
+        karyawan_nip: String(k.nip),
+        nama: k.nama,
+        jabatan: k.jabatan,
+        jam_masuk: "",
+        jam_keluar: "",
+        status_id: 0,
+        existingId: null,
+      }))
+      setBatchEntries(entries)
+
+      await loadExistingAbsensi(todayStr)
+      setIsModalOpen(true)
     }
-    setIsModalOpen(true)
+  }
+
+  const handleBatchDateChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newDate = e.target.value
+    setBatchDate(newDate)
+
+    if (!newDate || editMode) return
+    await loadExistingAbsensi(newDate)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -238,29 +300,78 @@ export default function AbsensiPage() {
       if (editMode && selectedAbsensi) {
         const payload: UpdateAbsensiHarianPayload = {
           karyawan_nip: formData.karyawan_nip,
-          periode_id: formData.periode_id,
           tanggal: formData.tanggal,
           jam_masuk: formData.jam_masuk || null,
           jam_keluar: formData.jam_keluar || null,
           status_id: formData.status_id,
-          keterangan: formData.keterangan || null,
         }
         const res = await updateAbsensiHarian(selectedAbsensi.id, payload)
         if (!res.success) throw new Error(res.message)
         swal.success("Data absensi berhasil diperbarui")
       } else {
-        const payload: CreateAbsensiHarianPayload = {
-          karyawan_nip: formData.karyawan_nip,
-          periode_id: Number(formData.periode_id),
-          tanggal: formData.tanggal,
-          jam_masuk: formData.jam_masuk || null,
-          jam_keluar: formData.jam_keluar || null,
-          status_id: Number(formData.status_id),
-          keterangan: formData.keterangan || null,
+        const validEntries = batchEntries.filter((e) => e.status_id > 0)
+        if (validEntries.length === 0) {
+          throw new Error("Pilih minimal satu status karyawan")
         }
-        const res = await createAbsensiHarian(payload)
-        if (!res.success) throw new Error(res.message)
-        swal.success("Data absensi berhasil ditambahkan")
+
+        const promises: Promise<any>[] = []
+
+        validEntries
+          .filter((e) => e.existingId != null)
+          .forEach((entry) => {
+            promises.push(
+              updateAbsensiHarian(entry.existingId!, {
+                karyawan_nip: entry.karyawan_nip,
+                tanggal: batchDate,
+                jam_masuk: entry.jam_masuk || null,
+                jam_keluar: entry.jam_keluar || null,
+                status_id: Number(entry.status_id),
+              })
+            )
+          })
+
+        validEntries
+          .filter((e) => e.existingId == null)
+          .forEach((entry) => {
+            promises.push(
+              createAbsensiHarian({
+                karyawan_nip: entry.karyawan_nip,
+                tanggal: batchDate,
+                jam_masuk: entry.jam_masuk || null,
+                jam_keluar: entry.jam_keluar || null,
+                status_id: Number(entry.status_id),
+              })
+            )
+          })
+
+        const results = await Promise.allSettled(promises)
+        const succeeded = results.filter(
+          (r) => r.status === "fulfilled" && r.value.success
+        ).length
+        const failed = results.filter(
+          (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.success)
+        )
+
+        if (succeeded === 0) {
+          const errorMessages = failed
+            .map((r) =>
+              r.status === "rejected"
+                ? r.reason?.message
+                : r.value?.message
+            )
+            .filter(Boolean)
+          throw new Error(errorMessages[0] || "Gagal menyimpan data absensi")
+        }
+
+        if (failed.length > 0) {
+          swal.warning(
+            `${succeeded} data berhasil, ${failed.length} data gagal`
+          )
+        } else {
+          swal.success(
+            `${succeeded} data absensi berhasil disimpan`
+          )
+        }
       }
       await fetchData()
       setIsModalOpen(false)
@@ -283,18 +394,20 @@ export default function AbsensiPage() {
     }
   }
 
-  const totalHadir = absensiList.filter((a) => a.nama_status === "Hadir").length
-  const totalIzin = absensiList.filter((a) => a.nama_status === "Izin").length
-  const totalSakit = absensiList.filter((a) => a.nama_status === "Sakit").length
-  const totalAlpha = absensiList.filter((a) => a.nama_status === "Alpha").length
-
-  const selectedPeriode = periodeList.find(
-    (p) => String(p.id) === String(formData.periode_id)
-  )
+  const totalHadir = filteredData.filter(
+    (a) => a.nama_status === "Hadir"
+  ).length
+  const totalIzin = filteredData.filter((a) => a.nama_status === "Izin").length
+  const totalSakit = filteredData.filter(
+    (a) => a.nama_status === "Sakit"
+  ).length
+  const totalAlpha = filteredData.filter(
+    (a) => a.nama_status === "Alpha"
+  ).length
 
   return (
     <div className="space-y-6 p-6 font-sans">
-      {/* HEADER */}
+      {/* HEADER */}  
       <div className="flex flex-col gap-4 border-b border-zinc-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-black tracking-tighter text-black uppercase">
@@ -375,80 +488,88 @@ export default function AbsensiPage() {
       {/* FILTER & SEARCH */}
       <Card className="overflow-hidden rounded-sm border-zinc-200 shadow-md">
         <CardHeader className="space-y-4 border-b bg-zinc-50/50 pb-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative min-w-[240px] flex-1">
-              <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[240px] flex-1 space-y-1">
+              <span className="block text-[10px] font-semibold text-zinc-500 uppercase">
+                Cari
+              </span>
+              <div className="relative">
+                <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                <Input
+                  placeholder="Cari NIP, nama, jabatan..."
+                  className="h-9 rounded-sm border-zinc-200 bg-white pl-10 text-xs shadow-sm focus-visible:ring-1 focus-visible:ring-black"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="w-[160px] space-y-1">
+              <span className="block text-[10px] font-semibold text-zinc-500 uppercase">
+                Status
+              </span>
+              <Select
+                value={filterStatus}
+                onValueChange={(val) => setFilterStatus(val ?? "ALL")}
+              >
+                <SelectTrigger className="h-9 w-full rounded-sm border-zinc-200 bg-white text-xs shadow-sm">
+                  <SelectValue placeholder="Semua Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Semua Status</SelectItem>
+                  {statusList.map((s) => (
+                    <SelectItem key={s.id} value={s.nama_status}>
+                      {s.nama_status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="min-w-[160px] space-y-1">
+              <span className="block text-[10px] font-semibold text-zinc-500 uppercase">
+                Dari Tanggal
+              </span>
               <Input
-                placeholder="Cari NIP, nama, jabatan..."
-                className="h-9 rounded-sm border-zinc-200 bg-white pl-10 text-xs shadow-sm focus-visible:ring-1 focus-visible:ring-black"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                type="date"
+                className="h-9 rounded-sm border-zinc-200 bg-white text-xs shadow-sm focus-visible:ring-1 focus-visible:ring-black"
+                value={filterDari}
+                onChange={(e) => {
+                  setFilterDari(e.target.value)
+                  setIsFiltering(true)
+                }}
               />
             </div>
 
-            <Select
-              value={filterPeriode}
-              onValueChange={(val) => setFilterPeriode(val ?? "ALL")}
-            >
-              <SelectTrigger className="h-9 w-[180px] rounded-sm border-zinc-200 bg-white text-xs shadow-sm">
-                <SelectValue placeholder="Semua Periode" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Semua Periode</SelectItem>
-                {periodeList.map((p) => (
-                  <SelectItem key={p.id} value={String(p.nama_periode)}>
-                    {p.nama_periode}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={filterStatus}
-              onValueChange={(val) => setFilterStatus(val ?? "ALL")}
-            >
-              <SelectTrigger className="h-9 w-[160px] rounded-sm border-zinc-200 bg-white text-xs shadow-sm">
-                <SelectValue placeholder="Semua Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Semua Status</SelectItem>
-                {statusList.map((s) => (
-                  <SelectItem key={s.id} value={s.nama_status}>
-                    {s.nama_status}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={filterBulan}
-              onValueChange={(val) => setFilterBulan(val ?? "ALL")}
-            >
-              <SelectTrigger className="h-9 w-[160px] rounded-sm border-zinc-200 bg-white text-xs shadow-sm">
-                <SelectValue placeholder="Semua Bulan" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Semua Bulan</SelectItem>
-                {months.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="min-w-[160px] space-y-1">
+              <span className="block text-[10px] font-semibold text-zinc-500 uppercase">
+                Sampai Tanggal
+              </span>
+              <Input
+                type="date"
+                className="h-9 rounded-sm border-zinc-200 bg-white text-xs shadow-sm focus-visible:ring-1 focus-visible:ring-black"
+                value={filterSampai}
+                onChange={(e) => {
+                  setFilterSampai(e.target.value)
+                  setIsFiltering(true)
+                }}
+              />
+            </div>
 
             {(searchQuery ||
               filterStatus !== "ALL" ||
-              filterBulan !== "ALL" ||
-              filterPeriode !== "ALL") && (
+              filterDari !== "" ||
+              filterSampai !== "") && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setSearchQuery("")
                   setFilterStatus("ALL")
-                  setFilterBulan("ALL")
-                  setFilterPeriode("ALL")
+                  const todayStr = getTodayString()
+                  setFilterDari(todayStr)
+                  setFilterSampai(todayStr)
+                  setIsFiltering(false)
                 }}
                 className="h-9 rounded-sm border border-dashed border-zinc-300 text-xs text-zinc-500 hover:bg-zinc-100"
               >
@@ -473,25 +594,19 @@ export default function AbsensiPage() {
                       No
                     </TableHead>
                     <TableHead className="border-r font-bold text-zinc-700">
-                      NIP & Nama
-                    </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Jabatan
-                    </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Periode
-                    </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
                       Tanggal
+                    </TableHead>
+                    <TableHead className="border-r font-bold text-zinc-700">
+                      Nama Karyawan
+                    </TableHead>
+                    <TableHead className="border-r font-bold text-zinc-700">
+                      Status
                     </TableHead>
                     <TableHead className="border-r font-bold text-zinc-700">
                       Jam Masuk
                     </TableHead>
                     <TableHead className="border-r font-bold text-zinc-700">
                       Jam Pulang
-                    </TableHead>
-                    <TableHead className="border-r font-bold text-zinc-700">
-                      Status
                     </TableHead>
                     <TableHead className="text-center font-bold text-zinc-700">
                       Aksi
@@ -501,9 +616,6 @@ export default function AbsensiPage() {
                 <TableBody>
                   {filteredData.length > 0 ? (
                     filteredData.map((a, idx) => {
-                      const periode = periodeList.find(
-                        (p) => p.id === a.periode_id
-                      )
                       return (
                         <TableRow
                           key={a.id}
@@ -512,30 +624,13 @@ export default function AbsensiPage() {
                           <TableCell className="border-r px-4 py-3 font-bold text-zinc-500">
                             {idx + 1}
                           </TableCell>
+                          <TableCell className="border-r px-4 py-3 text-zinc-600">
+                            {formatDateForView(a.tanggal)}
+                          </TableCell>
                           <TableCell className="border-r px-4 py-3">
                             <div className="font-bold text-zinc-900">
                               {a.nama}
                             </div>
-                            <div className="font-mono text-[11px] text-zinc-400">
-                              NIP: {a.nip}
-                            </div>
-                          </TableCell>
-                          <TableCell className="border-r px-4 py-3">
-                            <div className="text-zinc-800">{a.jabatan}</div>
-                          </TableCell>
-                          <TableCell className="border-r px-4 py-3">
-                            <div className="text-zinc-800">
-                              {periode?.nama_periode || "-"}
-                            </div>
-                          </TableCell>
-                          <TableCell className="border-r px-4 py-3 text-zinc-600">
-                            {formatDateForView(a.tanggal)}
-                          </TableCell>
-                          <TableCell className="border-r px-4 py-3 font-mono text-zinc-600">
-                            {a.jam_masuk || "-"}
-                          </TableCell>
-                          <TableCell className="border-r px-4 py-3 font-mono text-zinc-600">
-                            {a.jam_keluar || "-"}
                           </TableCell>
                           <TableCell className="border-r px-4 py-3">
                             <span
@@ -543,6 +638,12 @@ export default function AbsensiPage() {
                             >
                               {a.nama_status}
                             </span>
+                          </TableCell>
+                          <TableCell className="border-r px-4 py-3 font-mono text-zinc-600">
+                            {a.jam_masuk || "-"}
+                          </TableCell>
+                          <TableCell className="border-r px-4 py-3 font-mono text-zinc-600">
+                            {a.jam_keluar || "-"}
                           </TableCell>
                           <TableCell className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center gap-1">
@@ -581,10 +682,12 @@ export default function AbsensiPage() {
                   ) : (
                     <TableRow>
                       <TableCell
-                        colSpan={9}
+                        colSpan={7}
                         className="py-16 text-center text-zinc-400 italic"
                       >
-                        Data absensi tidak ditemukan di database.
+                        {isFiltering
+                          ? "Data absensi tidak ditemukan untuk filter yang dipilih."
+                          : "Belum ada absensi hari ini."}
                       </TableCell>
                     </TableRow>
                   )}
@@ -597,7 +700,10 @@ export default function AbsensiPage() {
 
       {/* MODAL FORM (TAMBAH / EDIT) */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="w-full max-w-2xl rounded-sm border-none shadow-2xl [&>button]:hidden">
+        <DialogContent
+          style={{ width: "95vw", maxWidth: "95vw" }}
+          className="rounded-sm border-none shadow-2xl [&>button]:hidden"
+        >
           <DialogHeader className="-mx-6 -mt-6 mb-4 flex flex-row items-center justify-between bg-zinc-900 px-6 py-3 text-white">
             <DialogTitle className="text-xs font-bold tracking-wider uppercase">
               {editMode ? "Edit Data Absensi" : "Tambah Absensi Baru"}
@@ -613,163 +719,272 @@ export default function AbsensiPage() {
 
           <form
             onSubmit={handleSubmit}
-            className="max-h-[75vh] space-y-4 overflow-y-auto px-1"
+            className="max-h-[75vh] space-y-4 overflow-y-auto px-2"
           >
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold uppercase">
-                  Karyawan *
-                </Label>
-                <Select
-                  value={
-                    formData.karyawan_nip
-                      ? String(formData.karyawan_nip)
-                      : undefined
-                  }
-                  onValueChange={(val) => {
-                    const karyawan = karyawanList.find(
-                      (k) => String(k.nip) === val
-                    )
-                    setFormData({
-                      ...formData,
-                      karyawan_nip: String(val),
-                      nip: karyawan?.nip || "",
-                      nama: karyawan?.nama || "",
-                      jabatan: karyawan?.jabatan || "",
-                    })
-                  }}
-                  disabled={editMode}
-                >
-                  <SelectTrigger className="h-9 w-full rounded-sm border-zinc-300 text-xs">
-                    <SelectValue placeholder="Pilih Karyawan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {karyawanList.map((k) => (
-                      <SelectItem key={k.nip} value={k.nip}>
-                        {k.nip} - {k.nama} ({k.jabatan})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {editMode ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold uppercase">
+                    Karyawan *
+                  </Label>
+                  <Select
+                    value={
+                      formData.karyawan_nip
+                        ? String(formData.karyawan_nip)
+                        : undefined
+                    }
+                    onValueChange={(val) => {
+                      const karyawan = karyawanList.find(
+                        (k) => String(k.nip) === val
+                      )
+                      setFormData({
+                        ...formData,
+                        karyawan_nip: String(val),
+                        nip: karyawan?.nip || "",
+                        nama: karyawan?.nama || "",
+                        jabatan: karyawan?.jabatan || "",
+                      })
+                    }}
+                    disabled
+                  >
+                    <SelectTrigger
+                      className="h-9 w-full rounded-sm border-zinc-300 text-xs"
+                      disabled
+                    >
+                      {formData.karyawan_nip ? (
+                        <span className="text-xs">{formData.nama}</span>
+                      ) : (
+                        <span className="text-xs text-zinc-500">
+                          Pilih Karyawan
+                        </span>
+                      )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {karyawanList.map((k) => (
+                        <SelectItem key={k.nip} value={k.nip}>
+                          {k.nip} - {k.nama} ({k.jabatan})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold uppercase">
-                  Periode *
-                </Label>
-                <Select
-                  value={
-                    formData.periode_id
-                      ? String(formData.periode_id)
-                      : undefined
-                  }
-                  onValueChange={(val) =>
-                    setFormData({ ...formData, periode_id: Number(val) })
-                  }
-                >
-                  <SelectTrigger className="h-9 w-full rounded-sm border-zinc-300 text-xs">
-                    <SelectValue placeholder="Pilih Periode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {periodeList.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.nama_periode}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold uppercase">
+                    Tanggal *
+                  </Label>
+                  <Input
+                    type="date"
+                    required
+                    value={formData.tanggal}
+                    onChange={(e) =>
+                      setFormData({ ...formData, tanggal: e.target.value })
+                    }
+                    className="h-9 rounded-sm border-zinc-300 text-xs"
+                  />
+                </div>
 
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold uppercase">
-                  Tanggal *
-                </Label>
-                <Input
-                  type="date"
-                  required
-                  value={formData.tanggal}
-                  onChange={(e) =>
-                    setFormData({ ...formData, tanggal: e.target.value })
-                  }
-                  className="h-9 rounded-sm border-zinc-300 text-xs"
-                />
-                {selectedPeriode && formData.tanggal && (
-                  <p className="text-[10px] text-zinc-500">
-                    Rentang periode:{" "}
-                    {formatDateForView(selectedPeriode.tanggal_mulai)} -{" "}
-                    {formatDateForView(selectedPeriode.tanggal_selesai)}
-                  </p>
-                )}
-              </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold uppercase">
+                    Status *
+                  </Label>
+                  <Select
+                    value={
+                      formData.status_id
+                        ? String(formData.status_id)
+                        : undefined
+                    }
+                    onValueChange={(val) =>
+                      setFormData({ ...formData, status_id: Number(val) })
+                    }
+                  >
+                    <SelectTrigger className="h-9 w-full rounded-sm border-zinc-300 text-xs">
+                      {formData.status_id ? (
+                        <span className="text-xs">
+                          {
+                            statusList.find((s) => s.id === formData.status_id)
+                              ?.nama_status
+                          }
+                        </span>
+                      ) : (
+                        <span className="text-xs text-zinc-500">
+                          Pilih Status
+                        </span>
+                      )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusList.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>
+                          {s.nama_status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold uppercase">
-                  Status *
-                </Label>
-                <Select
-                  value={
-                    formData.status_id ? String(formData.status_id) : undefined
-                  }
-                  onValueChange={(val) =>
-                    setFormData({ ...formData, status_id: Number(val) })
-                  }
-                >
-                  <SelectTrigger className="h-9 w-full rounded-sm border-zinc-300 text-xs">
-                    <SelectValue placeholder="Pilih Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {statusList.map((s) => (
-                      <SelectItem key={s.id} value={String(s.id)}>
-                        {s.nama_status}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold uppercase">
+                    Jam Masuk
+                  </Label>
+                  <Input
+                    type="time"
+                    value={formData.jam_masuk || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, jam_masuk: e.target.value })
+                    }
+                    className="h-9 rounded-sm border-zinc-300 text-xs"
+                  />
+                </div>
 
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold uppercase">
-                  Jam Masuk
-                </Label>
-                <Input
-                  type="time"
-                  value={formData.jam_masuk || ""}
-                  onChange={(e) =>
-                    setFormData({ ...formData, jam_masuk: e.target.value })
-                  }
-                  className="h-9 rounded-sm border-zinc-300 text-xs"
-                />
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold uppercase">
+                    Jam Pulang
+                  </Label>
+                  <Input
+                    type="time"
+                    value={formData.jam_keluar || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, jam_keluar: e.target.value })
+                    }
+                    className="h-9 rounded-sm border-zinc-300 text-xs"
+                  />
+                </div>
               </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold uppercase">
+                      Tanggal *
+                    </Label>
+                    <Input
+                      type="date"
+                      required
+                      value={batchDate}
+                      onChange={handleBatchDateChange}
+                      className="h-9 rounded-sm border-zinc-300 text-xs"
+                    />
+                  </div>
+                </div>
 
-              <div className="space-y-1">
-                <Label className="text-[11px] font-bold uppercase">
-                  Jam Pulang
-                </Label>
-                <Input
-                  type="time"
-                  value={formData.jam_keluar || ""}
-                  onChange={(e) =>
-                    setFormData({ ...formData, jam_keluar: e.target.value })
-                  }
-                  className="h-9 rounded-sm border-zinc-300 text-xs"
-                />
+                <div className="overflow-x-auto rounded-sm border border-zinc-200">
+                  <Table>
+                    <TableHeader className="bg-zinc-100/80">
+                      <TableRow className="border-b border-zinc-200 text-[11px] tracking-wider uppercase">
+                        <TableHead className="w-10 border-r px-2 py-2 font-bold text-zinc-700">
+                          No
+                        </TableHead>
+                        <TableHead className="border-r px-2 py-2 font-bold text-zinc-700">
+                          Nama Karyawan
+                        </TableHead>
+                        <TableHead className="w-28 border-r px-2 py-2 font-bold text-zinc-700">
+                          Jam Masuk
+                        </TableHead>
+                        <TableHead className="w-28 border-r px-2 py-2 font-bold text-zinc-700">
+                          Jam Keluar
+                        </TableHead>
+                        <TableHead className="w-32 border-r px-2 py-2 font-bold text-zinc-700">
+                          Status
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {batchEntries.map((entry, idx) => (
+                        <TableRow
+                          key={entry.karyawan_nip}
+                          className={`border-b text-xs ${entry.existingId != null ? "bg-blue-50/40" : "border-zinc-100"}`}
+                        >
+                          <TableCell className="border-r px-2 py-2 text-center font-bold text-zinc-500">
+                            {idx + 1}
+                          </TableCell>
+                          <TableCell className="border-r px-2 py-2">
+                            <div className="flex items-center gap-2">
+                              <div>
+                                <div className="font-bold text-zinc-900">
+                                  {entry.nama}
+                                </div>
+                                <div className="font-mono text-[10px] text-zinc-400">
+                                  NIP: {entry.karyawan_nip}
+                                </div>
+                              </div>
+                              {entry.existingId != null && (
+                                <span className="rounded-sm bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-blue-700">
+                                  Update
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="border-r px-2 py-2">
+                            <Input
+                              type="time"
+                              value={entry.jam_masuk}
+                              onChange={(e) => {
+                                const newEntries = [...batchEntries]
+                                newEntries[idx] = {
+                                  ...newEntries[idx],
+                                  jam_masuk: e.target.value,
+                                }
+                                setBatchEntries(newEntries)
+                              }}
+                              className="h-8 rounded-sm border-zinc-300 text-xs"
+                            />
+                          </TableCell>
+                          <TableCell className="border-r px-2 py-2">
+                            <Input
+                              type="time"
+                              value={entry.jam_keluar}
+                              onChange={(e) => {
+                                const newEntries = [...batchEntries]
+                                newEntries[idx] = {
+                                  ...newEntries[idx],
+                                  jam_keluar: e.target.value,
+                                }
+                                setBatchEntries(newEntries)
+                              }}
+                              className="h-8 rounded-sm border-zinc-300 text-xs"
+                            />
+                          </TableCell>
+                          <TableCell className="border-r px-2 py-2">
+                            <Select
+                              value={
+                                entry.status_id
+                                  ? String(entry.status_id)
+                                  : undefined
+                              }
+                              onValueChange={(val) => {
+                                const newEntries = [...batchEntries]
+                                newEntries[idx] = {
+                                  ...newEntries[idx],
+                                  status_id: Number(val),
+                                }
+                                setBatchEntries(newEntries)
+                              }}
+                            >
+                              <SelectTrigger className="h-8 w-full rounded-sm border-zinc-300 text-xs">
+                                <span className="text-xs">
+                                  {entry.status_id
+                                    ? statusList.find(
+                                        (s) => s.id === entry.status_id
+                                      )?.nama_status || "Pilih Status"
+                                    : "Pilih Status"}
+                                </span>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {statusList.map((s) => (
+                                  <SelectItem key={s.id} value={String(s.id)}>
+                                    {s.nama_status}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
-
-              <div className="space-y-1 md:col-span-2">
-                <Label className="text-[11px] font-bold uppercase">
-                  Keterangan
-                </Label>
-                <Textarea
-                  value={formData.keterangan || ""}
-                  onChange={(e) =>
-                    setFormData({ ...formData, keterangan: e.target.value })
-                  }
-                  placeholder="Keterangan tambahan (opsional)"
-                  rows={2}
-                  className="resize-none rounded-sm border-zinc-300 text-xs"
-                />
-              </div>
-            </div>
+            )}
 
             <div className="flex justify-end gap-2 border-t border-zinc-100 pt-4">
               <Button
@@ -789,7 +1004,7 @@ export default function AbsensiPage() {
                   ? "Menyimpan..."
                   : editMode
                     ? "Simpan Perubahan"
-                    : "Simpan Data"}
+                    : `Simpan Semua (${batchEntries.filter((e) => e.status_id > 0).length})`}
               </Button>
             </div>
           </form>
@@ -849,16 +1064,6 @@ export default function AbsensiPage() {
                 </div>
                 <div>
                   <span className="block text-[10px] font-bold text-zinc-400 uppercase">
-                    Periode
-                  </span>
-                  <span className="text-zinc-700">
-                    {periodeList.find(
-                      (p) => p.id === selectedAbsensi.periode_id
-                    )?.nama_periode || "-"}
-                  </span>
-                </div>
-                <div>
-                  <span className="block text-[10px] font-bold text-zinc-400 uppercase">
                     Tanggal
                   </span>
                   <span className="text-zinc-700">
@@ -889,22 +1094,6 @@ export default function AbsensiPage() {
                     className={`inline-block rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase ${statusColor(selectedAbsensi.nama_status)}`}
                   >
                     {selectedAbsensi.nama_status}
-                  </span>
-                </div>
-                <div>
-                  <span className="block text-[10px] font-bold text-zinc-400 uppercase">
-                    Kategori
-                  </span>
-                  <span className="text-zinc-700">
-                    {selectedAbsensi.kategori}
-                  </span>
-                </div>
-                <div className="sm:col-span-2">
-                  <span className="block text-[10px] font-bold text-zinc-400 uppercase">
-                    Keterangan
-                  </span>
-                  <span className="text-zinc-700">
-                    {selectedAbsensi.keterangan || "-"}
                   </span>
                 </div>
               </div>
