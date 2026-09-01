@@ -143,6 +143,9 @@ function parseAttendanceWorkbook(buffer: Buffer): RawAttendanceRow[] {
 // ============================================================================
 // 2. MATCHER — cocokkan nama dari file ke karyawan_nip di tb_karyawan
 // ============================================================================
+const NAME_ALIAS_TO_NIP: Record<string, string> = {
+  "dias": "260201017", // "Dias" di file -> Dyas Tri Aprilisansyah
+};
 
 interface KaryawanRef {
   nip: string;
@@ -190,6 +193,11 @@ function matchEmployeeByName(
   const target = normalizeName(namaFromFile);
   if (!target) return { match: null };
 
+  const aliasNip = NAME_ALIAS_TO_NIP[target];
+  if (aliasNip) {
+  const aliasMatch = karyawanList.find((k) => k.nip === aliasNip);
+  if (aliasMatch) return { match: aliasMatch };
+  }
   const exact = karyawanList.find((k) => normalizeName(k.nama) === target);
   if (exact) return { match: exact };
 

@@ -42,6 +42,7 @@ import { swal } from "@/lib/sweetalert"
 
 const initialForm: CreateStatusKehadiranPayload = {
   nama_status: "",
+  warna_kolom: "#6b7280",
 }
 
 export default function StatusKehadiranPage() {
@@ -97,6 +98,7 @@ export default function StatusKehadiranPage() {
       setSelectedStatus(item)
       setFormData({
         nama_status: item.nama_status,
+        warna_kolom: item.warna_kolom,
       })
     } else {
       setEditMode(false)
@@ -114,6 +116,7 @@ export default function StatusKehadiranPage() {
       if (editMode && selectedStatus) {
         const payload: UpdateStatusKehadiranPayload = {
           nama_status: formData.nama_status,
+          warna_kolom: formData.warna_kolom,
         }
         const res = await updateStatusKehadiran(selectedStatus.id, payload)
         if (!res.success) throw new Error(res.message)
@@ -121,6 +124,7 @@ export default function StatusKehadiranPage() {
       } else {
         const payload: CreateStatusKehadiranPayload = {
           nama_status: formData.nama_status,
+          warna_kolom: formData.warna_kolom,
         }
         const res = await createStatusKehadiran(payload)
         if (!res.success) throw new Error(res.message)
@@ -250,8 +254,14 @@ export default function StatusKehadiranPage() {
                           {(currentPage - 1) * pageSize + idx + 1}
                         </TableCell>
                         <TableCell className="border-r px-4 py-3">
-                          <div className="font-bold text-zinc-900">
-                            {s.nama_status}
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="inline-block h-3 w-3 rounded-full border border-zinc-200"
+                              style={{ backgroundColor: s.warna_kolom }}
+                            />
+                            <div className="font-bold text-zinc-900">
+                              {s.nama_status}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell className="px-4 py-3 text-center">
@@ -360,6 +370,24 @@ export default function StatusKehadiranPage() {
                 placeholder="Contoh: Hadir, Sakit, Izin, Alpha"
                 className="h-9 rounded-sm border-zinc-300 text-xs"
               />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px] font-bold uppercase">
+                Warna Kolom
+              </Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  type="color"
+                  value={formData.warna_kolom}
+                  onChange={(e) =>
+                    setFormData({ ...formData, warna_kolom: e.target.value })
+                  }
+                  className="h-9 w-16 rounded-sm border-zinc-300 p-1 text-xs"
+                />
+                <span className="font-mono text-xs text-zinc-500">
+                  {formData.warna_kolom}
+                </span>
+              </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-zinc-100 pt-4">
               <Button

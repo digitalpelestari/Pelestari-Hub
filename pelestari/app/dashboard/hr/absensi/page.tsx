@@ -227,26 +227,26 @@ export default function AbsensiPage() {
 
       return matchTanggal
     })
-  }, [absensiList, filterDari, filterSampai])
-
-  const statusColor = (namaStatus?: string) => {
-    switch (namaStatus) {
-      case "Hadir":
-        return "bg-emerald-100 text-emerald-700"
-      case "Izin":
-        return "bg-amber-100 text-amber-700"
-      case "Sakit":
-        return "bg-blue-100 text-blue-700"
-      case "Alpha":
-        return "bg-red-100 text-red-700"
-      default:
-        return "bg-zinc-100 text-zinc-700"
-    }
-  }
+   }, [absensiList, filterDari, filterSampai])
 
   const getDayName = (dateString: string) => {
     const d = new Date(dateString + "T00:00:00")
     return d.toLocaleDateString("id-ID", { weekday: "long" })
+  }
+
+  const isTerlambat = (jamMasuk?: string | null) => {
+    if (!jamMasuk) return false
+    const parts = jamMasuk.split(":")
+    const h = Number(parts[0] || 0)
+    const m = Number(parts[1] || 0)
+    const totalMenit = h * 60 + m
+    return totalMenit > 8 * 60
+  }
+
+  const isWeekend = (dateString: string) => {
+    const d = new Date(dateString + "T00:00:00")
+    const day = d.getDay()
+    return day === 0 || day === 6
   }
 
   const getDateRange = (start: string, end: string) => {
@@ -297,6 +297,7 @@ export default function AbsensiPage() {
             jam_keluar: string | null
             status_id: number
             id: number
+            warna_kolom: string
           }
         >
       }
@@ -318,6 +319,7 @@ export default function AbsensiPage() {
         jam_keluar: a.jam_keluar,
         status_id: a.status_id,
         id: a.id,
+        warna_kolom: a.warna_kolom,
       }
     })
 
@@ -339,7 +341,10 @@ export default function AbsensiPage() {
     }
     setExistingBatchAbsensi(existing)
 
-    const existingMap = new Map(existing.map((e) => [e.nip, e]))
+    const liburNasional = statusList.find((s) => s.nama_status === "Libur Nasional")
+    const liburNasionalId = liburNasional?.id
+
+    const existingMap = new Map(existing.map((e) => [e.karyawan_nip, e]))
     setBatchEntries((prev) =>
       prev.map((entry) => {
         const existingData = existingMap.get(entry.karyawan_nip)
@@ -347,7 +352,7 @@ export default function AbsensiPage() {
           ...entry,
           jam_masuk: existingData?.jam_masuk || "",
           jam_keluar: existingData?.jam_keluar || "",
-          status_id: existingData?.status_id || 0,
+          status_id: existingData?.status_id || (isWeekend(tanggal) && liburNasionalId ? liburNasionalId : 0),
           existingId: existingData?.id ?? null,
         }
       })
@@ -416,7 +421,11 @@ export default function AbsensiPage() {
         }
         const res = await updateAbsensiHarian(selectedAbsensi.id, payload)
         if (!res.success) throw new Error(res.message)
-        swal.success("Data absensi berhasil diperbarui")
+        if (res.message === "Tidak ada perubahan data") {
+          swal.info("Tidak ada perubahan data yang disimpan")
+        } else {
+          swal.success(res.message)
+        }
       } else {
         const validEntries = batchEntries.filter((e) => e.status_id > 0)
         if (validEntries.length === 0) {
@@ -424,24 +433,37 @@ export default function AbsensiPage() {
         }
 
         const promises: Promise<any>[] = []
+        const existingMap = new Map(
+          existingBatchAbsensi.map((e) => [e.karyawan_nip, e])
+        )
+        let updateCount = 0
+        let createCount = 0
+        let skipCount = 0
 
-        validEntries
-          .filter((e) => e.existingId != null)
-          .forEach((entry) => {
-            promises.push(
-              updateAbsensiHarian(entry.existingId!, {
-                karyawan_nip: entry.karyawan_nip,
-                tanggal: batchDate,
-                jam_masuk: entry.jam_masuk || null,
-                jam_keluar: entry.jam_keluar || null,
-                status_id: Number(entry.status_id),
-              })
-            )
-          })
+        validEntries.forEach((entry) => {
+          if (entry.existingId != null) {
+            const existingData = existingMap.get(entry.karyawan_nip)
+            const hasChange =
+              (entry.jam_masuk || null) !== (existingData?.jam_masuk || null) ||
+              (entry.jam_keluar || null) !== (existingData?.jam_keluar || null) ||
+              Number(entry.status_id) !== existingData?.status_id
 
-        validEntries
-          .filter((e) => e.existingId == null)
-          .forEach((entry) => {
+            if (hasChange) {
+              updateCount++
+              promises.push(
+                updateAbsensiHarian(entry.existingId!, {
+                  karyawan_nip: entry.karyawan_nip,
+                  tanggal: batchDate,
+                  jam_masuk: entry.jam_masuk || null,
+                  jam_keluar: entry.jam_keluar || null,
+                  status_id: Number(entry.status_id),
+                })
+              )
+            } else {
+              skipCount++
+            }
+          } else {
+            createCount++
             promises.push(
               createAbsensiHarian({
                 karyawan_nip: entry.karyawan_nip,
@@ -451,7 +473,8 @@ export default function AbsensiPage() {
                 status_id: Number(entry.status_id),
               })
             )
-          })
+          }
+        })
 
         const results = await Promise.allSettled(promises)
         const succeeded = results.filter(
@@ -463,7 +486,7 @@ export default function AbsensiPage() {
             (r.status === "fulfilled" && !r.value.success)
         )
 
-        if (succeeded === 0) {
+        if (succeeded === 0 && promises.length > 0) {
           const errorMessages = failed
             .map((r) =>
               r.status === "rejected" ? r.reason?.message : r.value?.message
@@ -472,12 +495,18 @@ export default function AbsensiPage() {
           throw new Error(errorMessages[0] || "Gagal menyimpan data absensi")
         }
 
-        if (failed.length > 0) {
+        if (skipCount > 0 && succeeded > 0) {
+          swal.success(
+            `${createCount} baru, ${updateCount} diperbarui, ${skipCount} tidak berubah`
+          )
+        } else if (succeeded > 0) {
+          swal.success(`${succeeded} data absensi berhasil disimpan`)
+        }
+
+        if (failed.length > 0 && succeeded > 0) {
           swal.warning(
             `${succeeded} data berhasil, ${failed.length} data gagal`
           )
-        } else {
-          swal.success(`${succeeded} data absensi berhasil disimpan`)
         }
       }
       await fetchData()
@@ -681,7 +710,7 @@ export default function AbsensiPage() {
                       <TableHead
                         key={tanggal}
                         colSpan={2}
-                        className="border-r px-2 py-2 text-center font-bold text-zinc-700"
+                        className={`border-r px-2 py-2 text-center font-bold ${isWeekend(tanggal) ? "bg-red-50 text-red-700" : "text-zinc-700"}`}
                       >
                         <div className="text-sm leading-none">
                           {new Date(tanggal + "T00:00:00").getDate()}
@@ -694,7 +723,7 @@ export default function AbsensiPage() {
                       <TableHead
                         key={tanggal}
                         colSpan={2}
-                        className="border-r px-2 py-2 text-center font-bold text-zinc-700"
+                        className={`border-r px-2 py-2 text-center font-bold ${isWeekend(tanggal) ? "bg-red-50 text-red-700" : "text-zinc-700"}`}
                       >
                         <div className="text-xs font-bold">
                           {getDayName(tanggal)}
@@ -707,13 +736,13 @@ export default function AbsensiPage() {
                       <React.Fragment key={tanggal}>
                         <TableHead
                           key={tanggal + "-masuk"}
-                          className="border-r px-2 py-2 font-bold text-zinc-700"
+                          className={`border-r px-2 py-2 font-bold ${isWeekend(tanggal) ? "bg-red-50 text-red-700" : "text-zinc-700"}`}
                         >
                           Masuk
                         </TableHead>
                         <TableHead
                           key={tanggal + "-keluar"}
-                          className="border-r px-2 py-2 font-bold text-zinc-700"
+                          className={`border-r px-2 py-2 font-bold ${isWeekend(tanggal) ? "bg-red-50 text-red-700" : "text-zinc-700"}`}
                         >
                           Keluar
                         </TableHead>
@@ -748,12 +777,20 @@ export default function AbsensiPage() {
                           </TableCell>
                           {groupedAbsensi.dateRange.map((tanggal) => {
                             const data = group.absensi[tanggal]
+                            const weekend = isWeekend(tanggal)
+                            const terlambat = isTerlambat(data?.jam_masuk)
+                            const warna = data?.warna_kolom
+                            const backgroundColor = weekend ? "" : warna || ""
+                            const textColor = (weekend || terlambat) ? "#dc2626" : warna ? "#ffffff" : "inherit"
+                            const cellClass = `border-r px-2 py-3 font-mono ${weekend ? "bg-red-50" : ""}`
                             return (
                               <React.Fragment key={tanggal}>
-                                <TableCell className="border-r px-2 py-3 font-mono text-zinc-600">
-                                  {data?.jam_masuk || "-"}
+                                <TableCell className={cellClass} style={{ backgroundColor, color: textColor }}>
+                                  <span className={terlambat ? "font-bold" : ""}>
+                                    {data?.jam_masuk || "-"}
+                                  </span>
                                 </TableCell>
-                                <TableCell className="border-r px-2 py-3 font-mono text-zinc-600">
+                                <TableCell className={cellClass} style={{ backgroundColor, color: textColor }}>
                                   {data?.jam_keluar || "-"}
                                 </TableCell>
                               </React.Fragment>
@@ -1157,7 +1194,7 @@ export default function AbsensiPage() {
                   <span className="block text-[10px] font-bold text-zinc-400 uppercase">
                     Jam Masuk
                   </span>
-                  <span className="font-mono text-zinc-700">
+                  <span className={`font-mono ${isTerlambat(selectedAbsensi.jam_masuk) ? "text-red-600 font-bold" : "text-zinc-700"}`}>
                     {selectedAbsensi.jam_masuk || "-"}
                   </span>
                 </div>
@@ -1174,7 +1211,8 @@ export default function AbsensiPage() {
                     Status
                   </span>
                   <span
-                    className={`inline-block rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase ${statusColor(selectedAbsensi.nama_status)}`}
+                    className="inline-block rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase text-white"
+                    style={{ backgroundColor: selectedAbsensi.warna_kolom || "#6b7280" }}
                   >
                     {selectedAbsensi.nama_status}
                   </span>

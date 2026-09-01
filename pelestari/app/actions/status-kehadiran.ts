@@ -6,20 +6,23 @@ import { revalidatePath } from "next/cache"
 export interface StatusKehadiranData {
   id: number
   nama_status: string
+  warna_kolom: string
 }
 
 export interface CreateStatusKehadiranPayload {
   nama_status: string
+  warna_kolom: string
 }
 
 export interface UpdateStatusKehadiranPayload {
   nama_status?: string
+  warna_kolom?: string
 }
 
 export async function getStatusKehadiran() {
   try {
     const [rows]: any = await db.query(
-      "SELECT id, nama_status FROM tb_status_kehadiran ORDER BY nama_status ASC"
+      "SELECT id, nama_status, warna_kolom FROM tb_status_kehadiran ORDER BY nama_status ASC"
     )
     return { success: true, data: rows as StatusKehadiranData[] }
   } catch (error: any) {
@@ -53,7 +56,7 @@ export async function getStatusKehadiranList(search?: string, page?: number, pag
     const total = Number(countRows[0]?.total || 0)
 
     const [rows]: any = await db.query(
-      `SELECT id, nama_status FROM tb_status_kehadiran ${whereClause} ORDER BY nama_status ASC LIMIT ? OFFSET ?`,
+      `SELECT id, nama_status, warna_kolom FROM tb_status_kehadiran ${whereClause} ORDER BY nama_status ASC LIMIT ? OFFSET ?`,
       [...params, currentPageSize, offset]
     )
 
@@ -76,7 +79,7 @@ export async function getStatusKehadiranList(search?: string, page?: number, pag
 export async function getStatusKehadiranById(id: number) {
   try {
     const [rows]: any = await db.query(
-      "SELECT id, nama_status FROM tb_status_kehadiran WHERE id = ? LIMIT 1",
+      "SELECT id, nama_status, warna_kolom FROM tb_status_kehadiran WHERE id = ? LIMIT 1",
       [id]
     )
     if (!rows.length) return { success: false, message: "Status kehadiran tidak ditemukan" }
@@ -91,12 +94,14 @@ export async function createStatusKehadiran(payload: CreateStatusKehadiranPayloa
     return { success: false, message: "Nama status wajib diisi" }
   }
 
+  const warna = payload.warna_kolom && payload.warna_kolom.trim() ? payload.warna_kolom.trim() : "#6b7280"
+
 
   try {
     await db.query(
-      `INSERT INTO tb_status_kehadiran (nama_status)
-       VALUES (?)`,
-      [payload.nama_status.trim()]
+      `INSERT INTO tb_status_kehadiran (nama_status, warna_kolom)
+       VALUES (?, ?)`,
+      [payload.nama_status.trim(), warna]
     )
     revalidatePath("/dashboard/hr/absensi")
     return { success: true, message: "Status kehadiran berhasil ditambahkan" }
@@ -117,6 +122,11 @@ export async function updateStatusKehadiran(id: number, payload: UpdateStatusKeh
   if (payload.nama_status !== undefined) {
     fields.push("nama_status = ?")
     values.push(payload.nama_status.trim())
+  }
+  if (payload.warna_kolom !== undefined) {
+    const warna = payload.warna_kolom && payload.warna_kolom.trim() ? payload.warna_kolom.trim() : "#6b7280"
+    fields.push("warna_kolom = ?")
+    values.push(warna)
   }
 
   if (fields.length === 0) {

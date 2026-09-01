@@ -16,6 +16,7 @@ export interface AbsensiHarianData {
   divisi: string
   jabatan: string
   nama_status: string
+  warna_kolom: string
 }
 
 export interface CreateAbsensiHarianPayload {
@@ -63,7 +64,8 @@ async function getAbsensiBaseQuery() {
       k.nama,
       k.divisi,
       k.jabatan,
-      s.nama_status
+      s.nama_status,
+      s.warna_kolom
     FROM tb_absensi_harian a
     LEFT JOIN tb_karyawan k ON a.karyawan_nip = k.nip
     LEFT JOIN tb_status_kehadiran s ON a.status_id = s.id
@@ -194,13 +196,13 @@ export async function createAbsensiHarian(payload: CreateAbsensiHarianPayload) {
 }
 
 export async function updateAbsensiHarian(id: number, payload: UpdateAbsensiHarianPayload) {
-  if (!payload.karyawan_nip && !payload.tanggal && payload.status_id === undefined) {
-    return { success: false, message: "Tidak ada data yang diperbarui" }
+  if (!payload.karyawan_nip && !payload.tanggal && payload.status_id === undefined && payload.jam_masuk === undefined && payload.jam_keluar === undefined && payload.keterangan === undefined) {
+    return { success: true, message: "Tidak ada data yang diperbarui" }
   }
 
   try {
     const [existingRows]: any = await db.query(
-      "SELECT karyawan_nip, tanggal FROM tb_absensi_harian WHERE id = ? LIMIT 1",
+      "SELECT karyawan_nip, tanggal, jam_masuk, jam_keluar, status_id, keterangan FROM tb_absensi_harian WHERE id = ? LIMIT 1",
       [id]
     )
     if (!existingRows.length) {
@@ -242,29 +244,33 @@ export async function updateAbsensiHarian(id: number, payload: UpdateAbsensiHari
     const fields: string[] = []
     const values: any[] = []
 
-    if (payload.karyawan_nip !== undefined) {
+    if (payload.karyawan_nip !== undefined && payload.karyawan_nip !== existing.karyawan_nip) {
       fields.push("karyawan_nip = ?")
       values.push(payload.karyawan_nip)
     }
-    if (payload.tanggal !== undefined) {
+    if (payload.tanggal !== undefined && payload.tanggal !== existing.tanggal) {
       fields.push("tanggal = ?")
       values.push(payload.tanggal)
     }
-    if (payload.jam_masuk !== undefined) {
+    if (payload.jam_masuk !== undefined && (payload.jam_masuk || null) !== existing.jam_masuk) {
       fields.push("jam_masuk = ?")
       values.push(payload.jam_masuk || null)
     }
-    if (payload.jam_keluar !== undefined) {
+    if (payload.jam_keluar !== undefined && (payload.jam_keluar || null) !== existing.jam_keluar) {
       fields.push("jam_keluar = ?")
       values.push(payload.jam_keluar || null)
     }
-    if (payload.status_id !== undefined) {
+    if (payload.status_id !== undefined && payload.status_id !== existing.status_id) {
       fields.push("status_id = ?")
       values.push(payload.status_id)
     }
-    if (payload.keterangan !== undefined) {
+    if (payload.keterangan !== undefined && (payload.keterangan || null) !== existing.keterangan) {
       fields.push("keterangan = ?")
       values.push(payload.keterangan || null)
+    }
+
+    if (fields.length === 0) {
+      return { success: true, message: "Tidak ada perubahan data" }
     }
 
     values.push(id)
