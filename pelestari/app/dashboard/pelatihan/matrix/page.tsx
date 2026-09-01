@@ -1,22 +1,25 @@
 'use client';
 
-import React, { useState, useEffect, useId } from 'react';
-import { 
-  Search, 
-  Eye, 
-  Loader2, 
-  Plus, 
-  Building2, 
-  Truck, 
-  MapPin, 
-  X, 
-  CreditCard, 
-  User, 
-  Image as ImageIcon, 
-  Layers, 
+import React, { useState, useEffect, useId } from "react";
+import Swal from "sweetalert2";
+import {
+  Search,
+  Eye,
+  Loader2,
+  Plus,
+  Building2,
+  Truck,
+  MapPin,
+  X,
+  CreditCard,
+  User,
+  Image as ImageIcon,
+  Layers,
   FileText,
-  Calendar
-} from 'lucide-react';
+  Calendar,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 
 export interface TbBatch {
   id: number;
@@ -81,6 +84,17 @@ export default function PelatihanMatrixPage() {
 
   const [loadingOcrKtp, setLoadingOcrKtp] = useState(false);
   const [loadingOcrSim, setLoadingOcrSim] = useState(false);
+
+// State Modal Batch Baru
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [batchForm, setBatchForm] = useState({
+    nama: "",
+    tanggal_mulai: "",
+    tanggal_selesai: "",
+    lokasi: "",
+  });
+  const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
+  const [isBatchEditMode, setIsBatchEditMode] = useState(false);
 
   const ktpInputId = useId();
   const simInputId = useId();
@@ -166,7 +180,7 @@ export default function PelatihanMatrixPage() {
       }
     } catch (err) {
       console.error(err);
-      alert('Gagal membaca OCR KTP');
+      Swal.fire({ icon: "error", title: "Gagal", text: "Gagal membaca OCR KTP" });
     } finally {
       setLoadingOcrKtp(false);
     }
@@ -197,7 +211,7 @@ export default function PelatihanMatrixPage() {
       }
     } catch (err) {
       console.error(err);
-      alert('Gagal membaca OCR SIM');
+      Swal.fire({ icon: "error", title: "Gagal", text: "Gagal membaca OCR SIM" });
     } finally {
       setLoadingOcrSim(false);
     }
@@ -253,18 +267,183 @@ export default function PelatihanMatrixPage() {
         const resReload = await fetch(`/api/matrix?batch_id=${selectedBatchId}`);
         const jsonReload = await resReload.json();
         if (jsonReload.success) setData(jsonReload.data);
+
+        await Swal.fire({
+          icon: "success",
+          title: "Berhasil",
+          text: "Peserta berhasil disimpan.",
+          timer: 2000,
+          showConfirmButton: true,
+        });
       } else {
-        alert('Gagal: ' + result.error);
+        Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal: ' + result.error });
       }
     } catch (err) {
       console.error(err);
-      alert('Terjadi kesalahan saat menyimpan data');
+      Swal.fire({ icon: 'error', title: 'Kesalahan', text: 'Terjadi kesalahan saat menyimpan data' });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const currentBatchInfo = batches.find((b) => String(b.id) === selectedBatchId);
+
+  // Refresh daftar batch (dipakai ulang setelah buat batch baru)
+  const refreshBatches = async () => {
+    try {
+      const res = await fetch('/api/batch');
+      const json = await res.json();
+      if (json.success) {
+        setBatches(json.data);
+        return json.data as TbBatch[];
+      }
+      return [] as TbBatch[];
+    } catch (err) {
+      console.error('Error refresh batch:', err);
+      return [] as TbBatch[];
+    }
+  };
+
+  // Submit Batch (Buat / Edit)
+  const handleSubmitBatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!batchForm.nama.trim()) {
+      Swal.fire({ icon: "warning", title: "Perhatian", text: "Nama batch wajib diisi" });
+      return;
+    }
+    setIsSubmittingBatch(true);
+    try {
+      const res = await fetch(
+        isBatchEditMode ? `/api/batch?id=${selectedBatchId}` : "/api/batch",
+        {
+          method: isBatchEditMode ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(batchForm),
+        }
+      );
+      const result = await res.json();
+      if (result.success) {
+        const updated = await refreshBatches();
+        if (isBatchEditMode) {
+          setIsBatchModalOpen(false);
+          await Swal.fire({
+            icon: "success",
+            title: "Berhasil",
+            text: "Batch berhasil diperbarui.",
+            timer: 2000,
+            showConfirmButton: true,
+          });
+        } else {
+          if (result.data?.id) {
+            setSelectedBatchId(String(result.data.id));
+            setFormValues((prev) => ({ ...prev, batch_id: String(result.data.id) }));
+          } else if (updated.length > 0) {
+            const newest = updated[0];
+            setSelectedBatchId(String(newest.id));
+            setFormValues((prev) => ({ ...prev, batch_id: String(newest.id) }));
+          }
+          await Swal.fire({
+            icon: "success",
+            title: "Berhasil",
+            text: "Batch baru berhasil dibuat.",
+            timer: 2000,
+            showConfirmButton: true,
+          });
+        }
+        setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
+        setIsBatchEditMode(false);
+        setIsBatchModalOpen(false);
+      } else {
+        Swal.fire({
+          icon: "error",
+          title: "Gagal",
+          text: (isBatchEditMode ? "Gagal memperbarui batch: " : "Gagal membuat batch: ") +
+            (result.error || "unknown error"),
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      Swal.fire({
+        icon: "error",
+        title: "Kesalahan",
+        text: isBatchEditMode
+          ? "Terjadi kesalahan saat memperbarui batch"
+          : "Terjadi kesalahan saat membuat batch",
+      });
+    } finally {
+      setIsSubmittingBatch(false);
+    }
+  };
+
+  // Buka Modal Edit Batch
+  const handleOpenEditBatch = () => {
+    if (!currentBatchInfo) return;
+    setBatchForm({
+      nama: currentBatchInfo.nama || "",
+      tanggal_mulai: currentBatchInfo.tanggal_mulai || "",
+      tanggal_selesai: currentBatchInfo.tanggal_selesai || "",
+      lokasi: currentBatchInfo.lokasi || "",
+    });
+    setIsBatchEditMode(true);
+    setIsBatchModalOpen(true);
+  };
+
+  // Hapus Batch
+  const handleDeleteBatch = async () => {
+    if (!currentBatchInfo) return;
+
+    const confirm = await Swal.fire({
+      title: "Hapus Batch?",
+      text: `Batch "${currentBatchInfo.nama}" dan seluruh peserta di dalamnya akan dihapus permanen.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#3085d6",
+      confirmButtonText: "Ya, hapus!",
+      cancelButtonText: "Batal",
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const res = await fetch(`/api/batch?id=${currentBatchInfo.id}`, {
+        method: "DELETE",
+      });
+      const result = await res.json();
+      if (result.success) {
+        const updated = await refreshBatches();
+        if (updated.length > 0) {
+          const first = updated[0];
+          setSelectedBatchId(String(first.id));
+          setFormValues((prev) => ({ ...prev, batch_id: String(first.id) }));
+        } else {
+          setSelectedBatchId("");
+          setFormValues((prev) => ({ ...prev, batch_id: "" }));
+        }
+        setData([]);
+        await Swal.fire({
+          icon: "success",
+          title: "Terhapus!",
+          text: result.message || "Batch berhasil dihapus.",
+          timer: 2000,
+          showConfirmButton: true,
+        });
+      } else {
+        Swal.fire({
+          icon: "error",
+          title: "Gagal",
+          text: "Gagal menghapus batch: " + (result.error || "unknown error"),
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      Swal.fire({
+        icon: "error",
+        title: "Kesalahan",
+        text: "Terjadi kesalahan saat menghapus batch",
+      });
+    }
+  };
 
   const filteredData = data.filter((item) => {
     const q = search.toLowerCase();
@@ -319,6 +498,36 @@ export default function PelatihanMatrixPage() {
                   ))
                 )}
               </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBatchEditMode(false);
+                  setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
+                  setIsBatchModalOpen(true);
+                }}
+                title="Buat Batch Baru"
+                className="ml-1 p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenEditBatch}
+                disabled={!selectedBatchId}
+                title="Edit Batch Saat Ini"
+                className="p-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-sm disabled:bg-amber-300 disabled:cursor-not-allowed"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteBatch}
+                disabled={!selectedBatchId}
+                title="Hapus Batch Saat Ini"
+                className="p-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors shadow-sm disabled:bg-red-300 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             <button
@@ -450,6 +659,111 @@ export default function PelatihanMatrixPage() {
           </table>
         </div>
       </div>
+
+      {/* MODAL BATCH BARU */}
+      {isBatchModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-100 p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">
+                  {isBatchEditMode ? "Edit Batch" : "Buat Batch Baru"}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {isBatchEditMode
+                    ? "Perbarui informasi batch pelatihan."
+                    : "Tambahkan batch pelatihan ke dalam sistem."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBatchModalOpen(false);
+                  setIsBatchEditMode(false);
+                  setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitBatch} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Nama Batch *</label>
+                <input
+                  type="text"
+                  required
+                  value={batchForm.nama}
+                  onChange={(e) => setBatchForm({ ...batchForm, nama: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-semibold"
+                  placeholder="Contoh: Batch XII - Surabaya"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Tanggal Mulai</label>
+                  <input
+                    type="date"
+                    value={batchForm.tanggal_mulai}
+                    onChange={(e) => setBatchForm({ ...batchForm, tanggal_mulai: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Tanggal Selesai</label>
+                  <input
+                    type="date"
+                    value={batchForm.tanggal_selesai}
+                    onChange={(e) => setBatchForm({ ...batchForm, tanggal_selesai: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Lokasi</label>
+                <input
+                  type="text"
+                  value={batchForm.lokasi}
+                  onChange={(e) => setBatchForm({ ...batchForm, lokasi: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+                  placeholder="Lokasi / Site pelatihan"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBatchModalOpen(false);
+                    setIsBatchEditMode(false);
+                    setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
+                  }}
+                  className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingBatch}
+                  className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium shadow-sm disabled:bg-indigo-400"
+                >
+                  {isSubmittingBatch ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>{isBatchEditMode ? "Simpan Perubahan" : "Simpan Batch"}</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL FORM INPUT PESERTA */}
       {isModalOpen && (
