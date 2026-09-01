@@ -194,6 +194,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       roles: ["ADMIN", "PELATIHAN"],
       items: [
         { title: "Matrix", url: "/dashboard/pelatihan/matrix" },
+        { title: "Batch", url: "/dashboard/pelatihan/batch" },
        
       ]
     },
