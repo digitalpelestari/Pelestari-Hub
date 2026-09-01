@@ -14,6 +14,7 @@ import {
   CalendarDays,
   UserCheck,
   UserX,
+  Upload,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -57,6 +58,10 @@ import {
   StatusKehadiranData,
 } from "@/app/actions/status-kehadiran"
 import { getKaryawanListAction, KaryawanData } from "@/app/actions/karyawan"
+import {
+  importAttendance,
+  ImportAttendanceResult,
+} from "@/app/actions/import-absensi"
 import { swal } from "@/lib/sweetalert"
 
 const initialForm: CreateAbsensiHarianPayload & {
@@ -128,6 +133,14 @@ export default function AbsensiPage() {
   const [existingBatchAbsensi, setExistingBatchAbsensi] = useState<
     AbsensiHarianData[]
   >([])
+
+  // --- Import dari mesin absensi (.xls) ---
+  const [isImportOpen, setIsImportOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importSubmitting, setImportSubmitting] = useState(false)
+  const [importResult, setImportResult] =
+    useState<ImportAttendanceResult | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
 
   const getDefaultFilterRange = () => {
     const today = new Date()
@@ -488,6 +501,45 @@ export default function AbsensiPage() {
     }
   }
 
+  // --- Handler import dari file mesin absensi (.xls / .xlsx) ---
+  const handleOpenImport = () => {
+    setImportFile(null)
+    setImportResult(null)
+    setImportError(null)
+    setIsImportOpen(true)
+  }
+
+  const handleImportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!importFile) return
+
+    setImportSubmitting(true)
+    setImportError(null)
+    setImportResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", importFile)
+      const res = await importAttendance(formData)
+      setImportResult(res)
+
+      if (res.tidak_cocok > 0) {
+        swal.warning(
+          `${res.berhasil_disimpan} data tersimpan, ${res.tidak_cocok} nama tidak cocok`
+        )
+      } else {
+        swal.success(`${res.berhasil_disimpan} data absensi berhasil diimpor`)
+      }
+
+      await fetchData()
+    } catch (err: any) {
+      setImportError(err.message || "Gagal memproses file")
+      swal.error(err.message || "Gagal memproses file")
+    } finally {
+      setImportSubmitting(false)
+    }
+  }
+
   const totalHadir = filteredData.filter(
     (a) => a.nama_status === "Hadir"
   ).length
@@ -512,12 +564,21 @@ export default function AbsensiPage() {
             database.
           </p>
         </div>
-        <Button
-          onClick={() => handleOpenForm()}
-          className="h-9 rounded-sm bg-black px-4 text-xs font-semibold text-white shadow-sm hover:bg-zinc-800"
-        >
-          <Plus className="mr-1.5 h-4 w-4" /> Tambah Absensi
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleOpenImport}
+            variant="outline"
+            className="h-9 rounded-sm border-zinc-300 px-4 text-xs font-semibold text-zinc-700 shadow-sm hover:bg-zinc-100"
+          >
+            <Upload className="mr-1.5 h-4 w-4" /> Import dari Mesin Absensi
+          </Button>
+          <Button
+            onClick={() => handleOpenForm()}
+            className="h-9 rounded-sm bg-black px-4 text-xs font-semibold text-white shadow-sm hover:bg-zinc-800"
+          >
+            <Plus className="mr-1.5 h-4 w-4" /> Tambah Absensi
+          </Button>
+        </div>
       </div>
 
       {/* FILTER TANGGAL */}
@@ -1130,6 +1191,136 @@ export default function AbsensiPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL IMPORT DARI MESIN ABSENSI */}
+      <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+        <DialogContent className="w-full max-w-lg rounded-sm border-none shadow-2xl [&>button]:hidden">
+          <DialogHeader className="-mx-6 -mt-6 mb-4 flex flex-row items-center justify-between bg-zinc-900 px-6 py-3 text-white">
+            <DialogTitle className="text-xs font-bold tracking-wider uppercase">
+              Import dari Mesin Absensi
+            </DialogTitle>
+            <button
+              type="button"
+              onClick={() => setIsImportOpen(false)}
+              className="text-zinc-400 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </DialogHeader>
+
+          <form onSubmit={handleImportSubmit} className="space-y-4 px-1">
+            <div className="space-y-1">
+              <Label className="text-[11px] font-bold uppercase">
+                File Laporan (.xls / .xlsx)
+              </Label>
+              <Input
+                type="file"
+                accept=".xls,.xlsx"
+                required
+                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                className="h-9 rounded-sm border-zinc-300 text-xs file:mr-3 file:rounded-sm file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+              />
+              <p className="text-[11px] text-zinc-400">
+                Semua sheet dan setiap karyawan di dalamnya diproses otomatis.
+              </p>
+            </div>
+
+            {importError && (
+              <div className="rounded-sm border border-red-200 bg-red-50 p-3">
+                <p className="text-xs font-bold text-red-800">
+                  File gagal diproses
+                </p>
+                <p className="mt-1 text-xs text-red-700">{importError}</p>
+              </div>
+            )}
+
+            {importResult && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-sm border border-zinc-200 p-2 text-center">
+                    <p className="text-[10px] text-zinc-400 uppercase">
+                      Dibaca
+                    </p>
+                    <p className="text-lg font-bold text-zinc-900">
+                      {importResult.total_baris_dibaca}
+                    </p>
+                  </div>
+                  <div className="rounded-sm border border-emerald-200 bg-emerald-50 p-2 text-center">
+                    <p className="text-[10px] text-emerald-600 uppercase">
+                      Tersimpan
+                    </p>
+                    <p className="text-lg font-bold text-emerald-700">
+                      {importResult.berhasil_disimpan}
+                    </p>
+                  </div>
+                  <div
+                    className={`rounded-sm border p-2 text-center ${
+                      importResult.tidak_cocok > 0
+                        ? "border-amber-200 bg-amber-50"
+                        : "border-zinc-200"
+                    }`}
+                  >
+                    <p
+                      className={`text-[10px] uppercase ${
+                        importResult.tidak_cocok > 0
+                          ? "text-amber-600"
+                          : "text-zinc-400"
+                      }`}
+                    >
+                      Tidak Cocok
+                    </p>
+                    <p
+                      className={`text-lg font-bold ${
+                        importResult.tidak_cocok > 0
+                          ? "text-amber-700"
+                          : "text-zinc-900"
+                      }`}
+                    >
+                      {importResult.tidak_cocok}
+                    </p>
+                  </div>
+                </div>
+
+                {importResult.tidak_cocok > 0 && (
+                  <div className="rounded-sm border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs font-bold text-amber-900">
+                      Nama berikut tidak ditemukan di data karyawan:
+                    </p>
+                    <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto divide-y divide-amber-200 text-xs text-amber-900">
+                      {importResult.detail_tidak_cocok.map((row, i) => (
+                        <li key={i} className="flex justify-between py-1">
+                          <span>{row.nama_di_file}</span>
+                          <span className="font-mono text-amber-700">
+                            {row.tanggal}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 border-t border-zinc-100 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsImportOpen(false)}
+                className="h-9 rounded-sm border-zinc-300 text-xs"
+              >
+                Tutup
+              </Button>
+              <Button
+                type="submit"
+                disabled={importSubmitting || !importFile}
+                className="h-9 rounded-sm bg-blue-600 text-xs font-bold text-white hover:bg-blue-700"
+              >
+                {importSubmitting ? "Memproses..." : "Import Sekarang"}
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
