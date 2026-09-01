@@ -1,23 +1,27 @@
 'use client';
 
 import React, { useState, useEffect, useId } from 'react';
+import Swal from 'sweetalert2';
 import { createWorker } from 'tesseract.js';
-import { 
-  Search, 
-  Eye, 
-  Loader2, 
-  Plus, 
-  Building2, 
-  Truck, 
-  MapPin, 
-  X, 
-  CreditCard, 
-  User, 
-  Image as ImageIcon, 
-  Layers, 
+import { uploadFileToR2Action } from '@/app/actions/upload-r2';
+import {
+  Search,
+  Eye,
+  Loader2,
+  Plus,
+  Building2,
+  Truck,
+  MapPin,
+  X,
+  CreditCard,
+  User,
+  Image as ImageIcon,
+  Layers,
   FileText,
   Calendar,
-  FolderPlus
+  FolderPlus,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 
 export interface TbBatch {
@@ -63,6 +67,7 @@ export default function PelatihanMatrixPage() {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
+  const [isBatchEditMode, setIsBatchEditMode] = useState(false);
 
   // Form Batch State
   const [batchForm, setBatchForm] = useState({
@@ -98,25 +103,34 @@ export default function PelatihanMatrixPage() {
   const [loadingOcrKtp, setLoadingOcrKtp] = useState(false);
   const [loadingOcrSim, setLoadingOcrSim] = useState(false);
 
+  // State Edit & Delete Peserta
+  const [isPesertaEditMode, setIsPesertaEditMode] = useState(false);
+  const [editingPesertaId, setEditingPesertaId] = useState<number | null>(null);
+  const [existingFoto, setExistingFoto] = useState({ ktp: '', sim: '', pasFoto: '' });
+
   const ktpInputId = useId();
   const simInputId = useId();
   const photoInputId = useId();
 
   // 1. Fetch Batches
-  const fetchBatches = async () => {
+  const fetchBatches = async (): Promise<TbBatch[]> => {
     try {
       setLoadingBatch(true);
       const res = await fetch('/api/batch');
       const json = await res.json();
-      if (json.success && json.data.length > 0) {
-        setBatches(json.data);
-        if (!selectedBatchId) {
-          setSelectedBatchId(String(json.data[0].id));
-          setFormValues((prev) => ({ ...prev, batch_id: String(json.data[0].id) }));
+      if (json.success) {
+        const data = (json.data || []) as TbBatch[];
+        setBatches(data);
+        if (data.length > 0 && !selectedBatchId) {
+          setSelectedBatchId(String(data[0].id));
+          setFormValues((prev) => ({ ...prev, batch_id: String(data[0].id) }));
         }
+        return data;
       }
+      return [];
     } catch (err) {
       console.error('Error fetch batch:', err);
+      return [];
     } finally {
       setLoadingBatch(false);
     }
@@ -312,89 +326,286 @@ export default function PelatihanMatrixPage() {
   };
 
   // 5. Submit Tambah Batch Baru
-  const handleCreateBatch = async (e: React.FormEvent) => {
+  // Submit batch (Buat / Edit)
+  const handleSubmitBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmittingBatch(true);
     try {
-      const res = await fetch('/api/batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const url = isBatchEditMode ? `/api/batch?id=${selectedBatchId}` : "/api/batch";
+      const method = isBatchEditMode ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(batchForm),
       });
       const result = await res.json();
       if (result.success) {
         setIsBatchModalOpen(false);
-        setBatchForm({ nama: '', tanggal_mulai: '', tanggal_selesai: '', lokasi: '' });
+        setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
+        setIsBatchEditMode(false);
         await fetchBatches();
-        if (result.insertId) {
+        if (isBatchEditMode) {
+          // tetap di batch yang diedit
+        } else if (result.insertId) {
           setSelectedBatchId(String(result.insertId));
+          setFormValues((prev) => ({ ...prev, batch_id: String(result.insertId) }));
+        } else if (result.data?.id) {
+          setSelectedBatchId(String(result.data.id));
+          setFormValues((prev) => ({ ...prev, batch_id: String(result.data.id) }));
         }
       } else {
-        alert('Gagal membuat batch: ' + result.error);
+        alert(
+          (isBatchEditMode ? "Gagal memperbarui batch: " : "Gagal membuat batch: ") +
+            result.error
+        );
       }
     } catch (err) {
       console.error(err);
-      alert('Terjadi kesalahan saat menambah batch');
+      alert(
+        isBatchEditMode
+          ? "Terjadi kesalahan saat memperbarui batch"
+          : "Terjadi kesalahan saat menambah batch"
+      );
     } finally {
       setIsSubmittingBatch(false);
     }
   };
 
-  // 6. Submit Peserta
+  // Buka modal edit batch (prefill dari currentBatchInfo)
+  const handleOpenEditBatch = () => {
+    if (!currentBatchInfo) return;
+    setBatchForm({
+      nama: currentBatchInfo.nama || "",
+      tanggal_mulai: currentBatchInfo.tanggal_mulai || "",
+      tanggal_selesai: currentBatchInfo.tanggal_selesai || "",
+      lokasi: currentBatchInfo.lokasi || "",
+    });
+    setIsBatchEditMode(true);
+    setIsBatchModalOpen(true);
+  };
+
+  // Hapus batch (cascade peserta)
+  const handleDeleteBatch = async () => {
+    if (!currentBatchInfo) return;
+
+    const confirm = await Swal.fire({
+      title: "Hapus Batch?",
+      text: `Batch "${currentBatchInfo.nama}" dan seluruh peserta di dalamnya akan dihapus permanen.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#3085d6",
+      confirmButtonText: "Ya, hapus!",
+      cancelButtonText: "Batal",
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const res = await fetch(`/api/batch?id=${currentBatchInfo.id}`, {
+        method: "DELETE",
+      });
+      const result = await res.json();
+      if (result.success) {
+        const updated = await fetchBatches();
+        if (updated.length > 0) {
+          const first = updated[0];
+          setSelectedBatchId(String(first.id));
+          setFormValues((prev) => ({ ...prev, batch_id: String(first.id) }));
+        } else {
+          setSelectedBatchId("");
+          setFormValues((prev) => ({ ...prev, batch_id: "" }));
+        }
+        setData([]);
+        await Swal.fire({
+          icon: "success",
+          title: "Terhapus!",
+          text: result.message || "Batch berhasil dihapus.",
+          timer: 2000,
+          showConfirmButton: true,
+        });
+      } else {
+        Swal.fire({
+          icon: "error",
+          title: "Gagal",
+          text: "Gagal menghapus batch: " + (result.error || "unknown error"),
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      Swal.fire({
+        icon: "error",
+        title: "Kesalahan",
+        text: "Terjadi kesalahan saat menghapus batch",
+      });
+    }
+  };
+
+  // 6. Submit Peserta (Buat / Edit dengan upload R2)
   const handleSubmitPeserta = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const payload = new FormData();
-    payload.append('batch_id', formValues.batch_id || selectedBatchId);
-    payload.append('nama', formValues.nama);
-    payload.append('tempat_lahir', formValues.tempat_lahir);
-    payload.append('tanggal_lahir', formValues.tanggal_lahir);
-    payload.append('nik', formValues.nik);
-    payload.append('nomor_sim', formValues.nomor_sim);
-    payload.append('jenis_sim', formValues.jenis_sim);
-    payload.append('perusahaan', formValues.perusahaan);
-    payload.append('lokasi', formValues.lokasi);
-    payload.append('jenis_muatan', formValues.jenis_muatan);
-
-    if (fileKtp) payload.append('foto_ktp', fileKtp);
-    if (fileSim) payload.append('foto_sim', fileSim);
-    if (filePasFoto) payload.append('pas_foto', filePasFoto);
-
     try {
-      const res = await fetch('/api/matrix', { method: 'POST', body: payload });
+      // Upload foto baru ke R2 (jika ada), kalau tidak → pakai existing
+      let fotoKtpUrl = existingFoto.ktp;
+      let fotoSimUrl = existingFoto.sim;
+      let pasFotoUrl = existingFoto.pasFoto;
+
+      if (fileKtp) {
+        const fd = new FormData();
+        fd.append('file', fileKtp);
+        fd.append('prefix', 'matrix');
+        const r = await uploadFileToR2Action(fd);
+        if (!r.success || !r.url) throw new Error(r.message || 'Gagal upload KTP');
+        fotoKtpUrl = r.url;
+      }
+      if (fileSim) {
+        const fd = new FormData();
+        fd.append('file', fileSim);
+        fd.append('prefix', 'matrix');
+        const r = await uploadFileToR2Action(fd);
+        if (!r.success || !r.url) throw new Error(r.message || 'Gagal upload SIM');
+        fotoSimUrl = r.url;
+      }
+      if (filePasFoto) {
+        const fd = new FormData();
+        fd.append('file', filePasFoto);
+        fd.append('prefix', 'matrix');
+        const r = await uploadFileToR2Action(fd);
+        if (!r.success || !r.url) throw new Error(r.message || 'Gagal upload Pas Foto');
+        pasFotoUrl = r.url;
+      }
+
+      const payload = new FormData();
+      payload.append('batch_id', formValues.batch_id || selectedBatchId);
+      payload.append('nama', formValues.nama);
+      payload.append('tempat_lahir', formValues.tempat_lahir);
+      payload.append('tanggal_lahir', formValues.tanggal_lahir);
+      payload.append('nik', formValues.nik);
+      payload.append('nomor_sim', formValues.nomor_sim);
+      payload.append('jenis_sim', formValues.jenis_sim);
+      payload.append('perusahaan', formValues.perusahaan);
+      payload.append('lokasi', formValues.lokasi);
+      payload.append('jenis_muatan', formValues.jenis_muatan);
+      payload.append('foto_ktp', fotoKtpUrl);
+      payload.append('foto_sim', fotoSimUrl);
+      payload.append('pas_foto', pasFotoUrl);
+
+      const url = isPesertaEditMode && editingPesertaId
+        ? `/api/matrix?id=${editingPesertaId}`
+        : '/api/matrix';
+      const method = isPesertaEditMode ? 'PATCH' : 'POST';
+
+      const res = await fetch(url, { method, body: payload });
       const result = await res.json();
 
       if (result.success) {
         setIsModalOpen(false);
-        setFormValues({
-          batch_id: selectedBatchId,
-          nama: '',
-          tempat_lahir: '',
-          tanggal_lahir: '',
-          nik: '',
-          nomor_sim: '',
-          jenis_sim: 'B II UMUM',
-          perusahaan: '',
-          lokasi: '',
-          jenis_muatan: '',
-        });
-        setFileKtp(null);
-        setFileSim(null);
-        setFilePasFoto(null);
-        setPreviewKtp('');
-        setPreviewSim('');
-        setPreviewPasFoto('');
-
+        resetPesertaForm();
         fetchMatrixData(selectedBatchId);
+        Swal.fire({
+          icon: 'success',
+          title: 'Berhasil',
+          text: isPesertaEditMode ? 'Peserta berhasil diperbarui.' : 'Peserta berhasil disimpan.',
+          timer: 2000,
+          showConfirmButton: true,
+        });
       } else {
-        alert('Gagal: ' + result.error);
+        Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal: ' + result.error });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Terjadi kesalahan saat menyimpan data peserta');
+      Swal.fire({ icon: 'error', title: 'Kesalahan', text: err.message || 'Terjadi kesalahan saat menyimpan data peserta' });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const resetPesertaForm = () => {
+    setFormValues({
+      batch_id: selectedBatchId,
+      nama: '',
+      tempat_lahir: '',
+      tanggal_lahir: '',
+      nik: '',
+      nomor_sim: '',
+      jenis_sim: 'B II UMUM',
+      perusahaan: '',
+      lokasi: '',
+      jenis_muatan: '',
+    });
+    setFileKtp(null);
+    setFileSim(null);
+    setFilePasFoto(null);
+    setPreviewKtp('');
+    setPreviewSim('');
+    setPreviewPasFoto('');
+    setIsPesertaEditMode(false);
+    setEditingPesertaId(null);
+    setExistingFoto({ ktp: '', sim: '', pasFoto: '' });
+  };
+
+  const handleOpenEditPeserta = (row: TbMatrix) => {
+    setFormValues({
+      batch_id: row.batch_id ? String(row.batch_id) : selectedBatchId,
+      nama: row.nama || '',
+      tempat_lahir: row.tempat_lahir || '',
+      tanggal_lahir: row.tanggal_lahir ? row.tanggal_lahir.substring(0, 10) : '',
+      nik: row.nik || '',
+      nomor_sim: row.nomor_sim || '',
+      jenis_sim: row.jenis_sim || 'B II UMUM',
+      perusahaan: row.perusahaan || '',
+      lokasi: row.lokasi || '',
+      jenis_muatan: row.jenis_muatan || '',
+    });
+    setExistingFoto({
+      ktp: row.foto_ktp || '',
+      sim: row.foto_sim || '',
+      pasFoto: row.pas_foto || '',
+    });
+    setPreviewKtp(row.foto_ktp || '');
+    setPreviewSim(row.foto_sim || '');
+    setPreviewPasFoto(row.pas_foto || '');
+    setFileKtp(null);
+    setFileSim(null);
+    setFilePasFoto(null);
+    setEditingPesertaId(row.id);
+    setIsPesertaEditMode(true);
+    setIsModalOpen(true);
+  };
+
+  const handleDeletePeserta = async (row: TbMatrix) => {
+    const confirm = await Swal.fire({
+      title: 'Hapus Peserta?',
+      text: `Peserta "${row.nama}" akan dihapus permanen dari sistem.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Ya, hapus!',
+      cancelButtonText: 'Batal',
+    });
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const res = await fetch(`/api/matrix?id=${row.id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (result.success) {
+        fetchMatrixData(selectedBatchId);
+        Swal.fire({
+          icon: 'success',
+          title: 'Terhapus!',
+          text: result.message || 'Peserta berhasil dihapus.',
+          timer: 2000,
+          showConfirmButton: true,
+        });
+      } else {
+        Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal menghapus: ' + (result.error || 'unknown') });
+      }
+    } catch (err: any) {
+      console.error(err);
+      Swal.fire({ icon: 'error', title: 'Kesalahan', text: err.message || 'Terjadi kesalahan saat menghapus peserta' });
     }
   };
 
@@ -430,34 +641,13 @@ export default function PelatihanMatrixPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-            {/* Batch Selector */}
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <select
-                aria-label="Pilih Batch Pelatihan"
-                value={selectedBatchId}
-                onChange={(e) => {
-                  setSelectedBatchId(e.target.value);
-                  setFormValues((prev) => ({ ...prev, batch_id: e.target.value }));
-                }}
-                disabled={loadingBatch || batches.length === 0}
-                className="bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
-              >
-                {batches.length === 0 ? (
-                  <option value="">Belum ada batch</option>
-                ) : (
-                  batches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.nama} {b.lokasi ? `(${b.lokasi})` : ''}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-
             {/* Tombol Tambah Batch */}
             <button
-              onClick={() => setIsBatchModalOpen(true)}
+              onClick={() => {
+                setIsBatchEditMode(false);
+                setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
+                setIsBatchModalOpen(true);
+              }}
               className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-sm font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-all shadow-sm"
             >
               <FolderPlus className="w-4 h-4 text-indigo-600" />
@@ -490,18 +680,45 @@ export default function PelatihanMatrixPage() {
 
       {/* Tabel Matrix */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-          <div className="relative w-80">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Cari Nama, NIK, SIM, Perusahaan..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-            />
+        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Search */}
+            <div className="relative w-80">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Cari Nama, NIK, SIM, Perusahaan..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+            {/* Batch Selector (dipindahkan ke sini) */}
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+              <Calendar className="w-4 h-4 text-slate-400" />
+              <select
+                aria-label="Pilih Batch Pelatihan"
+                value={selectedBatchId}
+                onChange={(e) => {
+                  setSelectedBatchId(e.target.value);
+                  setFormValues((prev) => ({ ...prev, batch_id: e.target.value }));
+                }}
+                disabled={loadingBatch || batches.length === 0}
+                className="bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+              >
+                {batches.length === 0 ? (
+                  <option value="">Belum ada batch</option>
+                ) : (
+                  batches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nama} {b.lokasi ? `(${b.lokasi})` : ''}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
           </div>
-          <span className="text-xs text-slate-500 font-medium">
+          <span className="text-xs text-slate-500 font-medium whitespace-nowrap">
             Total di batch ini: {filteredData.length} Peserta
           </span>
         </div>
@@ -579,13 +796,29 @@ export default function PelatihanMatrixPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3.5 text-center">
-                      <button
-                        onClick={() => setSelectedDetail(row)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                        title="Lihat Detail & Berkas"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => setSelectedDetail(row)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                          title="Lihat Detail & Berkas"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenEditPeserta(row)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                          title="Edit Peserta"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePeserta(row)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Hapus Peserta"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -600,13 +833,22 @@ export default function PelatihanMatrixPage() {
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-800">Tambah Batch Pelatihan</h3>
-              <button onClick={() => setIsBatchModalOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+              <h3 className="text-base font-bold text-slate-800">
+                {isBatchEditMode ? "Edit Batch Pelatihan" : "Tambah Batch Pelatihan"}
+              </h3>
+              <button
+                onClick={() => {
+                  setIsBatchModalOpen(false);
+                  setIsBatchEditMode(false);
+                  setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateBatch} className="space-y-4">
+            <form onSubmit={handleSubmitBatch} className="space-y-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 block mb-1">Nama Batch *</label>
                 <input
@@ -654,7 +896,11 @@ export default function PelatihanMatrixPage() {
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsBatchModalOpen(false)}
+                  onClick={() => {
+                    setIsBatchModalOpen(false);
+                    setIsBatchEditMode(false);
+                    setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
+                  }}
                   className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50"
                 >
                   Batal
@@ -664,7 +910,7 @@ export default function PelatihanMatrixPage() {
                   disabled={isSubmittingBatch}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium shadow-sm disabled:bg-indigo-400"
                 >
-                  {isSubmittingBatch ? 'Menyimpan...' : 'Simpan Batch'}
+                  {isSubmittingBatch ? 'Menyimpan...' : (isBatchEditMode ? 'Simpan Perubahan' : 'Simpan Batch')}
                 </button>
               </div>
             </form>
@@ -679,11 +925,11 @@ export default function PelatihanMatrixPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
                 <h3 className="text-lg font-bold text-slate-800">
-                  Tambah Peserta ({currentBatchInfo?.nama || 'Batch Pelatihan'})
+                  {isPesertaEditMode ? 'Edit Peserta' : 'Tambah Peserta'} ({currentBatchInfo?.nama || 'Batch Pelatihan'})
                 </h3>
                 <p className="text-xs text-slate-500">Ekstraksi otomatis KTP & SIM via OCR.</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+              <button onClick={() => { setIsModalOpen(false); resetPesertaForm(); }} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -709,63 +955,143 @@ export default function PelatihanMatrixPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Upload KTP */}
                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 flex flex-col items-center justify-center text-center">
-                  <input type="file" id={ktpInputId} accept="image/*" className="hidden" onChange={handleKtpUpload} />
-                  <label htmlFor={ktpInputId} className="cursor-pointer w-full flex flex-col items-center">
-                    <CreditCard className="w-8 h-8 text-indigo-500 mb-2" />
-                    <span className="text-xs font-semibold text-slate-700">Upload KTP</span>
-                    <span className="text-[10px] text-slate-400 mt-1">OCR: NIK, Nama, TTL</span>
-                    {loadingOcrKtp && (
-                      <div className="flex items-center gap-1.5 mt-2 text-xs text-indigo-600 font-medium">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Membaca KTP...
+                  {previewKtp ? (
+                    <div className="w-full flex flex-col items-center">
+                      <div className="relative w-full">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={previewKtp}
+                          alt="Preview KTP"
+                          className="w-full h-36 object-cover rounded-lg border border-slate-200"
+                        />
+                        {loadingOcrKtp && (
+                          <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-lg">
+                            <div className="flex items-center gap-1.5 text-xs text-indigo-600 font-semibold">
+                              <Loader2 className="w-4 h-4 animate-spin" /> Membaca KTP...
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {previewKtp && !loadingOcrKtp && (
-                      <span className="text-xs text-emerald-600 font-medium mt-2">✓ KTP Terunggah</span>
-                    )}
-                  </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFileKtp(null);
+                          setPreviewKtp("");
+                        }}
+                        className="mt-2 text-xs text-red-600 hover:underline font-medium"
+                      >
+                        Hapus / Ganti
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <input type="file" id={ktpInputId} accept="image/*" className="hidden" onChange={handleKtpUpload} />
+                      <label htmlFor={ktpInputId} className="cursor-pointer w-full flex flex-col items-center">
+                        <CreditCard className="w-8 h-8 text-indigo-500 mb-2" />
+                        <span className="text-xs font-semibold text-slate-700">Upload KTP</span>
+                        <span className="text-[10px] text-slate-400 mt-1">OCR: NIK, Nama, TTL</span>
+                        {loadingOcrKtp && (
+                          <div className="flex items-center gap-1.5 mt-2 text-xs text-indigo-600 font-medium">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Membaca KTP...
+                          </div>
+                        )}
+                      </label>
+                    </>
+                  )}
                 </div>
 
                 {/* Upload SIM */}
                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 flex flex-col items-center justify-center text-center">
-                  <input type="file" id={simInputId} accept="image/*" className="hidden" onChange={handleSimUpload} />
-                  <label htmlFor={simInputId} className="cursor-pointer w-full flex flex-col items-center">
-                    <CreditCard className="w-8 h-8 text-amber-500 mb-2" />
-                    <span className="text-xs font-semibold text-slate-700">Upload SIM</span>
-                    <span className="text-[10px] text-slate-400 mt-1">OCR: No. SIM & Jenis SIM</span>
-                    {loadingOcrSim && (
-                      <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-600 font-medium">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Membaca SIM...
+                  {previewSim ? (
+                    <div className="w-full flex flex-col items-center">
+                      <div className="relative w-full">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={previewSim}
+                          alt="Preview SIM"
+                          className="w-full h-36 object-cover rounded-lg border border-slate-200"
+                        />
+                        {loadingOcrSim && (
+                          <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-lg">
+                            <div className="flex items-center gap-1.5 text-xs text-amber-600 font-semibold">
+                              <Loader2 className="w-4 h-4 animate-spin" /> Membaca SIM...
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {previewSim && !loadingOcrSim && (
-                      <span className="text-xs text-emerald-600 font-medium mt-2">✓ SIM Terunggah</span>
-                    )}
-                  </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFileSim(null);
+                          setPreviewSim("");
+                        }}
+                        className="mt-2 text-xs text-red-600 hover:underline font-medium"
+                      >
+                        Hapus / Ganti
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <input type="file" id={simInputId} accept="image/*" className="hidden" onChange={handleSimUpload} />
+                      <label htmlFor={simInputId} className="cursor-pointer w-full flex flex-col items-center">
+                        <CreditCard className="w-8 h-8 text-amber-500 mb-2" />
+                        <span className="text-xs font-semibold text-slate-700">Upload SIM</span>
+                        <span className="text-[10px] text-slate-400 mt-1">OCR: No. SIM & Jenis SIM</span>
+                        {loadingOcrSim && (
+                          <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-600 font-medium">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Membaca SIM...
+                          </div>
+                        )}
+                      </label>
+                    </>
+                  )}
                 </div>
 
                 {/* Upload Pas Foto */}
                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 flex flex-col items-center justify-center text-center">
-                  <input
-                    type="file"
-                    id={photoInputId}
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setFilePasFoto(file);
-                        setPreviewPasFoto(URL.createObjectURL(file));
-                      }
-                    }}
-                  />
-                  <label htmlFor={photoInputId} className="cursor-pointer w-full flex flex-col items-center">
-                    <ImageIcon className="w-8 h-8 text-sky-500 mb-2" />
-                    <span className="text-xs font-semibold text-slate-700">Upload Pas Foto</span>
-                    <span className="text-[10px] text-slate-400 mt-1">Foto formal peserta</span>
-                    {previewPasFoto && (
-                      <span className="text-xs text-emerald-600 font-medium mt-2">✓ Foto Terpilih</span>
-                    )}
-                  </label>
+                  {previewPasFoto ? (
+                    <div className="w-full flex flex-col items-center">
+                      <div className="relative w-full">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={previewPasFoto}
+                          alt="Preview Pas Foto"
+                          className="w-full h-36 object-cover rounded-lg border border-slate-200"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilePasFoto(null);
+                          setPreviewPasFoto("");
+                        }}
+                        className="mt-2 text-xs text-red-600 hover:underline font-medium"
+                      >
+                        Hapus / Ganti
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="file"
+                        id={photoInputId}
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setFilePasFoto(file);
+                            setPreviewPasFoto(URL.createObjectURL(file));
+                          }
+                        }}
+                      />
+                      <label htmlFor={photoInputId} className="cursor-pointer w-full flex flex-col items-center">
+                        <ImageIcon className="w-8 h-8 text-sky-500 mb-2" />
+                        <span className="text-xs font-semibold text-slate-700">Upload Pas Foto</span>
+                        <span className="text-[10px] text-slate-400 mt-1">Foto formal peserta</span>
+                      </label>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -879,7 +1205,7 @@ export default function PelatihanMatrixPage() {
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => { setIsModalOpen(false); resetPesertaForm(); }}
                   className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50"
                 >
                   Batal
@@ -892,10 +1218,10 @@ export default function PelatihanMatrixPage() {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Menyimpan ke Database...</span>
+                      <span>Menyimpan...</span>
                     </>
                   ) : (
-                    <span>Simpan ke Batch</span>
+                    <span>{isPesertaEditMode ? 'Simpan Perubahan' : 'Simpan ke Batch'}</span>
                   )}
                 </button>
               </div>
