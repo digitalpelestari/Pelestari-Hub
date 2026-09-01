@@ -1,25 +1,24 @@
 'use client';
 
-import React, { useState, useEffect, useId } from "react";
-import Swal from "sweetalert2";
-import {
-  Search,
-  Eye,
-  Loader2,
-  Plus,
-  Building2,
-  Truck,
-  MapPin,
-  X,
-  CreditCard,
-  User,
-  Image as ImageIcon,
-  Layers,
+import React, { useState, useEffect, useId } from 'react';
+import { createWorker } from 'tesseract.js';
+import { 
+  Search, 
+  Eye, 
+  Loader2, 
+  Plus, 
+  Building2, 
+  Truck, 
+  MapPin, 
+  X, 
+  CreditCard, 
+  User, 
+  Image as ImageIcon, 
+  Layers, 
   FileText,
   Calendar,
-  Pencil,
-  Trash2,
-} from "lucide-react";
+  FolderPlus
+} from 'lucide-react';
 
 export interface TbBatch {
   id: number;
@@ -56,11 +55,24 @@ export default function PelatihanMatrixPage() {
   const [loadingBatch, setLoadingBatch] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [search, setSearch] = useState('');
+  
+  // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<TbMatrix | null>(null);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
 
-  // Form State
+  // Form Batch State
+  const [batchForm, setBatchForm] = useState({
+    nama: '',
+    tanggal_mulai: '',
+    tanggal_selesai: '',
+    lokasi: '',
+  });
+
+  // Form Peserta State
   const [formValues, setFormValues] = useState({
     batch_id: '',
     nama: '',
@@ -82,63 +94,59 @@ export default function PelatihanMatrixPage() {
   const [filePasFoto, setFilePasFoto] = useState<File | null>(null);
   const [previewPasFoto, setPreviewPasFoto] = useState<string>('');
 
+  // OCR Client States
   const [loadingOcrKtp, setLoadingOcrKtp] = useState(false);
   const [loadingOcrSim, setLoadingOcrSim] = useState(false);
-
-// State Modal Batch Baru
-  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
-  const [batchForm, setBatchForm] = useState({
-    nama: "",
-    tanggal_mulai: "",
-    tanggal_selesai: "",
-    lokasi: "",
-  });
-  const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
-  const [isBatchEditMode, setIsBatchEditMode] = useState(false);
 
   const ktpInputId = useId();
   const simInputId = useId();
   const photoInputId = useId();
 
-  // 1. Fetch Daftar Batch
-  useEffect(() => {
-    const fetchBatches = async () => {
-      try {
-        setLoadingBatch(true);
-        const res = await fetch('/api/batch');
-        const json = await res.json();
-        if (json.success && json.data.length > 0) {
-          setBatches(json.data);
+  // 1. Fetch Batches
+  const fetchBatches = async () => {
+    try {
+      setLoadingBatch(true);
+      const res = await fetch('/api/batch');
+      const json = await res.json();
+      if (json.success && json.data.length > 0) {
+        setBatches(json.data);
+        if (!selectedBatchId) {
           setSelectedBatchId(String(json.data[0].id));
           setFormValues((prev) => ({ ...prev, batch_id: String(json.data[0].id) }));
         }
-      } catch (err) {
-        console.error('Error fetch batch:', err);
-      } finally {
-        setLoadingBatch(false);
       }
-    };
+    } catch (err) {
+      console.error('Error fetch batch:', err);
+    } finally {
+      setLoadingBatch(false);
+    }
+  };
+
+  useEffect(() => {
     fetchBatches();
   }, []);
 
-  // 2. Fetch Data Matrix berdasarkan Selected Batch
-  useEffect(() => {
-    const fetchMatrixData = async () => {
-      if (!selectedBatchId) return;
-      try {
-        setLoadingData(true);
-        const res = await fetch(`/api/matrix?batch_id=${selectedBatchId}`);
-        const json = await res.json();
-        if (json.success) {
-          setData(json.data);
-        }
-      } catch (err) {
-        console.error('Error fetch matrix:', err);
-      } finally {
-        setLoadingData(false);
+  // 2. Fetch Data Matrix
+  const fetchMatrixData = async (batchId: string) => {
+    if (!batchId) return;
+    try {
+      setLoadingData(true);
+      const res = await fetch(`/api/matrix?batch_id=${batchId}`);
+      const json = await res.json();
+      if (json.success) {
+        setData(json.data);
       }
-    };
-    fetchMatrixData();
+    } catch (err) {
+      console.error('Error fetch matrix:', err);
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedBatchId) {
+      fetchMatrixData(selectedBatchId);
+    }
   }, [selectedBatchId]);
 
   // Helper Usia
@@ -153,7 +161,7 @@ export default function PelatihanMatrixPage() {
     return `${age} Thn`;
   };
 
-  // OCR KTP Handler
+  // 3. OCR KTP (Robust Parser)
   const handleKtpUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -162,31 +170,99 @@ export default function PelatihanMatrixPage() {
     setPreviewKtp(URL.createObjectURL(file));
     setLoadingOcrKtp(true);
 
-    const body = new FormData();
-    body.append('file', file);
-
+    let worker: any = null;
     try {
-      const res = await fetch('/api/ocr/ktp', { method: 'POST', body });
-      const resJson = await res.json();
-      if (resJson.success && resJson.data) {
-        const { nik, nama, tempatLahir, tanggalLahir } = resJson.data;
-        setFormValues((prev) => ({
-          ...prev,
-          nik: nik || prev.nik,
-          nama: (nama || prev.nama).toUpperCase(),
-          tempat_lahir: (tempatLahir || prev.tempat_lahir).toUpperCase(),
-          tanggal_lahir: tanggalLahir || prev.tanggal_lahir,
-        }));
+      worker = await createWorker('ind');
+      const { data: { text } } = await worker.recognize(file);
+      console.log('--- OCR KTP RAW OUTPUT --- \n', text);
+
+      const lines = text
+        .split('\n')
+        .map((l: string) => l.trim())
+        .filter((l: string) => l.length > 0);
+
+      let extractedNik = '';
+      let extractedNama = '';
+      let extractedTempat = '';
+      let extractedTgl = '';
+      let nikLineIdx = -1;
+
+      // A. Ekstraksi NIK
+      const nikMatch = text.match(/\b\d{16}\b/) || text.match(/(?:NIK|N1K|N|K)\s*[:=]?\s*([0-9OBIDSZ]{16})/i);
+      if (nikMatch) {
+        extractedNik = (nikMatch[1] || nikMatch[0])
+          .replace(/O|D/g, '0')
+          .replace(/I|l/g, '1')
+          .replace(/B/g, '8')
+          .replace(/S/g, '5')
+          .replace(/Z/g, '2');
       }
+
+      // Cari index baris NIK untuk fallback nama
+      lines.forEach((line: string, idx: number) => {
+        if (/NIK|N1K/i.test(line) || /\d{16}/.test(line)) {
+          nikLineIdx = idx;
+        }
+      });
+
+      // B. Ekstraksi Nama
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        // Match kata "Nama" atau "Nam a"
+        if (/Nam[a|e]/i.test(line)) {
+          let clean = line.replace(/.*Nam[a|e]\s*[:=]?\s*/i, '').trim();
+          // Bersihkan karakter non-huruf di awal
+          clean = clean.replace(/^[^a-zA-Z]+/, '');
+          if (clean.length > 2) {
+            extractedNama = clean;
+            break;
+          }
+        }
+      }
+
+      // Fallback Nama: Jika tidak ada label "Nama", ambil baris setelah baris NIK
+      if (!extractedNama && nikLineIdx !== -1 && lines[nikLineIdx + 1]) {
+        const candidate = lines[nikLineIdx + 1].replace(/.*[:=]\s*/, '').trim();
+        // Pastikan bukan baris TTL
+        if (!/Tempat|Lahir|Tgl/i.test(candidate) && candidate.length > 2) {
+          extractedNama = candidate;
+        }
+      }
+
+      // C. Ekstraksi Tempat & Tanggal Lahir
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (/Tempat|Tgl\s*Lahir|Lahir/i.test(line)) {
+          const rawTTL = line.replace(/.*(?:Lahir|Tgl Lahir|Tempat)\s*[:=]?\s*/i, '').trim();
+          const parts = rawTTL.split(',');
+          if (parts.length >= 2) {
+            extractedTempat = parts[0].replace(/[^a-zA-Z\s]/g, '').trim();
+            const dMatch = parts[1].match(/\d{2}[-\s/]\d{2}[-\s/]\d{4}/);
+            if (dMatch) {
+              const [d, m, y] = dMatch[0].replace(/\s|\//g, '-').split('-');
+              extractedTgl = `${y}-${m}-${d}`;
+            }
+          }
+        }
+      }
+
+      setFormValues((prev) => ({
+        ...prev,
+        nik: extractedNik || prev.nik,
+        nama: extractedNama ? extractedNama.toUpperCase() : prev.nama,
+        tempat_lahir: extractedTempat ? extractedTempat.toUpperCase() : prev.tempat_lahir,
+        tanggal_lahir: extractedTgl || prev.tanggal_lahir,
+      }));
     } catch (err) {
-      console.error(err);
-      Swal.fire({ icon: "error", title: "Gagal", text: "Gagal membaca OCR KTP" });
+      console.error('OCR KTP Error:', err);
+      alert('Gagal memproses OCR KTP');
     } finally {
+      if (worker) await worker.terminate();
       setLoadingOcrKtp(false);
     }
   };
 
-  // OCR SIM Handler
+  // 4. OCR SIM
   const handleSimUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -195,30 +271,77 @@ export default function PelatihanMatrixPage() {
     setPreviewSim(URL.createObjectURL(file));
     setLoadingOcrSim(true);
 
-    const body = new FormData();
-    body.append('file', file);
-
+    let worker: any = null;
     try {
-      const res = await fetch('/api/ocr/sim', { method: 'POST', body });
-      const resJson = await res.json();
-      if (resJson.success && resJson.data) {
-        const { noSim, jenisSim } = resJson.data;
-        setFormValues((prev) => ({
-          ...prev,
-          nomor_sim: noSim || prev.nomor_sim,
-          jenis_sim: jenisSim || prev.jenis_sim,
-        }));
+      worker = await createWorker('ind');
+      const { data: { text } } = await worker.recognize(file);
+      console.log('--- OCR SIM RAW OUTPUT --- \n', text);
+
+      let jenisSim = '';
+      let noSim = '';
+
+      const jenisMatch = text.match(/\b(?:SIM|SURAT\s*IZIN\s*MENGEMUDI)?\s*([A-C](?:\s*I{1,2})?)\b/i) ||
+                         text.match(/\b(BI|BII|B1|B2|A|C)\b/i);
+      if (jenisMatch) {
+        const matched = jenisMatch[1].toUpperCase().replace(/\s+/g, ' ');
+        if (matched.includes('B1') || matched.includes('B I')) jenisSim = 'B I UMUM';
+        else if (matched.includes('B2') || matched.includes('B II')) jenisSim = 'B II UMUM';
+        else if (matched.includes('A')) jenisSim = 'A';
+        else if (matched.includes('C')) jenisSim = 'C';
+        else jenisSim = matched;
       }
+
+      const noSimMatch = text.match(/(?:NO|NOMOR|NO\.)\s*[:=]?\s*([0-9-]{12,18})/i) ||
+                         text.match(/\b\d{4}[-\s]?\d{4}[-\s]?\d{4,6}\b/);
+      if (noSimMatch) {
+        noSim = (noSimMatch[1] || noSimMatch[0]).replace(/[^0-9]/g, '');
+      }
+
+      setFormValues((prev) => ({
+        ...prev,
+        nomor_sim: noSim || prev.nomor_sim,
+        jenis_sim: jenisSim || prev.jenis_sim,
+      }));
     } catch (err) {
-      console.error(err);
-      Swal.fire({ icon: "error", title: "Gagal", text: "Gagal membaca OCR SIM" });
+      console.error('OCR SIM Error:', err);
+      alert('Gagal memproses OCR SIM');
     } finally {
+      if (worker) await worker.terminate();
       setLoadingOcrSim(false);
     }
   };
 
-  // Submit Handler
-  const handleSubmit = async (e: React.FormEvent) => {
+  // 5. Submit Tambah Batch Baru
+  const handleCreateBatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingBatch(true);
+    try {
+      const res = await fetch('/api/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(batchForm),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setIsBatchModalOpen(false);
+        setBatchForm({ nama: '', tanggal_mulai: '', tanggal_selesai: '', lokasi: '' });
+        await fetchBatches();
+        if (result.insertId) {
+          setSelectedBatchId(String(result.insertId));
+        }
+      } else {
+        alert('Gagal membuat batch: ' + result.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan saat menambah batch');
+    } finally {
+      setIsSubmittingBatch(false);
+    }
+  };
+
+  // 6. Submit Peserta
+  const handleSubmitPeserta = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
@@ -263,187 +386,19 @@ export default function PelatihanMatrixPage() {
         setPreviewSim('');
         setPreviewPasFoto('');
 
-        // Refresh list
-        const resReload = await fetch(`/api/matrix?batch_id=${selectedBatchId}`);
-        const jsonReload = await resReload.json();
-        if (jsonReload.success) setData(jsonReload.data);
-
-        await Swal.fire({
-          icon: "success",
-          title: "Berhasil",
-          text: "Peserta berhasil disimpan.",
-          timer: 2000,
-          showConfirmButton: true,
-        });
+        fetchMatrixData(selectedBatchId);
       } else {
-        Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal: ' + result.error });
+        alert('Gagal: ' + result.error);
       }
     } catch (err) {
       console.error(err);
-      Swal.fire({ icon: 'error', title: 'Kesalahan', text: 'Terjadi kesalahan saat menyimpan data' });
+      alert('Terjadi kesalahan saat menyimpan data peserta');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const currentBatchInfo = batches.find((b) => String(b.id) === selectedBatchId);
-
-  // Refresh daftar batch (dipakai ulang setelah buat batch baru)
-  const refreshBatches = async () => {
-    try {
-      const res = await fetch('/api/batch');
-      const json = await res.json();
-      if (json.success) {
-        setBatches(json.data);
-        return json.data as TbBatch[];
-      }
-      return [] as TbBatch[];
-    } catch (err) {
-      console.error('Error refresh batch:', err);
-      return [] as TbBatch[];
-    }
-  };
-
-  // Submit Batch (Buat / Edit)
-  const handleSubmitBatch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!batchForm.nama.trim()) {
-      Swal.fire({ icon: "warning", title: "Perhatian", text: "Nama batch wajib diisi" });
-      return;
-    }
-    setIsSubmittingBatch(true);
-    try {
-      const res = await fetch(
-        isBatchEditMode ? `/api/batch?id=${selectedBatchId}` : "/api/batch",
-        {
-          method: isBatchEditMode ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(batchForm),
-        }
-      );
-      const result = await res.json();
-      if (result.success) {
-        const updated = await refreshBatches();
-        if (isBatchEditMode) {
-          setIsBatchModalOpen(false);
-          await Swal.fire({
-            icon: "success",
-            title: "Berhasil",
-            text: "Batch berhasil diperbarui.",
-            timer: 2000,
-            showConfirmButton: true,
-          });
-        } else {
-          if (result.data?.id) {
-            setSelectedBatchId(String(result.data.id));
-            setFormValues((prev) => ({ ...prev, batch_id: String(result.data.id) }));
-          } else if (updated.length > 0) {
-            const newest = updated[0];
-            setSelectedBatchId(String(newest.id));
-            setFormValues((prev) => ({ ...prev, batch_id: String(newest.id) }));
-          }
-          await Swal.fire({
-            icon: "success",
-            title: "Berhasil",
-            text: "Batch baru berhasil dibuat.",
-            timer: 2000,
-            showConfirmButton: true,
-          });
-        }
-        setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
-        setIsBatchEditMode(false);
-        setIsBatchModalOpen(false);
-      } else {
-        Swal.fire({
-          icon: "error",
-          title: "Gagal",
-          text: (isBatchEditMode ? "Gagal memperbarui batch: " : "Gagal membuat batch: ") +
-            (result.error || "unknown error"),
-        });
-      }
-    } catch (err) {
-      console.error(err);
-      Swal.fire({
-        icon: "error",
-        title: "Kesalahan",
-        text: isBatchEditMode
-          ? "Terjadi kesalahan saat memperbarui batch"
-          : "Terjadi kesalahan saat membuat batch",
-      });
-    } finally {
-      setIsSubmittingBatch(false);
-    }
-  };
-
-  // Buka Modal Edit Batch
-  const handleOpenEditBatch = () => {
-    if (!currentBatchInfo) return;
-    setBatchForm({
-      nama: currentBatchInfo.nama || "",
-      tanggal_mulai: currentBatchInfo.tanggal_mulai || "",
-      tanggal_selesai: currentBatchInfo.tanggal_selesai || "",
-      lokasi: currentBatchInfo.lokasi || "",
-    });
-    setIsBatchEditMode(true);
-    setIsBatchModalOpen(true);
-  };
-
-  // Hapus Batch
-  const handleDeleteBatch = async () => {
-    if (!currentBatchInfo) return;
-
-    const confirm = await Swal.fire({
-      title: "Hapus Batch?",
-      text: `Batch "${currentBatchInfo.nama}" dan seluruh peserta di dalamnya akan dihapus permanen.`,
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#d33",
-      cancelButtonColor: "#3085d6",
-      confirmButtonText: "Ya, hapus!",
-      cancelButtonText: "Batal",
-    });
-
-    if (!confirm.isConfirmed) return;
-
-    try {
-      const res = await fetch(`/api/batch?id=${currentBatchInfo.id}`, {
-        method: "DELETE",
-      });
-      const result = await res.json();
-      if (result.success) {
-        const updated = await refreshBatches();
-        if (updated.length > 0) {
-          const first = updated[0];
-          setSelectedBatchId(String(first.id));
-          setFormValues((prev) => ({ ...prev, batch_id: String(first.id) }));
-        } else {
-          setSelectedBatchId("");
-          setFormValues((prev) => ({ ...prev, batch_id: "" }));
-        }
-        setData([]);
-        await Swal.fire({
-          icon: "success",
-          title: "Terhapus!",
-          text: result.message || "Batch berhasil dihapus.",
-          timer: 2000,
-          showConfirmButton: true,
-        });
-      } else {
-        Swal.fire({
-          icon: "error",
-          title: "Gagal",
-          text: "Gagal menghapus batch: " + (result.error || "unknown error"),
-        });
-      }
-    } catch (err) {
-      console.error(err);
-      Swal.fire({
-        icon: "error",
-        title: "Kesalahan",
-        text: "Terjadi kesalahan saat menghapus batch",
-      });
-    }
-  };
 
   const filteredData = data.filter((item) => {
     const q = search.toLowerCase();
@@ -457,7 +412,7 @@ export default function PelatihanMatrixPage() {
 
   return (
     <div className="w-full p-4 sm:p-6 space-y-6">
-      {/* Header & Batch Dropdown */}
+      {/* Header & Controls */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
@@ -470,12 +425,12 @@ export default function PelatihanMatrixPage() {
               </h1>
             </div>
             <p className="text-sm text-slate-500 mt-1">
-              Pilih batch pelatihan untuk melihat dan mengelola data peserta.
+              Kelola peserta pelatihan dan ekstrak otomatis KTP & SIM.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            {/* Batch Selector Dropdown */}
+          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            {/* Batch Selector */}
             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
               <Calendar className="w-4 h-4 text-slate-400" />
               <select
@@ -498,38 +453,18 @@ export default function PelatihanMatrixPage() {
                   ))
                 )}
               </select>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsBatchEditMode(false);
-                  setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
-                  setIsBatchModalOpen(true);
-                }}
-                title="Buat Batch Baru"
-                className="ml-1 p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleOpenEditBatch}
-                disabled={!selectedBatchId}
-                title="Edit Batch Saat Ini"
-                className="p-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-sm disabled:bg-amber-300 disabled:cursor-not-allowed"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteBatch}
-                disabled={!selectedBatchId}
-                title="Hapus Batch Saat Ini"
-                className="p-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors shadow-sm disabled:bg-red-300 disabled:cursor-not-allowed"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
             </div>
 
+            {/* Tombol Tambah Batch */}
+            <button
+              onClick={() => setIsBatchModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-sm font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-all shadow-sm"
+            >
+              <FolderPlus className="w-4 h-4 text-indigo-600" />
+              <span>Tambah Batch</span>
+            </button>
+
+            {/* Tombol Tambah Peserta */}
             <button
               onClick={() => setIsModalOpen(true)}
               disabled={!selectedBatchId}
@@ -541,10 +476,10 @@ export default function PelatihanMatrixPage() {
           </div>
         </div>
 
-        {/* Info Batch yang sedang aktif */}
+        {/* Info Batch Aktif */}
         {currentBatchInfo && (
           <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-4 text-xs text-slate-500">
-            <span><b>Lokasi Pelatihan:</b> {currentBatchInfo.lokasi || '-'}</span>
+            <span><b>Lokasi:</b> {currentBatchInfo.lokasi || '-'}</span>
             <span>•</span>
             <span>
               <b>Periode:</b> {currentBatchInfo.tanggal_mulai ? new Date(currentBatchInfo.tanggal_mulai).toLocaleDateString('id-ID') : '-'} s/d {currentBatchInfo.tanggal_selesai ? new Date(currentBatchInfo.tanggal_selesai).toLocaleDateString('id-ID') : '-'}
@@ -553,7 +488,7 @@ export default function PelatihanMatrixPage() {
         )}
       </div>
 
-      {/* Tabel Matrix Peserta */}
+      {/* Tabel Matrix */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
           <div className="relative w-80">
@@ -590,7 +525,7 @@ export default function PelatihanMatrixPage() {
                 <tr>
                   <td colSpan={8} className="text-center py-12 text-slate-400">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
-                    <span>Memuat data peserta batch...</span>
+                    <span>Memuat data peserta...</span>
                   </td>
                 </tr>
               ) : filteredData.length === 0 ? (
@@ -660,35 +595,18 @@ export default function PelatihanMatrixPage() {
         </div>
       </div>
 
-      {/* MODAL BATCH BARU */}
+      {/* MODAL 1: TAMBAH BATCH BARU */}
       {isBatchModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-100 p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <h3 className="text-lg font-bold text-slate-800">
-                  {isBatchEditMode ? "Edit Batch" : "Buat Batch Baru"}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {isBatchEditMode
-                    ? "Perbarui informasi batch pelatihan."
-                    : "Tambahkan batch pelatihan ke dalam sistem."}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsBatchModalOpen(false);
-                  setIsBatchEditMode(false);
-                  setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
-                }}
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"
-              >
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-800">Tambah Batch Pelatihan</h3>
+              <button onClick={() => setIsBatchModalOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitBatch} className="space-y-4">
+            <form onSubmit={handleCreateBatch} className="space-y-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 block mb-1">Nama Batch *</label>
                 <input
@@ -696,8 +614,19 @@ export default function PelatihanMatrixPage() {
                   required
                   value={batchForm.nama}
                   onChange={(e) => setBatchForm({ ...batchForm, nama: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-semibold"
-                  placeholder="Contoh: Batch XII - Surabaya"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20"
+                  placeholder="Contoh: Batch Mei 2026 Gel. 1"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Lokasi Pelatihan</label>
+                <input
+                  type="text"
+                  value={batchForm.lokasi}
+                  onChange={(e) => setBatchForm({ ...batchForm, lokasi: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+                  placeholder="Contoh: Site Cilegon"
                 />
               </div>
 
@@ -722,25 +651,10 @@ export default function PelatihanMatrixPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Lokasi</label>
-                <input
-                  type="text"
-                  value={batchForm.lokasi}
-                  onChange={(e) => setBatchForm({ ...batchForm, lokasi: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
-                  placeholder="Lokasi / Site pelatihan"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsBatchModalOpen(false);
-                    setIsBatchEditMode(false);
-                    setBatchForm({ nama: "", tanggal_mulai: "", tanggal_selesai: "", lokasi: "" });
-                  }}
+                  onClick={() => setIsBatchModalOpen(false)}
                   className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50"
                 >
                   Batal
@@ -748,16 +662,9 @@ export default function PelatihanMatrixPage() {
                 <button
                   type="submit"
                   disabled={isSubmittingBatch}
-                  className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium shadow-sm disabled:bg-indigo-400"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium shadow-sm disabled:bg-indigo-400"
                 >
-                  {isSubmittingBatch ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Menyimpan...</span>
-                    </>
-                  ) : (
-                    <span>{isBatchEditMode ? "Simpan Perubahan" : "Simpan Batch"}</span>
-                  )}
+                  {isSubmittingBatch ? 'Menyimpan...' : 'Simpan Batch'}
                 </button>
               </div>
             </form>
@@ -765,7 +672,7 @@ export default function PelatihanMatrixPage() {
         </div>
       )}
 
-      {/* MODAL FORM INPUT PESERTA */}
+      {/* MODAL 2: TAMBAH PESERTA MATRIX */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 p-6 space-y-6">
@@ -781,8 +688,8 @@ export default function PelatihanMatrixPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Target Batch Selection in Form */}
+            <form onSubmit={handleSubmitPeserta} className="space-y-6">
+              {/* Target Batch */}
               <div>
                 <label className="text-xs font-semibold text-slate-600 block mb-1">Target Batch Pelatihan</label>
                 <select
@@ -809,7 +716,7 @@ export default function PelatihanMatrixPage() {
                     <span className="text-[10px] text-slate-400 mt-1">OCR: NIK, Nama, TTL</span>
                     {loadingOcrKtp && (
                       <div className="flex items-center gap-1.5 mt-2 text-xs text-indigo-600 font-medium">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Scan KTP...
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Membaca KTP...
                       </div>
                     )}
                     {previewKtp && !loadingOcrKtp && (
@@ -827,7 +734,7 @@ export default function PelatihanMatrixPage() {
                     <span className="text-[10px] text-slate-400 mt-1">OCR: No. SIM & Jenis SIM</span>
                     {loadingOcrSim && (
                       <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-600 font-medium">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Scan SIM...
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Membaca SIM...
                       </div>
                     )}
                     {previewSim && !loadingOcrSim && (
@@ -862,7 +769,7 @@ export default function PelatihanMatrixPage() {
                 </div>
               </div>
 
-              {/* Form Input Fields */}
+              {/* Input Fields */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-2">
                   <label className="text-xs font-semibold text-slate-600 block mb-1">Nama Lengkap *</label>
@@ -871,8 +778,8 @@ export default function PelatihanMatrixPage() {
                     required
                     value={formValues.nama}
                     onChange={(e) => setFormValues({ ...formValues, nama: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-semibold"
-                    placeholder="Nama Lengkap"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 font-semibold"
+                    placeholder="Nama Lengkap Sesuai KTP"
                   />
                 </div>
 
@@ -979,13 +886,13 @@ export default function PelatihanMatrixPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || loadingOcrKtp || loadingOcrSim}
                   className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium shadow-sm disabled:bg-indigo-400"
                 >
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Menyimpan...</span>
+                      <span>Menyimpan ke Database...</span>
                     </>
                   ) : (
                     <span>Simpan ke Batch</span>
@@ -1008,7 +915,6 @@ export default function PelatihanMatrixPage() {
               </button>
             </div>
 
-            {/* Gambar Berkas */}
             <div className="grid grid-cols-3 gap-3">
               <div className="border border-slate-200 rounded-xl p-2 bg-slate-50 text-center">
                 <span className="text-[10px] font-semibold text-slate-500 block mb-1">Foto KTP</span>
@@ -1039,7 +945,6 @@ export default function PelatihanMatrixPage() {
               </div>
             </div>
 
-            {/* Info Grid */}
             <div className="grid grid-cols-2 gap-3 text-xs sm:text-sm">
               <div className="p-2.5 bg-slate-50 rounded-lg">
                 <span className="text-slate-400 block text-[11px]">Nama Lengkap</span>
@@ -1064,6 +969,10 @@ export default function PelatihanMatrixPage() {
               <div className="p-2.5 bg-slate-50 rounded-lg">
                 <span className="text-slate-400 block text-[11px]">Lokasi</span>
                 <span className="font-medium">{selectedDetail.lokasi || '-'}</span>
+              </div>
+              <div className="col-span-2 p-2.5 bg-slate-50 rounded-lg">
+                <span className="text-slate-400 block text-[11px]">Jenis Muatan</span>
+                <span className="font-medium">{selectedDetail.jenis_muatan || '-'}</span>
               </div>
             </div>
 
