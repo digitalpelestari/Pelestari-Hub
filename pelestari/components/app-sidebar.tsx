@@ -186,6 +186,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         { title: "Status Kehadiran", url: "/dashboard/hr/status-kehadiran" },
       ]
     },
+
+     {
+      title: "Pelatihan",
+      url: "#",
+      icon: <Users />,
+      roles: ["ADMIN", "PELATIHAN"],
+      items: [
+        { title: "Matrix", url: "/dashboard/pelatihan/matrix" },
+       
+      ]
+    },
   ]
 
   const filteredNavMain = navMainData.filter((menu) => {

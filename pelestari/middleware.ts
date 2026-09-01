@@ -21,6 +21,7 @@ function getDashboardUrl(role?: string) {
   if (normalizedRole === "GA") return "/dashboard/ga";
   if (normalizedRole === "ADMIN") return "/dashboard/admin";
   if (normalizedRole === "HR") return "/dashboard/hr";
+  if (normalizedRole === "PELATIHAN") return "/dashboard/pelatihan";
   if (normalizedRole === "FINANCE" || normalizedRole === "MANAGER FINANCE") {
     return "/dashboard/finance";
   }
