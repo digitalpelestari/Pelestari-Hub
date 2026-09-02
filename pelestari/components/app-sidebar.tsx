@@ -101,6 +101,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               title: "Riwayat Transaksi",
               url: "/dashboard/finance/riwayat",
             },
+            {
+              title: "Rekonsiliasi Bank",
+              url: "/dashboard/finance/rekonsiliasi-bank",
+            },
+            
           ],
         },
 
@@ -133,6 +138,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               title: "Laporan Laba Rugi",
               url: "/dashboard/finance/laporan/lap-labarugi",
             },
+            {
+              title: "Cash Flow",
+              url: "/dashboard/finance/laporan/cash-flow",
+            },
           ],
         },
 
@@ -153,6 +162,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             },
           ],
         },
+        
       ],
     },
     // GA DROPDOWN
