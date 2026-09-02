@@ -39,7 +39,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
         {/* HEADER */}
         <div className="flex justify-between items-start mb-4 pt-4 px-10">
           <div className="flex items-center gap-3">
-            <img src="/logo_pelestari.png" alt="Logo" className="w-14 h-auto object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <img src="/logo.png" alt="Logo" className="w-14 h-auto object-contain" />
             <div className="font-bold">
               <p className="text-md text-blue-700 leading-none mb-1 uppercase">PT Peduli Lestari Indonesia</p>
               <p className="text-[7.5pt] font-normal italic text-zinc-600 leading-none">Your Best Solution Partner</p>
@@ -143,6 +143,19 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                 </tr>
               )}
 
+               {/* PNBP */}
+              {data.is_pnbp === 1 && (
+                <tr className="border-b border-blue-600">
+                  <td className="py-2 text-center border-r border-blue-600">{currentNo++}</td>
+                  <td className="py-2 px-3 font-medium uppercase border-r border-blue-600">PNBP</td>
+                  <td className="py-2 text-center border-r border-blue-600">{data.jumlah_peserta + (data.jumlah_peserta_2 || 0)}</td>
+                  <td className="py-2 px-3 border-r border-blue-600">
+                    <div className="flex justify-between"><span>Rp</span><span>600.000</span></div>
+                  </td>
+                  <td className="py-2 px-3 flex justify-between"><span>Rp</span> {formatNumber(nilaiPNBP)}</td>
+                </tr>
+              )}
+
               {/* PPH */}
               {data.is_pph23 === 1 && (
                 <tr className=" border-blue-600">
@@ -165,18 +178,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                 </tr>
               )}
 
-              {/* PNBP */}
-              {data.is_pnbp === 1 && (
-                <tr className="border-b border-blue-600">
-                  <td className="py-2 text-center border-r border-blue-600">{currentNo++}</td>
-                  <td className="py-2 px-3 font-medium uppercase border-r border-blue-600">PNBP</td>
-                  <td className="py-2 text-center border-r border-blue-600">{data.jumlah_peserta + (data.jumlah_peserta_2 || 0)}</td>
-                  <td className="py-2 px-3 border-r border-blue-600">
-                    <div className="flex justify-between"><span>Rp</span><span>600.000</span></div>
-                  </td>
-                  <td className="py-2 px-3 flex justify-between"><span>Rp</span> {formatNumber(nilaiPNBP)}</td>
-                </tr>
-              )}
+             
             </tbody>
             <tfoot>
               <tr className="bg-blue-600 text-white font-bold text-[8pt]">
