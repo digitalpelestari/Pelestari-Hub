@@ -18,7 +18,7 @@ export default function DashboardLayout({
         <div className="flex items-center border-b bg-white p-2">
           <SidebarTrigger />
           <span className="ml-4 text-sm font-semibold">
-            PT PELESTARI INDONESIA
+            
           </span>
         </div>
 
