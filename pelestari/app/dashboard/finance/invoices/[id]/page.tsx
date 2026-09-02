@@ -15,11 +15,12 @@ import { getInvoiceById } from "@/app/actions/invoice"
 
 export default function InvoiceDetailPage() {
   const params = useParams()
-  
-  // Ambil ID secara aman sebagai string (mengatasi string | string[] dari Next.js)
+
   const invoiceId = useMemo(() => {
-    if (!params?.id) return ""
-    return Array.isArray(params.id) ? params.id[0] : params.id
+    if (!params?.id) return 0
+    const raw = Array.isArray(params.id) ? params.id[0] : params.id
+    const parsed = Number(raw)
+    return Number.isNaN(parsed) ? 0 : parsed
   }, [params?.id])
 
   const [loading, setLoading] = useState(true)
@@ -30,7 +31,6 @@ export default function InvoiceDetailPage() {
       if (!invoiceId) return
       try {
         setLoading(true)
-        // PERBAIKAN 1: Hapus fungsi Number(), langsung kirim invoiceId string UUID murni
         const res = await getInvoiceById(invoiceId)
         setData(res)
       } catch (error) {

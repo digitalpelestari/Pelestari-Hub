@@ -33,10 +33,11 @@ export default function EditInvoicePage() {
   const router = useRouter()
   const params = useParams()
 
-  // Ambil ID secara aman sebagai string (mengatasi string | string[] dari Next.js)
   const invoiceId = useMemo(() => {
-    if (!params?.id) return ""
-    return Array.isArray(params.id) ? params.id[0] : params.id
+    if (!params?.id) return 0
+    const raw = Array.isArray(params.id) ? params.id[0] : params.id
+    const parsed = Number(raw)
+    return Number.isNaN(parsed) ? 0 : parsed
   }, [params?.id])
 
   const [loading, setLoading] = useState(true)

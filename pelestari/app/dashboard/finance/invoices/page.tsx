@@ -89,10 +89,10 @@ export default function InvoiceListPage() {
   const [printData, setPrintData] = useState<any>(null)
 
   // State penanda proses upload
-  const [uploadingFakturId, setUploadingFakturId] = useState<string | null>(
+  const [uploadingFakturId, setUploadingFakturId] = useState<number | null>(
     null
   )
-  const [uploadingCLId, setUploadingCLId] = useState<string | null>(null)
+  const [uploadingCLId, setUploadingCLId] = useState<number | null>(null)
 
   const loadData = async () => {
     setLoading(true)
@@ -146,7 +146,7 @@ export default function InvoiceListPage() {
     }, 200)
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     const res = await deleteInvoice(id)
     if (res.success) {
       setInvoices((prev) => prev.filter((inv) => inv.id !== id))
@@ -157,7 +157,7 @@ export default function InvoiceListPage() {
   }
 
   // HANDLER UPLOAD FAKTUR
-  const handleUploadFakturClick = (invoiceId: string) => {
+  const handleUploadFakturClick = (invoiceId: number) => {
     const el = document.getElementById(
       `faktur-input-${invoiceId}`
     ) as HTMLInputElement
@@ -166,7 +166,7 @@ export default function InvoiceListPage() {
 
   const handleFakturFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    invoiceId: string
+    invoiceId: number
   ) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -202,7 +202,7 @@ export default function InvoiceListPage() {
   }
 
   // HANDLER UPLOAD CL (CLOUDFLARE R2)
-  const handleUploadCLClick = (invoiceId: string) => {
+  const handleUploadCLClick = (invoiceId: number) => {
     const el = document.getElementById(
       `cl-input-${invoiceId}`
     ) as HTMLInputElement
@@ -211,7 +211,7 @@ export default function InvoiceListPage() {
 
   const handleCLFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    invoiceId: string
+    invoiceId: number
   ) => {
     const file = e.target.files?.[0]
     if (!file) return

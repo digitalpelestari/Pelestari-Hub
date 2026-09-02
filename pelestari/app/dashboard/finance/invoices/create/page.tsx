@@ -7,11 +7,21 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge" 
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { 
-  ArrowLeft, Save, Loader2, Calculator, Hash, 
-  ShieldCheck, List, Building2, UploadCloud, FileText, CheckCircle2, Trash2
+import {
+  ArrowLeft,
+  Save,
+  Loader2,
+  Calculator,
+  Hash,
+  ShieldCheck,
+  List,
+  Building2,
+  UploadCloud,
+  FileText,
+  CheckCircle2,
+  Trash2,
 } from "lucide-react"
 import Link from "next/link"
 import { createInvoice, getNextInvoiceNumber } from "@/app/actions/invoice"
@@ -23,11 +33,11 @@ export default function CreateInvoicePage() {
   const [loading, setLoading] = useState(false)
   const [uploadingCL, setUploadingCL] = useState(false)
   const [clFileName, setClFileName] = useState("")
-  
+
   const [formData, setFormData] = useState({
     nomor_invoice: "",
     batch: "",
-    tanggal: new Date().toISOString().split('T')[0],
+    tanggal: new Date().toISOString().split("T")[0],
     jenis_kegiatan: "",
     tanggal_jatuhtempo: "",
     perusahaan_tujuan: "",
@@ -47,48 +57,73 @@ export default function CreateInvoicePage() {
     is_pph23: false,
     is_ppn11: false,
     is_pnbp: false,
-    status: "Belum Lunas"
+    status: "Belum Lunas",
   })
 
   useEffect(() => {
     const syncInvoiceNumber = async () => {
-      const nextId = await getNextInvoiceNumber(); 
-      const now = new Date();
-      const roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
-      const romanMonth = roman[now.getMonth()];
-      const year = now.getFullYear();
-      const formattedNumber = nextId.toString().padStart(3, '0');
-      const fullInvoiceString = `${formattedNumber}/INV/${romanMonth}/${year}/G`;
-      setFormData(prev => ({ ...prev, nomor_invoice: fullInvoiceString }));
-    };
-    syncInvoiceNumber();
-  }, []);
+      const nextId = await getNextInvoiceNumber()
+      const now = new Date()
+      const roman = [
+        "I",
+        "II",
+        "III",
+        "IV",
+        "V",
+        "VI",
+        "VII",
+        "VIII",
+        "IX",
+        "X",
+        "XI",
+        "XII",
+      ]
+      const romanMonth = roman[now.getMonth()]
+      const year = now.getFullYear()
+      const formattedNumber = nextId.toString().padStart(3, "0")
+      const fullInvoiceString = `${formattedNumber}/INV/${romanMonth}/${year}/G`
+      setFormData((prev) => ({ ...prev, nomor_invoice: fullInvoiceString }))
+    }
+    syncInvoiceNumber()
+  }, [])
 
   const calculation = useMemo(() => {
-    const sub1 = formData.jumlah_peserta * formData.harga_peserta;
-    const sub2 = formData.jumlah_peserta_2 * formData.harga_peserta_2;
-    const subtotalDasar = sub1 + sub2;
-    const totalPesertaAll = formData.jumlah_peserta + formData.jumlah_peserta_2;
+    const sub1 = formData.jumlah_peserta * formData.harga_peserta
+    const sub2 = formData.jumlah_peserta_2 * formData.harga_peserta_2
+    const subtotalDasar = sub1 + sub2
+    const totalPesertaAll = formData.jumlah_peserta + formData.jumlah_peserta_2
 
-    let pph = formData.is_pph23 ? subtotalDasar * 0.02 : 0;
-    let ppn = formData.is_ppn11 ? subtotalDasar * 0.11 : 0;
-    const nominal_pnbp = formData.is_pnbp ? (totalPesertaAll * 600000) : 0;
+    let pph = formData.is_pph23 ? subtotalDasar * 0.02 : 0
+    let ppn = formData.is_ppn11 ? subtotalDasar * 0.11 : 0
+    const nominal_pnbp = formData.is_pnbp ? totalPesertaAll * 600000 : 0
 
-    const totalAkhir = (subtotalDasar + ppn + nominal_pnbp) - pph;
-    
-    return { subtotalDasar, pph, ppn, pnbp: nominal_pnbp, totalAkhir, totalPesertaAll };
-  }, [formData]);
+    const totalAkhir = subtotalDasar + ppn + nominal_pnbp - pph
+
+    return {
+      subtotalDasar,
+      pph,
+      ppn,
+      pnbp: nominal_pnbp,
+      totalAkhir,
+      totalPesertaAll,
+    }
+  }, [formData])
 
   const formatIDR = (amount: number) => {
-    return new Intl.NumberFormat('id-ID', { 
-      style: 'currency', currency: 'IDR', minimumFractionDigits: 0 
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      minimumFractionDigits: 0,
     }).format(amount)
   }
 
   const handleNumericChange = (key: string, value: string) => {
-    const cleanValue = value.replace(/\D/g, "");
-    setFormData({ ...formData, [key]: cleanValue === "" ? 0 : parseInt(cleanValue) });
-  };
+    const cleanValue = value.replace(/\D/g, "")
+    setFormData({
+      ...formData,
+      [key]: cleanValue === "" ? 0 : parseInt(cleanValue),
+    })
+  }
 
   const handleFileUploadCL = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -101,7 +136,7 @@ export default function CreateInvoicePage() {
     try {
       const res = await uploadFileToR2Action(form)
       if (res.success && res.url) {
-        setFormData(prev => ({ ...prev, cl: res.url }))
+        setFormData((prev) => ({ ...prev, cl: res.url }))
         setClFileName(res.fileName || file.name)
         swal.success("File CL berhasil diunggah ke Cloudflare R2!")
       } else {
@@ -115,101 +150,134 @@ export default function CreateInvoicePage() {
   }
 
   const handleRemoveCL = () => {
-    setFormData(prev => ({ ...prev, cl: "" }))
+    setFormData((prev) => ({ ...prev, cl: "" }))
     setClFileName("")
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
 
-    if (!formData.perusahaan_tujuan || !formData.tanggal_jatuhtempo || !formData.keterangan) {
-      swal.warning("KOLOM WAJIB: [Perusahaan, Jatuh Tempo, & Keterangan 1] Harus Diisi!")
+    if (
+      !formData.perusahaan_tujuan ||
+      !formData.tanggal_jatuhtempo ||
+      !formData.keterangan
+    ) {
+      swal.warning(
+        "KOLOM WAJIB: [Perusahaan, Jatuh Tempo, & Keterangan 1] Harus Diisi!"
+      )
       return
     }
-    
-    setLoading(true);
+
+    setLoading(true)
     const payload = {
       ...formData,
       nominal_pnbp: calculation.pnbp,
-      total: calculation.totalAkhir
-    };
+      total: calculation.totalAkhir,
+    }
 
-    const res = await createInvoice(payload);
-    
+    const res = await createInvoice(payload)
+
     if (res.success) {
       swal.success("Invoice Berhasil Disimpan Ke Database!")
-      router.push("/dashboard/finance/invoices");
-      router.refresh();
+      router.push("/dashboard/finance/invoices")
+      router.refresh()
     } else {
       swal.error("GAGAL SIMPAN: " + res.message)
     }
-    setLoading(false);
+    setLoading(false)
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-8 font-sans bg-zinc-50/20 min-h-screen text-zinc-900">
-      
+    <div className="mx-auto min-h-screen max-w-6xl space-y-8 bg-zinc-50/20 p-6 font-sans text-zinc-900">
       {/* HEADER ACTION */}
       <div className="flex items-center justify-between border-b border-zinc-200 pb-6">
         <div className="flex items-center gap-4">
           <Link href="/dashboard/finance/invoices">
-            <Button variant="outline" size="icon" className="rounded-full shadow-sm bg-white hover:bg-zinc-100 transition-all">
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-full bg-white shadow-sm transition-all hover:bg-zinc-100"
+            >
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-black uppercase tracking-tighter italic">Tambah Invoice</h1>
-            <p className="text-[10px] font-bold text-zinc-400 tracking-widest uppercase flex items-center gap-1 mt-1 italic">
-               Database Sync: Pelestari v3.0
+            <h1 className="text-3xl font-black tracking-tighter uppercase italic">
+              Tambah Invoice
+            </h1>
+            <p className="mt-1 flex items-center gap-1 text-[10px] font-bold tracking-widest text-zinc-400 uppercase italic">
+              Database Sync: Pelestari v3.0
             </p>
           </div>
         </div>
-        <Button 
-          onClick={handleSubmit} 
-          disabled={loading || uploadingCL} 
-          className="bg-black text-white hover:bg-zinc-800 shadow-2xl px-12 h-14 rounded-2xl font-black italic transition-all active:scale-95"
+        <Button
+          onClick={handleSubmit}
+          disabled={loading || uploadingCL}
+          className="h-14 rounded-2xl bg-black px-12 font-black text-white italic shadow-2xl transition-all hover:bg-zinc-800 active:scale-95"
         >
-          {loading ? <Loader2 className="animate-spin mr-2 h-5 w-5" /> : <Save className="mr-2 h-5 w-5" />}
+          {loading ? (
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          ) : (
+            <Save className="mr-2 h-5 w-5" />
+          )}
           TERBITKAN INVOICE
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         {/* KOLOM KIRI (INPUT DATA) */}
-        <div className="lg:col-span-2 space-y-6">
-          
+        <div className="space-y-6 lg:col-span-2">
           {/* INFORMASI INVOICE */}
           <Card className="border-none shadow-sm ring-1 ring-zinc-200">
-            <CardHeader className="bg-zinc-50/50 border-b py-3 font-black text-[10px] uppercase tracking-widest text-zinc-400">
-               <Hash className="inline h-3 w-3 mr-1"/> Identitas Dokumen
+            <CardHeader className="border-b bg-zinc-50/50 py-3 text-[10px] font-black tracking-widest text-zinc-400 uppercase">
+              <Hash className="mr-1 inline h-3 w-3" /> Identitas Dokumen
             </CardHeader>
-            <CardContent className="p-6 space-y-5">
+            <CardContent className="space-y-5 p-6">
               <div className="grid grid-cols-2 gap-5">
                 <div className="space-y-2">
-                  <Label className="text-[11px] font-black uppercase italic">Nomor Invoice</Label>
-                  <Input value={formData.nomor_invoice} readOnly className="font-mono font-bold bg-zinc-100 h-11" />
+                  <Label className="text-[11px] font-black uppercase italic">
+                    Nomor Invoice
+                  </Label>
+                  <Input
+                    value={formData.nomor_invoice}
+                    readOnly
+                    className="h-11 bg-zinc-100 font-mono font-bold"
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[11px] font-black uppercase italic">Batch *</Label>
-                  <Input placeholder="Contoh: 01" value={formData.batch} onChange={(e) => setFormData({...formData, batch: e.target.value})} className="h-11" />
+                  <Label className="text-[11px] font-black uppercase italic">
+                    Batch *
+                  </Label>
+                  <Input
+                    placeholder="Contoh: 01"
+                    value={formData.batch}
+                    onChange={(e) =>
+                      setFormData({ ...formData, batch: e.target.value })
+                    }
+                    className="h-11"
+                  />
                 </div>
-                <div className="grid grid-cols-2 gap-5 mt-5 col-span-2">
-                  <div className="space-y-2 col-span-2">
-                    <Label className="text-[11px] font-black uppercase italic">Jenis Kegiatan</Label>
+                <div className="col-span-2 mt-5 grid grid-cols-2 gap-5">
+                  <div className="col-span-2 space-y-2">
+                    <Label className="text-[11px] font-black uppercase italic">
+                      Jenis Kegiatan
+                    </Label>
                     <div className="flex gap-3">
-                      {["Pelatihan", "Konsultan"].map((item) => (
+                      {["pelatihan", "konsultan"].map((item) => (
                         <button
                           key={item}
                           type="button"
-                          onClick={() => setFormData({ ...formData, jenis_kegiatan: item })}
-                          className={`flex-1 h-12 rounded-xl border-2 font-black italic uppercase transition-all ${
+                          onClick={() =>
+                            setFormData({ ...formData, jenis_kegiatan: item })
+                          }
+                          className={`h-12 flex-1 rounded-xl border-2 font-black uppercase italic transition-all ${
                             formData.jenis_kegiatan === item
-                              ? "border-black bg-black text-white shadow-lg scale-[1.02]"
+                              ? "scale-[1.02] border-black bg-black text-white shadow-lg"
                               : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300"
                           }`}
                         >
-                          {item}
+                          {item.charAt(0).toUpperCase() + item.slice(1)}{" "}
+                          {/* tampilan tetap kapital */}
                         </button>
                       ))}
                     </div>
@@ -218,12 +286,33 @@ export default function CreateInvoicePage() {
               </div>
               <div className="grid grid-cols-2 gap-5">
                 <div className="space-y-2">
-                  <Label className="text-[11px] font-black uppercase italic text-zinc-400">Tanggal Terbit</Label>
-                  <Input type="date" value={formData.tanggal} onChange={(e) => setFormData({...formData, tanggal: e.target.value})} className="h-11" />
+                  <Label className="text-[11px] font-black text-zinc-400 uppercase italic">
+                    Tanggal Terbit
+                  </Label>
+                  <Input
+                    type="date"
+                    value={formData.tanggal}
+                    onChange={(e) =>
+                      setFormData({ ...formData, tanggal: e.target.value })
+                    }
+                    className="h-11"
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[11px] font-black uppercase italic text-red-500 underline">Tanggal Jatuh Tempo *</Label>
-                  <Input type="date" value={formData.tanggal_jatuhtempo} onChange={(e) => setFormData({...formData, tanggal_jatuhtempo: e.target.value})} className="h-11 border-red-200 shadow-sm bg-red-50/10" />
+                  <Label className="text-[11px] font-black text-red-500 uppercase italic underline">
+                    Tanggal Jatuh Tempo *
+                  </Label>
+                  <Input
+                    type="date"
+                    value={formData.tanggal_jatuhtempo}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        tanggal_jatuhtempo: e.target.value,
+                      })
+                    }
+                    className="h-11 border-red-200 bg-red-50/10 shadow-sm"
+                  />
                 </div>
               </div>
             </CardContent>
@@ -231,80 +320,123 @@ export default function CreateInvoicePage() {
 
           {/* TUJUAN PENAGIHAN */}
           <Card className="border-none shadow-sm ring-1 ring-zinc-200">
-            <CardHeader className="bg-zinc-50/50 border-b py-3 font-black text-[10px] uppercase tracking-widest text-zinc-400">
-               <Building2 className="inline h-3 w-3 mr-1"/> Data Perusahaan
+            <CardHeader className="border-b bg-zinc-50/50 py-3 text-[10px] font-black tracking-widest text-zinc-400 uppercase">
+              <Building2 className="mr-1 inline h-3 w-3" /> Data Perusahaan
             </CardHeader>
-            <CardContent className="p-6 space-y-5 text-zinc-800">
+            <CardContent className="space-y-5 p-6 text-zinc-800">
               <div className="space-y-2">
-                <Label className="text-[11px] font-black uppercase italic">Nama Perusahaan *</Label>
-                <Input placeholder="Nama Perusahaan" value={formData.perusahaan_tujuan} onChange={(e) => setFormData({...formData, perusahaan_tujuan: e.target.value})} className="h-11" />
+                <Label className="text-[11px] font-black uppercase italic">
+                  Nama Perusahaan *
+                </Label>
+                <Input
+                  placeholder="Nama Perusahaan"
+                  value={formData.perusahaan_tujuan}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      perusahaan_tujuan: e.target.value,
+                    })
+                  }
+                  className="h-11"
+                />
               </div>
               <div className="space-y-2">
-                <Label className="text-[11px] font-black uppercase italic">NPWP Perusahaan</Label>
-                <Input placeholder="Nomor NPWP" value={formData.npwp} onChange={(e) => setFormData({...formData, npwp: e.target.value})} className="h-11" />
+                <Label className="text-[11px] font-black uppercase italic">
+                  NPWP Perusahaan
+                </Label>
+                <Input
+                  placeholder="Nomor NPWP"
+                  value={formData.npwp}
+                  onChange={(e) =>
+                    setFormData({ ...formData, npwp: e.target.value })
+                  }
+                  className="h-11"
+                />
               </div>
               <div className="space-y-2">
-                <Label className="text-[11px] font-black uppercase italic">Alamat Lengkap</Label>
-                <Textarea placeholder="Alamat Perusahaan" value={formData.alamat_perusahaan} onChange={(e) => setFormData({...formData, alamat_perusahaan: e.target.value})} className="h-11" />
+                <Label className="text-[11px] font-black uppercase italic">
+                  Alamat Lengkap
+                </Label>
+                <Textarea
+                  placeholder="Alamat Perusahaan"
+                  value={formData.alamat_perusahaan}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      alamat_perusahaan: e.target.value,
+                    })
+                  }
+                  className="h-11"
+                />
               </div>
             </CardContent>
           </Card>
 
           {/* UPLOAD FILE CL (CLOUDFLARE R2) */}
           <Card className="border-none shadow-sm ring-1 ring-zinc-200">
-            <CardHeader className="bg-zinc-50/50 border-b py-3 font-black text-[10px] uppercase tracking-widest text-zinc-400 flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-row items-center justify-between border-b bg-zinc-50/50 py-3 text-[10px] font-black tracking-widest text-zinc-400 uppercase">
               <div className="flex items-center gap-1.5">
                 <UploadCloud className="h-3.5 w-3.5 text-blue-600" />
                 <span>Upload Confirmation Letter (CL)</span>
               </div>
-              <span className="text-[8px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-black italic">CLOUDFLARE R2</span>
+              <span className="rounded bg-blue-100 px-2 py-0.5 text-[8px] font-black text-blue-700 italic">
+                CLOUDFLARE R2
+              </span>
             </CardHeader>
             <CardContent className="p-6">
               {!formData.cl ? (
-                <div className="relative border-2 border-dashed border-zinc-300 hover:border-black rounded-2xl p-6 text-center transition-colors bg-zinc-50/50">
+                <div className="relative rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50/50 p-6 text-center transition-colors hover:border-black">
                   <input
                     type="file"
                     id="cl_input"
                     accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
                     disabled={uploadingCL}
                     onChange={handleFileUploadCL}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full disabled:cursor-not-allowed"
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
                   />
                   <div className="flex flex-col items-center justify-center gap-2">
                     {uploadingCL ? (
                       <>
                         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                        <p className="text-xs font-bold text-zinc-600">Mengunggah ke Cloudflare R2...</p>
+                        <p className="text-xs font-bold text-zinc-600">
+                          Mengunggah ke Cloudflare R2...
+                        </p>
                       </>
                     ) : (
                       <>
-                        <div className="p-3 bg-white rounded-full shadow-sm border border-zinc-200 text-zinc-500">
+                        <div className="rounded-full border border-zinc-200 bg-white p-3 text-zinc-500 shadow-sm">
                           <UploadCloud className="h-6 w-6" />
                         </div>
                         <div>
-                          <p className="text-xs font-black uppercase tracking-tight text-zinc-800">Klik atau Drag file CL ke sini</p>
-                          <p className="text-[10px] text-zinc-400 font-medium">Format PDF, JPG, PNG, atau DOCX (Maks 10MB)</p>
+                          <p className="text-xs font-black tracking-tight text-zinc-800 uppercase">
+                            Klik atau Drag file CL ke sini
+                          </p>
+                          <p className="text-[10px] font-medium text-zinc-400">
+                            Format PDF, JPG, PNG, atau DOCX (Maks 10MB)
+                          </p>
                         </div>
                       </>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-between p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500 text-white rounded-xl">
+                    <div className="rounded-xl bg-emerald-500 p-2 text-white">
                       <FileText className="h-5 w-5" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-zinc-800">{clFileName || "File CL Terunggah"}</p>
+                        <p className="text-xs font-bold text-zinc-800">
+                          {clFileName || "File CL Terunggah"}
+                        </p>
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                       </div>
                       <a
                         href={formData.cl}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-[10px] font-bold text-blue-600 hover:underline uppercase italic"
+                        className="text-[10px] font-bold text-blue-600 uppercase italic hover:underline"
                       >
                         Lihat File Tersimpan
                       </a>
@@ -315,7 +447,7 @@ export default function CreateInvoicePage() {
                     variant="ghost"
                     size="sm"
                     onClick={handleRemoveCL}
-                    className="h-8 w-8 p-0 rounded-full hover:bg-rose-100 hover:text-rose-600 text-zinc-400"
+                    className="h-8 w-8 rounded-full p-0 text-zinc-400 hover:bg-rose-100 hover:text-rose-600"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -325,64 +457,170 @@ export default function CreateInvoicePage() {
           </Card>
 
           {/* RINCIAN MULTI-ITEM (KETERANGAN 1 & 2) */}
-          <Card className="border-none shadow-sm ring-1 ring-zinc-200 border-l-8 border-l-black overflow-hidden">
-            <CardHeader className="bg-zinc-50/50 border-b py-4 font-black text-[10px] uppercase tracking-widest text-black flex flex-row items-center justify-between">
-               <div className="flex items-center gap-2"><List className="h-4 w-4" /> Rincian Pekerjaan (Baris Tetap)</div>
-               <div className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[8px] font-black italic shadow-sm"><ShieldCheck className="h-3 w-3"/> SQL SYNC READY</div>
+          <Card className="overflow-hidden border-l-8 border-none border-l-black shadow-sm ring-1 ring-zinc-200">
+            <CardHeader className="flex flex-row items-center justify-between border-b bg-zinc-50/50 py-4 text-[10px] font-black tracking-widest text-black uppercase">
+              <div className="flex items-center gap-2">
+                <List className="h-4 w-4" /> Rincian Pekerjaan (Baris Tetap)
+              </div>
+              <div className="flex items-center gap-1 rounded bg-emerald-100 px-2 py-1 text-[8px] font-black text-emerald-700 italic shadow-sm">
+                <ShieldCheck className="h-3 w-3" /> SQL SYNC READY
+              </div>
             </CardHeader>
-            <CardContent className="p-6 space-y-8">
-              
+            <CardContent className="space-y-8 p-6">
               {/* ITEM 1 */}
-              <div className="space-y-4 p-5 bg-zinc-50 rounded-[1.5rem] border border-zinc-200 relative">
-                <Badge className="bg-black text-[9px] font-black italic uppercase rounded-md px-3">Baris Pertama (Utama)</Badge>
+              <div className="relative space-y-4 rounded-[1.5rem] border border-zinc-200 bg-zinc-50 p-5">
+                <Badge className="rounded-md bg-black px-3 text-[9px] font-black uppercase italic">
+                  Baris Pertama (Utama)
+                </Badge>
                 <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase italic opacity-50">Keterangan Layanan 1 *</Label>
-                  <Input placeholder="Contoh: Pelatihan ABB" value={formData.keterangan} onChange={(e) => setFormData({...formData, keterangan: e.target.value})} className="h-11 border-zinc-300" />
+                  <Label className="text-[10px] font-black uppercase italic opacity-50">
+                    Keterangan Layanan 1 *
+                  </Label>
+                  <Input
+                    placeholder="Contoh: Pelatihan ABB"
+                    value={formData.keterangan}
+                    onChange={(e) =>
+                      setFormData({ ...formData, keterangan: e.target.value })
+                    }
+                    className="h-11 border-zinc-300"
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase italic opacity-50">Jumlah Peserta</Label>
-                    <Input type="text" inputMode="numeric" placeholder="0" value={formData.jumlah_peserta || ""} onChange={(e) => handleNumericChange("jumlah_peserta", e.target.value)} className="h-11" />
+                    <Label className="text-[10px] font-black uppercase italic opacity-50">
+                      Jumlah Peserta
+                    </Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={formData.jumlah_peserta || ""}
+                      onChange={(e) =>
+                        handleNumericChange("jumlah_peserta", e.target.value)
+                      }
+                      className="h-11"
+                    />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase italic opacity-50">Harga Satuan</Label>
-                    <Input type="text" inputMode="numeric" placeholder="Rp 0" value={formData.harga_peserta || ""} onChange={(e) => handleNumericChange("harga_peserta", e.target.value)} className="h-11" />
+                    <Label className="text-[10px] font-black uppercase italic opacity-50">
+                      Harga Satuan
+                    </Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Rp 0"
+                      value={formData.harga_peserta || ""}
+                      onChange={(e) =>
+                        handleNumericChange("harga_peserta", e.target.value)
+                      }
+                      className="h-11"
+                    />
                   </div>
                 </div>
               </div>
 
               {/* ITEM 2 */}
-              <div className="space-y-4 p-5 bg-zinc-50/50 rounded-[1.5rem] border border-dashed border-zinc-300 relative">
-                <Badge variant="outline" className="text-[9px] font-black italic uppercase rounded-md px-3 text-zinc-400">Baris Kedua (Opsional)</Badge>
+              <div className="relative space-y-4 rounded-[1.5rem] border border-dashed border-zinc-300 bg-zinc-50/50 p-5">
+                <Badge
+                  variant="outline"
+                  className="rounded-md px-3 text-[9px] font-black text-zinc-400 uppercase italic"
+                >
+                  Baris Kedua (Opsional)
+                </Badge>
                 <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase italic opacity-30">Keterangan Layanan 2</Label>
-                  <Input placeholder="Contoh: Pembinaan AKABB" value={formData.keterangan_2} onChange={(e) => setFormData({...formData, keterangan_2: e.target.value})} className="h-11 border-zinc-200" />
+                  <Label className="text-[10px] font-black uppercase italic opacity-30">
+                    Keterangan Layanan 2
+                  </Label>
+                  <Input
+                    placeholder="Contoh: Pembinaan AKABB"
+                    value={formData.keterangan_2}
+                    onChange={(e) =>
+                      setFormData({ ...formData, keterangan_2: e.target.value })
+                    }
+                    className="h-11 border-zinc-200"
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase italic opacity-30">Jumlah Peserta 2</Label>
-                    <Input type="text" inputMode="numeric" placeholder="0" value={formData.jumlah_peserta_2 || ""} onChange={(e) => handleNumericChange("jumlah_peserta_2", e.target.value)} className="h-11" />
+                    <Label className="text-[10px] font-black uppercase italic opacity-30">
+                      Jumlah Peserta 2
+                    </Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={formData.jumlah_peserta_2 || ""}
+                      onChange={(e) =>
+                        handleNumericChange("jumlah_peserta_2", e.target.value)
+                      }
+                      className="h-11"
+                    />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase italic opacity-30">Harga Satuan 2</Label>
-                    <Input type="text" inputMode="numeric" placeholder="Rp 0" value={formData.harga_peserta_2 || ""} onChange={(e) => handleNumericChange("harga_peserta_2", e.target.value)} className="h-11" />
+                    <Label className="text-[10px] font-black uppercase italic opacity-30">
+                      Harga Satuan 2
+                    </Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Rp 0"
+                      value={formData.harga_peserta_2 || ""}
+                      onChange={(e) =>
+                        handleNumericChange("harga_peserta_2", e.target.value)
+                      }
+                      className="h-11"
+                    />
                   </div>
                 </div>
               </div>
 
               {/* TOGGLE PAJAK & PNBP */}
-              <div className="flex flex-wrap gap-4 p-5 bg-zinc-100 rounded-3xl border border-dashed border-zinc-300">
-                <div className="flex items-center space-x-2 bg-white p-3 rounded-2xl border border-zinc-200 shadow-sm">
-                  <Checkbox id="pph" checked={formData.is_pph23} onCheckedChange={(c) => setFormData({...formData, is_pph23: !!c})} />
-                  <Label htmlFor="pph" className="text-xs font-black cursor-pointer uppercase italic">PPH 23 (2%)</Label>
+              <div className="flex flex-wrap gap-4 rounded-3xl border border-dashed border-zinc-300 bg-zinc-100 p-5">
+                <div className="flex items-center space-x-2 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+                  <Checkbox
+                    id="pph"
+                    checked={formData.is_pph23}
+                    onCheckedChange={(c) =>
+                      setFormData({ ...formData, is_pph23: !!c })
+                    }
+                  />
+                  <Label
+                    htmlFor="pph"
+                    className="cursor-pointer text-xs font-black uppercase italic"
+                  >
+                    PPH 23 (2%)
+                  </Label>
                 </div>
-                <div className="flex items-center space-x-2 bg-white p-3 rounded-2xl border border-zinc-200 shadow-sm">
-                  <Checkbox id="ppn" checked={formData.is_ppn11} onCheckedChange={(c) => setFormData({...formData, is_ppn11: !!c})} />
-                  <Label htmlFor="ppn" className="text-xs font-black cursor-pointer uppercase italic">PPN (11%)</Label>
+                <div className="flex items-center space-x-2 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+                  <Checkbox
+                    id="ppn"
+                    checked={formData.is_ppn11}
+                    onCheckedChange={(c) =>
+                      setFormData({ ...formData, is_ppn11: !!c })
+                    }
+                  />
+                  <Label
+                    htmlFor="ppn"
+                    className="cursor-pointer text-xs font-black uppercase italic"
+                  >
+                    PPN (11%)
+                  </Label>
                 </div>
-                <div className="flex items-center space-x-2 bg-blue-600 p-4 rounded-2xl text-white shadow-xl hover:bg-blue-700 transition-all ml-auto">
-                  <Checkbox id="pnbp" checked={formData.is_pnbp} onCheckedChange={(c) => setFormData({...formData, is_pnbp: !!c})} className="border-white data-[state=checked]:bg-white data-[state=checked]:text-blue-600" />
-                  <Label htmlFor="pnbp" className="text-xs font-black cursor-pointer uppercase italic">PNBP (600rb/org)</Label>
+                <div className="ml-auto flex items-center space-x-2 rounded-2xl bg-blue-600 p-4 text-white shadow-xl transition-all hover:bg-blue-700">
+                  <Checkbox
+                    id="pnbp"
+                    checked={formData.is_pnbp}
+                    onCheckedChange={(c) =>
+                      setFormData({ ...formData, is_pnbp: !!c })
+                    }
+                    className="border-white data-[state=checked]:bg-white data-[state=checked]:text-blue-600"
+                  />
+                  <Label
+                    htmlFor="pnbp"
+                    className="cursor-pointer text-xs font-black uppercase italic"
+                  >
+                    PNBP (600rb/org)
+                  </Label>
                 </div>
               </div>
             </CardContent>
@@ -391,55 +629,79 @@ export default function CreateInvoicePage() {
 
         {/* KOLOM KANAN (RINGKASAN & TOTAL) */}
         <div className="lg:col-span-1">
-          <Card className="sticky top-6 border-none shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] rounded-[2.5rem] bg-zinc-900 text-white overflow-hidden ring-4 ring-white">
-            <CardContent className="p-8 space-y-6 font-sans">
-              <div className="flex justify-between items-center mb-4">
-                <CardTitle className="text-[10px] uppercase tracking-[0.4em] font-black opacity-30">Nota Kalkulasi</CardTitle>
+          <Card className="sticky top-6 overflow-hidden rounded-[2.5rem] border-none bg-zinc-900 text-white shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] ring-4 ring-white">
+            <CardContent className="space-y-6 p-8 font-sans">
+              <div className="mb-4 flex items-center justify-between">
+                <CardTitle className="text-[10px] font-black tracking-[0.4em] uppercase opacity-30">
+                  Nota Kalkulasi
+                </CardTitle>
                 <Calculator className="h-5 w-5 text-zinc-600" />
               </div>
-              
-              <div className="space-y-4 pt-6 border-t border-zinc-800">
+
+              <div className="space-y-4 border-t border-zinc-800 pt-6">
                 <div className="flex justify-between text-sm">
-                  <span className="opacity-40 font-bold uppercase tracking-widest text-[10px]">Subtotal Dasar</span>
-                  <span className="font-mono font-bold tracking-tight">{formatIDR(calculation.subtotalDasar)}</span>
+                  <span className="text-[10px] font-bold tracking-widest uppercase opacity-40">
+                    Subtotal Dasar
+                  </span>
+                  <span className="font-mono font-bold tracking-tight">
+                    {formatIDR(calculation.subtotalDasar)}
+                  </span>
                 </div>
                 {formData.is_pph23 && (
-                  <div className="flex justify-between text-sm text-rose-400 font-medium italic">
-                    <span className="font-bold uppercase text-[10px]">Potongan PPH 2%</span>
-                    <span className="font-mono">- {formatIDR(calculation.pph)}</span>
+                  <div className="flex justify-between text-sm font-medium text-rose-400 italic">
+                    <span className="text-[10px] font-bold uppercase">
+                      Potongan PPH 2%
+                    </span>
+                    <span className="font-mono">
+                      - {formatIDR(calculation.pph)}
+                    </span>
                   </div>
                 )}
                 {formData.is_ppn11 && (
-                  <div className="flex justify-between text-sm text-blue-400 font-medium italic">
-                    <span className="font-bold uppercase text-[10px]">PPN 11%</span>
-                    <span className="font-mono">+ {formatIDR(calculation.ppn)}</span>
+                  <div className="flex justify-between text-sm font-medium text-blue-400 italic">
+                    <span className="text-[10px] font-bold uppercase">
+                      PPN 11%
+                    </span>
+                    <span className="font-mono">
+                      + {formatIDR(calculation.ppn)}
+                    </span>
                   </div>
                 )}
                 {formData.is_pnbp && (
-                  <div className="flex justify-between text-sm text-emerald-400 font-medium italic">
-                    <div className="flex flex-col text-right font-bold uppercase text-[10px]">
+                  <div className="flex justify-between text-sm font-medium text-emerald-400 italic">
+                    <div className="flex flex-col text-right text-[10px] font-bold uppercase">
                       <span>Biaya PNBP</span>
-                      <span className="text-[8px] opacity-40 italic">({calculation.totalPesertaAll} Peserta Total)</span>
+                      <span className="text-[8px] italic opacity-40">
+                        ({calculation.totalPesertaAll} Peserta Total)
+                      </span>
                     </div>
-                    <span className="font-mono">+ {formatIDR(calculation.pnbp)}</span>
+                    <span className="font-mono">
+                      + {formatIDR(calculation.pnbp)}
+                    </span>
                   </div>
                 )}
               </div>
 
-              <div className="pt-10 border-t border-zinc-800 flex flex-col gap-2 leading-none">
-                <span className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] italic">Total Tagihan Akhir</span>
-                <h2 className="text-4xl font-black tabular-nums tracking-tighter leading-none italic">{formatIDR(calculation.totalAkhir)}</h2>
+              <div className="flex flex-col gap-2 border-t border-zinc-800 pt-10 leading-none">
+                <span className="text-[10px] font-black tracking-[0.2em] text-emerald-500 uppercase italic">
+                  Total Tagihan Akhir
+                </span>
+                <h2 className="text-4xl leading-none font-black tracking-tighter italic tabular-nums">
+                  {formatIDR(calculation.totalAkhir)}
+                </h2>
               </div>
 
-              <div className="p-4 bg-zinc-800/50 rounded-2xl border border-zinc-700 flex items-center gap-3 mt-4">
-                 <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></div>
-                 <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">Status Invoice: {formData.status}</span>
+              <div className="mt-4 flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-800/50 p-4">
+                <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-500"></div>
+                <span className="text-[9px] font-black tracking-[0.2em] text-zinc-500 uppercase">
+                  Status Invoice: {formData.status}
+                </span>
               </div>
 
-              <Button 
-                onClick={handleSubmit} 
-                disabled={loading || uploadingCL} 
-                className="w-full bg-emerald-500 text-black hover:bg-emerald-400 h-20 text-2xl font-black rounded-[1.5rem] mt-6 transition-all shadow-[0_10px_20px_rgba(16,185,129,0.3)] active:scale-95 italic uppercase tracking-tighter"
+              <Button
+                onClick={handleSubmit}
+                disabled={loading || uploadingCL}
+                className="mt-6 h-20 w-full rounded-[1.5rem] bg-emerald-500 text-2xl font-black tracking-tighter text-black uppercase italic shadow-[0_10px_20px_rgba(16,185,129,0.3)] transition-all hover:bg-emerald-400 active:scale-95"
               >
                 {loading ? <Loader2 className="animate-spin" /> : "KONFIRMASI"}
               </Button>

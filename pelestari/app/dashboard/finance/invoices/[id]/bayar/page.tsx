@@ -15,10 +15,11 @@ export default function PaymentPage() {
   const router = useRouter()
   const params = useParams()
   
-  // Ambil ID secara aman sebagai string (mengatasi string | string[] dari Next.js)
   const invoiceId = useMemo(() => {
-    if (!params?.id) return ""
-    return Array.isArray(params.id) ? params.id[0] : params.id
+    if (!params?.id) return 0
+    const raw = Array.isArray(params.id) ? params.id[0] : params.id
+    const parsed = Number(raw)
+    return Number.isNaN(parsed) ? 0 : parsed
   }, [params?.id])
 
   const [loading, setLoading] = useState(true)
@@ -35,8 +36,7 @@ export default function PaymentPage() {
   useEffect(() => {
     async function load() {
       if (!invoiceId) return
-      
-      // PERBAIKAN 1: Hapus fungsi Number(), langsung kirim sebagai string UUID
+
       const res = await getInvoiceById(invoiceId)
       if (res) {
         setData(res)
@@ -63,7 +63,6 @@ export default function PaymentPage() {
     if (!invoiceId) return
     
     setSaving(true)
-    // PERBAIKAN 2: Hapus fungsi Number(), kirim invoiceId string UUID murni ke backend action
     const res = await updatePayment(invoiceId, { ...form, status: calc.status })
     if (res.success) {
       swal.success("Pembayaran Berhasil Diupdate!")

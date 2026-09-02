@@ -2,7 +2,6 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { randomUUID } from "crypto";
 
 // =========================================================================
 // 1. FUNGSI: IMPORT DATA EXCEL INVOICES BULK
@@ -10,21 +9,18 @@ import { randomUUID } from "crypto";
 export async function importInvoices(dataArray: any[]) {
   try {
     for (const item of dataArray) {
-      const newInvoiceId = randomUUID();
-
       const query = `INSERT INTO tb_invoice (
-        id, nomor_invoice, batch, jenis_kegiatan, tanggal, tanggal_jatuhtempo, 
-        perusahaan_tujuan, npwp, alamat_perusahaan, file_faktur, cl, keterangan, 
-        jumlah_peserta, harga_peserta, keterangan_2, jumlah_peserta_2, 
-        harga_peserta_2, is_pph23, is_ppn11, is_pnbp, nominal_pnbp, 
+        nomor_invoice, batch, jenis_kegiatan, tanggal, tanggal_jatuhtempo,
+        perusahaan_tujuan, npwp, alamat_perusahaan, file_faktur, cl, keterangan,
+        jumlah_peserta, harga_peserta, keterangan_2, jumlah_peserta_2,
+        harga_peserta_2, is_pph23, is_ppn11, is_pnbp, nominal_pnbp,
         total, status, bayar_1, bayar_2
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
       const values = [
-        newInvoiceId,
         item.nomor_invoice,
         item.batch || "N/A",
-        item.jenis_kegiatan || "-", 
+        item.jenis_kegiatan || "-",
         item.tanggal,
         item.tanggal_jatuhtempo,
         item.perusahaan_tujuan,
@@ -82,80 +78,75 @@ export async function createInvoice(formData: any) {
   try {
     await connection.beginTransaction();
 
-    const newInvoiceId = randomUUID();
-
-    const queryInvoice = `INSERT INTO tb_invoice (
-      id,
-      nomor_invoice, 
-      batch, 
+    const newInvoiceId = (await connection.query(
+      `INSERT INTO tb_invoice (
+      nomor_invoice,
+      batch,
       tanggal,
       jenis_kegiatan,
-      tanggal_jatuhtempo, 
-      perusahaan_tujuan, 
-      npwp, 
-      alamat_perusahaan, 
+      tanggal_jatuhtempo,
+      perusahaan_tujuan,
+      npwp,
+      alamat_perusahaan,
       file_faktur,
       cl,
-      keterangan, 
-      jumlah_peserta, 
-      harga_peserta, 
-      keterangan_2, 
-      jumlah_peserta_2, 
+      keterangan,
+      jumlah_peserta,
+      harga_peserta,
+      keterangan_2,
+      jumlah_peserta_2,
       harga_peserta_2,
-      is_pph23, 
-      is_ppn11, 
-      is_pnbp, 
-      nominal_pnbp, 
+      is_pph23,
+      is_ppn11,
+      is_pnbp,
+      nominal_pnbp,
       total,
       bayar_1,
       tanggal_bayar_1,
       bayar_2,
       tanggal_bayar_2,
       status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        formData.nomor_invoice,
+        formData.batch,
+        formData.tanggal,
+        formData.jenis_kegiatan,
+        formData.tanggal_jatuhtempo,
+        formData.perusahaan_tujuan,
+        formData.npwp,
+        formData.alamat_perusahaan,
+        formData.file_faktur || null,
+        formData.cl || null,
+        formData.keterangan,
+        formData.jumlah_peserta,
+        formData.harga_peserta,
+        formData.keterangan_2 || null,
+        formData.jumlah_peserta_2 || 0,
+        formData.harga_peserta_2 || 0,
+        formData.is_pph23 ? 1 : 0,
+        formData.is_ppn11 ? 1 : 0,
+        formData.is_pnbp ? 1 : 0,
+        formData.nominal_pnbp || 0,
+        formData.total,
+        formData.bayar_1 || 0,
+        formData.tanggal_bayar_1 || null,
+        formData.bayar_2 || 0,
+        formData.tanggal_bayar_2 || null,
+        formData.status || 'Belum Lunas'
+      ]
+    ) as any).insertId as number;
 
-    const valuesInvoice = [
-      newInvoiceId,
-      formData.nomor_invoice,
-      formData.batch,
-      formData.tanggal,
-      formData.jenis_kegiatan,
-      formData.tanggal_jatuhtempo,
-      formData.perusahaan_tujuan,
-      formData.npwp,
-      formData.alamat_perusahaan,
-      formData.file_faktur || null,
-      formData.cl || null,
-      formData.keterangan,
-      formData.jumlah_peserta,
-      formData.harga_peserta,
-      formData.keterangan_2 || null,
-      formData.jumlah_peserta_2 || 0,
-      formData.harga_peserta_2 || 0,
-      formData.is_pph23 ? 1 : 0,
-      formData.is_ppn11 ? 1 : 0,
-      formData.is_pnbp ? 1 : 0,
-      formData.nominal_pnbp || 0,
-      formData.total,
-      formData.bayar_1 || 0,
-      formData.tanggal_bayar_1 || null,
-      formData.bayar_2 || 0,
-      formData.tanggal_bayar_2 || null,
-      formData.status || 'Belum Lunas'
-    ];
-
-    await connection.query(queryInvoice, valuesInvoice);
-
-    const akunPiutang = "12100"; 
+    const akunPiutang = "12100";
     await connection.query(
-      "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = ?", 
+      "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = ?",
       [formData.total, akunPiutang]
     );
 
     await connection.commit();
     revalidatePath("/dashboard/finance/invoices");
 
-    return { success: true };
+    return { success: true, id: newInvoiceId };
   } catch (error: any) {
     await connection.rollback();
     console.error("CREATE_INVOICE_ERROR:", error.message);
@@ -168,7 +159,7 @@ export async function createInvoice(formData: any) {
 // =========================================================================
 // 4. FUNGSI: HAPUS DATA INVOICE
 // =========================================================================
-export async function deleteInvoice(id: string) {
+export async function deleteInvoice(id: number) {
   try {
     const query = `DELETE FROM tb_invoice WHERE id = ?`;
     await db.query(query, [id]);
@@ -183,7 +174,7 @@ export async function deleteInvoice(id: string) {
 // =========================================================================
 // 5. FUNGSI: UPDATE / EDIT INVOICE DATA
 // =========================================================================
-export async function updateInvoice(id: string, data: any) {
+export async function updateInvoice(id: number, data: any) {
   try {
     const query = `
       UPDATE tb_invoice SET 
@@ -222,7 +213,7 @@ export async function updateInvoice(id: string, data: any) {
 // =========================================================================
 // 6. FUNGSI: DETEKSI DETIL INVOICE BY ID
 // =========================================================================
-export async function getInvoiceById(id: string) {
+export async function getInvoiceById(id: number) {
   try {
     const [rows]: any = await db.query(
       "SELECT * FROM tb_invoice WHERE id = ?", 
@@ -264,7 +255,7 @@ export async function getInvoices() {
 // =========================================================================
 // 8. FUNGSI: UPDATE DATA MANUAL PEMBAYARAN
 // =========================================================================
-export async function updatePayment(id: string, data: any) {
+export async function updatePayment(id: number, data: any) {
   try {
     const query = `
       UPDATE tb_invoice SET 
@@ -288,7 +279,7 @@ export async function updatePayment(id: string, data: any) {
 }
 
 export async function updateInvoiceFile(
-  id: string,
+  id: number,
   field: "file_faktur" | "cl",
   fileUrl: string
 ) {
@@ -308,7 +299,7 @@ export async function updateInvoiceFile(
 // 9. FUNGSI: PROSES BAYAR INVOICE SAJA
 // =========================================================================
 export async function prosesBayarInvoiceSaja(payload: {
-  invoiceId: string;
+  invoiceId: number;
   jumlahBayar: number;
   jenisPembayaran: "DP" | "Pelunasan";
 }) {
