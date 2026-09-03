@@ -19,6 +19,7 @@ interface JournalItem {
   accountType: string;
   debit: number;
   kredit: number;
+  keterangan: string;
 }
 
 interface JournalForm {
@@ -32,8 +33,8 @@ interface JournalForm {
 
 function makeEmptyItems(): JournalItem[] {
   return [
-    { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 },
-    { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 },
+    { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0, keterangan: "" },
+    { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0, keterangan: "" },
   ];
 }
 
@@ -136,6 +137,7 @@ export default function KasirJurnalPage() {
               accountType: akunKasBank.nama_kelompok,
               debit: nominal,
               kredit: 0,
+              keterangan: `${fase} via ${kelompokKasBank}`,
             },
             {
               accountCode: akunPiutang.no_akun,
@@ -143,6 +145,7 @@ export default function KasirJurnalPage() {
               accountType: akunPiutang.nama_kelompok,
               debit: 0,
               kredit: nominal,
+              keterangan: `Pelunasan piutang invoice ${inv.nomor}`,
             },
           ],
         }));
@@ -176,6 +179,7 @@ export default function KasirJurnalPage() {
               accountType: akunHutang.nama_kelompok,
               debit: po.total_harga,
               kredit: 0,
+              keterangan: `Hutang atas PO ${po.nomor}`,
             },
             {
               accountCode: akunKasBank.no_akun,
@@ -183,6 +187,7 @@ export default function KasirJurnalPage() {
               accountType: akunKasBank.nama_kelompok,
               debit: 0,
               kredit: po.total_harga,
+              keterangan: `Pembayaran PO ${po.nomor} via ${kelompokKasBank}`,
             },
           ],
         }));
@@ -251,7 +256,7 @@ export default function KasirJurnalPage() {
   const addRow = () => {
     setForm((prev) => ({
       ...prev,
-      items: [...prev.items, { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 }],
+      items: [...prev.items, { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0, keterangan: "" }],
     }))
   }
 
@@ -471,6 +476,7 @@ export default function KasirJurnalPage() {
                 <TableHead className="w-[160px] text-zinc-800 border-r py-4 px-3 font-black">Kode Akun</TableHead>
                 <TableHead className="text-zinc-800 border-r px-3 font-black">Nama Akun</TableHead>
                 <TableHead className="w-[180px] text-zinc-800 border-r px-3 font-black">Tipe Akun (Kelompok)</TableHead>
+                <TableHead className="text-zinc-800 border-r px-3 font-black">Keterangan</TableHead>
                 <TableHead className="w-[160px] text-zinc-800 border-r text-right px-3 font-black">Debit (Rp)</TableHead>
                 <TableHead className="w-[160px] text-zinc-800 border-r text-right px-3 font-black">Kredit (Rp)</TableHead>
                 <TableHead className="w-[50px] text-zinc-800 text-center font-black">Aksi</TableHead>
@@ -497,7 +503,7 @@ export default function KasirJurnalPage() {
                     </datalist>
                   </TableCell>
                   <TableCell className="p-1 border-r">
-                    <Input readOnly placeholder="Nama Akun otomatis..." value={item.accountName} className="h-9 text-xs font-bold bg-zinc-50/50 text-zinc-500 border-none shadow-none focus-visible:ring-0 uppercase" />
+                    <Input readOnly placeholder="Nama Akun otomatis..." value={item.accountName} className="h-9 text-xs font-bold bg-zinc-50/50 text-zinc-500 border-none shadow-none" />
                   </TableCell>
                   <TableCell className="px-3 border-r">
                     {item.accountType ? (
@@ -507,6 +513,14 @@ export default function KasirJurnalPage() {
                     ) : (
                       <span className="text-zinc-300 text-[10px] italic">Belum dipilih</span>
                     )}
+                  </TableCell>
+                  <TableCell className="p-1 border-r">
+                    <Input
+                      placeholder="Keterangan..."
+                      value={item.keterangan || ""}
+                      onChange={(e) => handleItemChange(index, "keterangan", e.target.value)}
+                      className="h-9 text-xs font-medium bg-transparent border-none shadow-none focus-visible:ring-0"
+                    />
                   </TableCell>
                   <TableCell className="p-1 border-r">
                     <Input type="number" min="0" placeholder="0" value={item.debit || ""} onChange={(e) => handleItemChange(index, "debit", Number(e.target.value))} className="h-9 text-xs text-right font-mono font-bold bg-transparent border-none shadow-none focus-visible:ring-0" />

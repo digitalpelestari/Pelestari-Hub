@@ -254,6 +254,7 @@ export default function JurnalUmumListPage() {
           no_akun: item.no_akun,
           debit: Number(item.debit) || 0,
           kredit: Number(item.kredit) || 0,
+          keterangan: item.keterangan || "",
         })
       }
 
@@ -446,6 +447,7 @@ export default function JurnalUmumListPage() {
                 <TableHead className="w-[90px] px-4 py-3.5">Kode Akun</TableHead>
                 <TableHead className="w-[150px] px-4 py-3.5">Nama Akun</TableHead>
                 <TableHead className="w-[120px] px-4 py-3.5">Tipe Akun</TableHead>
+                <TableHead className="w-[180px] px-4 py-3.5">Keterangan Item</TableHead>
                 <TableHead className="w-[120px] px-4 py-3.5 text-right">
                   Debit (Rp)
                 </TableHead>
@@ -461,7 +463,7 @@ export default function JurnalUmumListPage() {
               {loading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={11}
+                    colSpan={12}
                     className="h-40 text-center text-zinc-400 italic"
                   >
                     Memuat data transaksi dari server...
@@ -721,6 +723,27 @@ export default function JurnalUmumListPage() {
                           )}
                         </TableCell>
 
+                        <TableCell className="border-r border-zinc-100 px-4 py-3">
+                          {isJurnalEditing ? (
+                            <Input
+                              type="text"
+                              value={editItemsForm[idx]?.keterangan ?? ""}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "keterangan",
+                                  e.target.value
+                                )
+                              }
+                              className="h-8 rounded-md border-zinc-300 bg-white text-xs"
+                            />
+                          ) : (
+                            <span className="text-xs text-zinc-600 [overflow-wrap:anywhere] break-words whitespace-normal">
+                              {item.keterangan || "-"}
+                            </span>
+                          )}
+                        </TableCell>
+
                         <TableCell className="border-r border-zinc-100 px-4 py-3 text-right font-mono whitespace-nowrap text-zinc-900">
                           {isJurnalEditing ? (
                             <Input
@@ -830,7 +853,7 @@ export default function JurnalUmumListPage() {
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={11}
+                    colSpan={12}
                     className="h-32 text-center text-zinc-400 italic"
                   >
                     Tidak ada rekaman transaksi jurnal pada rentang waktu ini.

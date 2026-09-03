@@ -9,6 +9,7 @@ interface JurnalItemPayload {
   accountCode: string;
   debit: number;
   kredit: number;
+  keterangan?: string;
 }
 
 interface JurnalPayload {
@@ -518,7 +519,8 @@ export async function getJurnalList(
         a.nama_akun,
         k.kelompok_biaya AS nama_kelompok,
         i.debit,
-        i.kredit
+        i.kredit,
+        i.keterangan
       FROM tb_jurnal_item i
       LEFT JOIN tb_akun a ON i.no_akun = a.no_akun
       LEFT JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
@@ -592,6 +594,7 @@ export async function updateJurnalItem(
     no_akun: string;
     debit: number;
     kredit: number;
+    keterangan: string;
   }
 ) {
   const connection = await db.getConnection();
@@ -638,9 +641,10 @@ export async function updateJurnalItem(
       `UPDATE tb_jurnal_item SET 
         no_akun = ?, 
         debit = ?, 
-        kredit = ? 
+        kredit = ?, 
+        keterangan = ? 
        WHERE id = ?`,
-      [payload.no_akun, payload.debit, payload.kredit, itemId]
+      [payload.no_akun, payload.debit, payload.kredit, payload.keterangan, itemId]
     );
 
     // 3. Terapkan saldo baru sesuai saldo normalnya
@@ -914,8 +918,8 @@ export async function createJurnalUmum(payload: JurnalPayload) {
     const jurnalId = headerResult.insertId;
 
     const itemQuery = `
-      INSERT INTO tb_jurnal_item (jurnal_id, no_akun, debit, kredit) 
-      VALUES (?, ?, ?, ?)
+      INSERT INTO tb_jurnal_item (jurnal_id, no_akun, debit, kredit, keterangan) 
+      VALUES (?, ?, ?, ?, ?)
     `;
 
     for (const item of payload.items) {
@@ -929,6 +933,7 @@ export async function createJurnalUmum(payload: JurnalPayload) {
         item.accountCode,
         debitVal,
         kreditVal,
+        item.keterangan || "",
       ]);
 
       // Update master saldo akun secara dinamis berdasarkan posisi normal akun
@@ -939,7 +944,7 @@ export async function createJurnalUmum(payload: JurnalPayload) {
     revalidatePath("/dashboard/finance/pos/jurnal");
     revalidatePath("/dashboard/finance/riwayat");
     return { success: true, message: "Jurnal Umum Berhasil Disimpan!" };
-} catch (error: any) {
+  } catch (error: any) {
     await connection.rollback();
     console.error("CREATE_JURNAL_ERROR:", error.message);
     return { success: false, message: "Gagal menyimpan jurnal: " + error.message };
@@ -1050,8 +1055,8 @@ export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayl
 
     // 8. Insert items jurnal + update saldo akun
     const itemQuery = `
-      INSERT INTO tb_jurnal_item (jurnal_id, no_akun, debit, kredit)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO tb_jurnal_item (jurnal_id, no_akun, debit, kredit, keterangan)
+      VALUES (?, ?, ?, ?, ?)
     `;
     for (const item of payload.items) {
       const debitVal = Number(item.debit) || 0;
@@ -1062,6 +1067,7 @@ export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayl
         item.accountCode,
         debitVal,
         kreditVal,
+        item.keterangan || "",
       ]);
       await applySaldoAkun(connection, item.accountCode, debitVal, kreditVal, false);
     }
