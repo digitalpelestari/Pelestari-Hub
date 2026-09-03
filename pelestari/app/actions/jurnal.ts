@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
+import { lookupReferensi } from "@/app/actions/referensi";
 
 interface JurnalItemPayload {
   accountCode: string;
@@ -14,6 +15,7 @@ interface JurnalPayload {
   tanggal: string;
   noRegistrasi: string;
   noReferensi: string;
+  invoiceId?: number | null;
   penerima?: string;
   keterangan: string;
   items: JurnalItemPayload[];
@@ -650,9 +652,92 @@ export async function updateJurnalItem(
       false // Revert = false
     );
 
+    // 4. Jika jurnal terhubung ke invoice, hitung ulang pembayaran invoice
+    const [jurnalHeaderForUpdate]: any = await connection.query(
+      "SELECT invoice_id FROM tb_jurnal WHERE id = ?",
+      [payload.jurnal_id]
+    );
+    const invoiceIdToUpdate = jurnalHeaderForUpdate.length > 0 ? Number(jurnalHeaderForUpdate[0].invoice_id) : null;
+
+    if (invoiceIdToUpdate) {
+      const [remainingJurnals]: any = await connection.query(
+        `SELECT j.id, j.tanggal, i.no_akun, i.debit, i.kredit
+         FROM tb_jurnal j
+         INNER JOIN tb_jurnal_item i ON i.jurnal_id = j.id
+         WHERE j.invoice_id = ?
+         ORDER BY j.tanggal ASC, j.id ASC`,
+        [invoiceIdToUpdate]
+      );
+
+      const [piutangRows]: any = await connection.query(
+        `SELECT a.no_akun
+         FROM tb_akun a
+         JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
+         WHERE k.kelompok_biaya LIKE '%PIUTANG%' AND a.is_aktif = 1`
+      );
+      const piutangAccounts = new Set<string>(
+        (piutangRows || []).map((r: any) => String(r.no_akun))
+      );
+
+      const jurnalMap = new Map<number, any[]>();
+      for (const row of remainingJurnals) {
+        if (!jurnalMap.has(row.id)) {
+          jurnalMap.set(row.id, []);
+        }
+        jurnalMap.get(row.id)!.push(row);
+      }
+
+      let bayar1 = 0;
+      let tglBayar1: string | null = null;
+      let bayar2 = 0;
+      let tglBayar2: string | null = null;
+      let isFirstPayment = true;
+
+      for (const [, jurnalItems] of jurnalMap) {
+        let piutangDebit = 0;
+        let piutangKredit = 0;
+        for (const item of jurnalItems) {
+          if (piutangAccounts.has(String(item.no_akun))) {
+            piutangDebit += Number(item.debit) || 0;
+            piutangKredit += Number(item.kredit) || 0;
+          }
+        }
+        const netBayar = piutangKredit - piutangDebit;
+        if (netBayar <= 0) continue;
+
+        if (isFirstPayment) {
+          bayar1 = netBayar;
+          tglBayar1 = jurnalItems[0].tanggal;
+          isFirstPayment = false;
+        } else {
+          bayar2 += netBayar;
+          tglBayar2 = jurnalItems[0].tanggal;
+        }
+      }
+
+      const [invoiceRows]: any = await connection.query(
+        "SELECT total FROM tb_invoice WHERE id = ?",
+        [invoiceIdToUpdate]
+      );
+      const totalInv = Number(invoiceRows[0]?.total) || 0;
+      const totalBayar = bayar1 + bayar2;
+      const newStatus = totalBayar >= totalInv ? "Lunas" : totalBayar > 0 ? "Sebagian" : "Belum Lunas";
+
+      await connection.query(
+        `UPDATE tb_invoice
+         SET bayar_1 = ?, bayar_2 = ?, tanggal_bayar_1 = ?, tanggal_bayar_2 = ?, status = ?
+         WHERE id = ?`,
+        [bayar1, bayar2, tglBayar1, tglBayar2, newStatus, invoiceIdToUpdate]
+      );
+    }
+
     await connection.commit();
     revalidatePath("/dashboard/finance/pos/jurnal");
     revalidatePath("/dashboard/finance/riwayat");
+    if (invoiceIdToUpdate) {
+      revalidatePath(`/dashboard/finance/invoices/${invoiceIdToUpdate}`);
+      revalidatePath("/dashboard/finance/invoices");
+    }
     return {
       success: true,
       message: "Seluruh kolom transaksi, No Referensi, Penerima, dan saldo master berhasil disesuaikan!",
@@ -671,6 +756,7 @@ export async function updateJurnalItem(
  */
 export async function deleteJurnalByHeader(jurnalId: number) {
   const connection = await db.getConnection();
+  let invoiceIdToUpdate: number | null = null;
 
   try {
     await connection.beginTransaction();
@@ -679,6 +765,12 @@ export async function deleteJurnalByHeader(jurnalId: number) {
       "SELECT no_akun, debit, kredit FROM tb_jurnal_item WHERE jurnal_id = ?",
       [jurnalId]
     );
+
+    const [jurnalHeader]: any = await connection.query(
+      "SELECT invoice_id FROM tb_jurnal WHERE id = ?",
+      [jurnalId]
+    );
+    invoiceIdToUpdate = jurnalHeader.length > 0 ? Number(jurnalHeader[0].invoice_id) : null;
 
     // Revert semua akun yang terlibat sebelum baris dihapus
     for (const item of items) {
@@ -694,10 +786,96 @@ export async function deleteJurnalByHeader(jurnalId: number) {
     await connection.query("DELETE FROM tb_jurnal_item WHERE jurnal_id = ?", [jurnalId]);
     await connection.query("DELETE FROM tb_jurnal WHERE id = ?", [jurnalId]);
 
+    if (invoiceIdToUpdate) {
+      const [remainingJurnals]: any = await connection.query(
+        "SELECT COUNT(*) as count FROM tb_jurnal WHERE invoice_id = ?",
+        [invoiceIdToUpdate]
+      );
+      const remainingCount = Number(remainingJurnals[0]?.count) || 0;
+
+      if (remainingCount === 0) {
+        await connection.query("DELETE FROM tb_invoice WHERE id = ?", [invoiceIdToUpdate]);
+      } else {
+        const [remainingJurnalsDetail]: any = await connection.query(
+          `SELECT j.id, j.tanggal, i.no_akun, i.debit, i.kredit
+           FROM tb_jurnal j
+           INNER JOIN tb_jurnal_item i ON i.jurnal_id = j.id
+           WHERE j.invoice_id = ?
+           ORDER BY j.tanggal ASC, j.id ASC`,
+          [invoiceIdToUpdate]
+        );
+
+        const [piutangRows]: any = await connection.query(
+          `SELECT a.no_akun
+           FROM tb_akun a
+           JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
+           WHERE k.kelompok_biaya LIKE '%PIUTANG%' AND a.is_aktif = 1`
+        );
+        const piutangAccounts = new Set<string>(
+          (piutangRows || []).map((r: any) => String(r.no_akun))
+        );
+
+        const jurnalMap = new Map<number, any[]>();
+        for (const row of remainingJurnalsDetail) {
+          if (!jurnalMap.has(row.id)) {
+            jurnalMap.set(row.id, []);
+          }
+          jurnalMap.get(row.id)!.push(row);
+        }
+
+        let bayar1 = 0;
+        let tglBayar1: string | null = null;
+        let bayar2 = 0;
+        let tglBayar2: string | null = null;
+        let isFirstPayment = true;
+
+        for (const [, jurnalItems] of jurnalMap) {
+          let piutangDebit = 0;
+          let piutangKredit = 0;
+          for (const item of jurnalItems) {
+            if (piutangAccounts.has(String(item.no_akun))) {
+              piutangDebit += Number(item.debit) || 0;
+              piutangKredit += Number(item.kredit) || 0;
+            }
+          }
+          const netBayar = piutangKredit - piutangDebit;
+          if (netBayar <= 0) continue;
+
+          if (isFirstPayment) {
+            bayar1 = netBayar;
+            tglBayar1 = jurnalItems[0].tanggal;
+            isFirstPayment = false;
+          } else {
+            bayar2 += netBayar;
+            tglBayar2 = jurnalItems[0].tanggal;
+          }
+        }
+
+        const [invoiceRows]: any = await connection.query(
+          "SELECT total FROM tb_invoice WHERE id = ?",
+          [invoiceIdToUpdate]
+        );
+        const totalInv = Number(invoiceRows[0]?.total) || 0;
+        const totalBayar = bayar1 + bayar2;
+        const newStatus = totalBayar >= totalInv ? "Lunas" : totalBayar > 0 ? "Sebagian" : "Belum Lunas";
+
+        await connection.query(
+          `UPDATE tb_invoice
+           SET bayar_1 = ?, bayar_2 = ?, tanggal_bayar_1 = ?, tanggal_bayar_2 = ?, status = ?
+           WHERE id = ?`,
+          [bayar1, bayar2, tglBayar1, tglBayar2, newStatus, invoiceIdToUpdate]
+        );
+      }
+    }
+
     await connection.commit();
 
     revalidatePath("/dashboard/finance/pos/jurnal");
     revalidatePath("/dashboard/finance/riwayat");
+    if (invoiceIdToUpdate) {
+      revalidatePath(`/dashboard/finance/invoices/${invoiceIdToUpdate}`);
+      revalidatePath("/dashboard/finance/invoices");
+    }
     return {
       success: true,
       message: "Satu paket transaksi jurnal berhasil dihapus & saldo master dipulihkan!",
@@ -721,13 +899,14 @@ export async function createJurnalUmum(payload: JurnalPayload) {
     await connection.beginTransaction();
 
     const headerQuery = `
-      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, penerima, keterangan) 
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, invoice_id, penerima, keterangan)
+      VALUES (?, ?, ?, ?, ?, ?)
     `;
     const [headerResult]: any = await connection.query(headerQuery, [
       payload.tanggal,
       payload.noRegistrasi,
       payload.noReferensi,
+      payload.invoiceId ?? null,
       payload.penerima || "",
       payload.keterangan,
     ]);
@@ -760,12 +939,205 @@ export async function createJurnalUmum(payload: JurnalPayload) {
     revalidatePath("/dashboard/finance/pos/jurnal");
     revalidatePath("/dashboard/finance/riwayat");
     return { success: true, message: "Jurnal Umum Berhasil Disimpan!" };
-  } catch (error: any) {
+} catch (error: any) {
     await connection.rollback();
     console.error("CREATE_JURNAL_ERROR:", error.message);
     return { success: false, message: "Gagal menyimpan jurnal: " + error.message };
   } finally {
     connection.release();
+  }
+}
+
+/**
+ * 🛠️ ACTION: SIMPAN JURNAL + AUTO-UPDATE INVOICE (KASIR)
+ * - Cek noReferensi ke tb_invoice via lookupReferensi
+ * - Kalau match invoice: insert jurnal + items + saldo, lalu UPDATE tb_invoice (bayar_1/2, status Sebagian/Lunas)
+ * - Kalau bukan invoice (PO atau referensi bebas): fallback ke createJurnalUmum biasa
+ */
+export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayload) {
+  // 1. Cek apakah noReferensi match ke invoice
+  const lookup = await lookupReferensi(payload.noReferensi || "");
+
+  // 2. Kalau bukan invoice, fallback ke createJurnalUmum biasa
+  if (lookup.found !== "invoice") {
+    return await createJurnalUmum(payload);
+  }
+
+  const invLookup = lookup.data; // { nomor, total, bayar_1, bayar_2, ... }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 3. Ambil id invoice dari nomor_invoice
+    const [invoiceRows]: any = await connection.query(
+      `SELECT id, total, bayar_1, bayar_2, status FROM tb_invoice WHERE nomor_invoice = ? LIMIT 1`,
+      [invLookup.nomor]
+    );
+    if (!Array.isArray(invoiceRows) || invoiceRows.length === 0) {
+      throw new Error("Invoice tidak ditemukan di database");
+    }
+    const invoice = invoiceRows[0];
+    const invoiceId: number = Number(invoice.id);
+    const totalInv = Number(invoice.total) || 0;
+    const bayar1Lama = Number(invoice.bayar_1) || 0;
+    const bayar2Lama = Number(invoice.bayar_2) || 0;
+
+    // 4. Cari akun-akun yang kelompok_biaya-nya mengandung kata 'PIUTANG'
+    //    Pakai LIKE '%PIUTANG%' agar bebas nama: 'Piutang', 'PIUTANG USAHA', 'Piutang Dagang', dll
+    const [piutangRows]: any = await connection.query(
+      `SELECT a.no_akun
+       FROM tb_akun a
+       JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
+       WHERE k.kelompok_biaya LIKE '%PIUTANG%' AND a.is_aktif = 1`
+    );
+    const piutangAccounts = new Set<string>(
+      (piutangRows || []).map((r: any) => String(r.no_akun))
+    );
+
+    // 5. Hitung posisi akun piutang di jurnal
+    let piutangDebit = 0;
+    let piutangKredit = 0;
+    for (const item of payload.items) {
+      const kode = String(item.accountCode || "").trim();
+      if (piutangAccounts.has(kode)) {
+        piutangDebit += Number(item.debit) || 0;
+        piutangKredit += Number(item.kredit) || 0;
+      }
+    }
+
+    // 6. Deteksi arah transaksi:
+    //    - piutangKredit > 0 && piutangDebit == 0 → BAYAR
+    //    - piutangKredit > 0 && piutangDebit > 0  → ADJUSTMENT (net = kredit - debit)
+    //    - piutangKredit == 0 && piutangDebit == 0 → bukan jurnal piutang, rollback & fallback
+    //    - piutangKredit == 0 && piutangDebit > 0  → KOREKSI (disabled di kasir)
+    if (piutangKredit === 0 && piutangDebit === 0) {
+      await connection.rollback();
+      return await createJurnalUmum(payload);
+    }
+
+    if (piutangDebit > 0 && piutangKredit === 0) {
+      await connection.rollback();
+      return {
+        success: false,
+        message:
+          "Koreksi / pembatalan bayar (Piutang di Debit) tidak dapat dilakukan lewat Kasir. " +
+          "Silakan hubungi admin untuk adjustment manual.",
+      };
+    }
+
+    const netBayar = piutangKredit - piutangDebit;
+    if (netBayar <= 0) {
+      // Adjustment hasilnya ≤ 0, tidak ada efek bayar ke invoice
+      await connection.rollback();
+      return await createJurnalUmum(payload);
+    }
+
+    // 7. Insert header jurnal (dengan invoice_id)
+    const headerQuery = `
+      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, invoice_id, penerima, keterangan)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
+    const [headerResult]: any = await connection.query(headerQuery, [
+      payload.tanggal,
+      payload.noRegistrasi,
+      payload.noReferensi,
+      invoiceId,
+      payload.penerima || "",
+      payload.keterangan,
+    ]);
+    const jurnalId = headerResult.insertId;
+
+    // 8. Insert items jurnal + update saldo akun
+    const itemQuery = `
+      INSERT INTO tb_jurnal_item (jurnal_id, no_akun, debit, kredit)
+      VALUES (?, ?, ?, ?)
+    `;
+    for (const item of payload.items) {
+      const debitVal = Number(item.debit) || 0;
+      const kreditVal = Number(item.kredit) || 0;
+      if (debitVal === 0 && kreditVal === 0) continue;
+      await connection.query(itemQuery, [
+        jurnalId,
+        item.accountCode,
+        debitVal,
+        kreditVal,
+      ]);
+      await applySaldoAkun(connection, item.accountCode, debitVal, kreditVal, false);
+    }
+
+    // 9. Update tb_invoice: bayar_1/bayar_2, tanggal_bayar_*, status
+    const nominalBayar = netBayar;
+    const totalBayarSetelah = bayar1Lama + bayar2Lama + nominalBayar;
+    const isLunas = totalBayarSetelah >= totalInv;
+    const newStatus = isLunas ? "Lunas" : "Sebagian";
+
+    if (bayar1Lama === 0) {
+      await connection.query(
+        `UPDATE tb_invoice
+         SET bayar_1 = ?, tanggal_bayar_1 = ?, status = ?
+         WHERE id = ?`,
+        [nominalBayar, payload.tanggal, newStatus, invoiceId]
+      );
+    } else {
+      await connection.query(
+        `UPDATE tb_invoice
+         SET bayar_2 = bayar_2 + ?, tanggal_bayar_2 = ?, status = ?
+         WHERE id = ?`,
+        [nominalBayar, payload.tanggal, newStatus, invoiceId]
+      );
+    }
+
+    await connection.commit();
+
+    // 10. Revalidate paths
+    revalidatePath("/dashboard/finance/pos/jurnal");
+    revalidatePath("/dashboard/finance/riwayat");
+    revalidatePath("/dashboard/finance/invoices");
+    revalidatePath(`/dashboard/finance/invoices/${invoiceId}`);
+
+    return {
+      success: true,
+      message: `Jurnal tersimpan & invoice ${invLookup.nomor} diperbarui ke status "${newStatus}". (Net bayar: Rp ${nominalBayar.toLocaleString("id-ID")})`,
+    };
+  } catch (error: any) {
+    await connection.rollback();
+    console.error("CREATE_JURNAL_DGN_REFENS_ERROR:", error.message);
+    return { success: false, message: "Gagal menyimpan jurnal referensi: " + error.message };
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * 🛠️ HELPER: CARI AKUN AKTIF BERDASARKAN KELOMPOK BIAYA
+ * Dipakai oleh auto-fill template jurnal dari lookupReferensi (invoice/PO).
+ * Mengembalikan akun pertama yang aktif, atau null bila tidak ditemukan.
+ */
+export async function getAkunByKelompok(
+  kelompokBiaya: string
+): Promise<{ no_akun: string; nama_akun: string; nama_kelompok: string } | null> {
+  try {
+    const [rows]: any = await db.query(
+      `SELECT a.no_akun, a.nama_akun, k.kelompok_biaya AS nama_kelompok
+       FROM tb_akun a
+       JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
+       WHERE k.kelompok_biaya = ? AND a.is_aktif = 1
+       ORDER BY a.no_akun ASC
+       LIMIT 1`,
+      [kelompokBiaya]
+    );
+    if (Array.isArray(rows) && rows.length > 0) {
+      return {
+        no_akun: String(rows[0].no_akun),
+        nama_akun: String(rows[0].nama_akun),
+        nama_kelompok: String(rows[0].nama_kelompok || kelompokBiaya),
+      };
+    }
+    return null;
+  } catch (error: any) {
+    console.error("GET_AKUN_BY_KELOMPOK_ERROR:", error.message);
+    return null;
   }
 }
 

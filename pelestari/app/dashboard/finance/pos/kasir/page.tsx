@@ -1,14 +1,15 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Save, X, FileText, ArrowLeft } from "lucide-react"
-import { createJurnalUmum, generateNoRegistrasiOtomatis } from "@/app/actions/jurnal"
+import { Plus, Save, X, FileText, ArrowLeft, Search, RotateCcw } from "lucide-react"
+import { createJurnalDenganReferensiInvoiceOnly, generateNoRegistrasiOtomatis, getAkunByKelompok } from "@/app/actions/jurnal"
 import { getAkunList } from "@/app/actions/akun"
+import { lookupReferensi, type ReferensiMatch } from "@/app/actions/referensi"
 import Link from "next/link"
 import { swal } from "@/lib/sweetalert"
 
@@ -23,10 +24,17 @@ interface JournalItem {
 interface JournalForm {
   tanggal: string;
   noRegistrasi: string;
-  noReferensi: string; 
+  noReferensi: string;
   penerima: string;
   keterangan: string;
   items: JournalItem[];
+}
+
+function makeEmptyItems(): JournalItem[] {
+  return [
+    { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 },
+    { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 },
+  ];
 }
 
 export default function KasirJurnalPage() {
@@ -34,15 +42,17 @@ export default function KasirJurnalPage() {
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState<JournalForm>({
     tanggal: new Date().toISOString().split("T")[0],
-    noRegistrasi: "", 
-    noReferensi: "", 
+    noRegistrasi: "",
+    noReferensi: "",
     penerima: "",
     keterangan: "",
-    items: [
-      { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 },
-      { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 },
-    ],
+    items: makeEmptyItems(),
   })
+
+  const [referensiMatch, setReferensiMatch] = useState<ReferensiMatch>({ found: null })
+  const [isLooking, setIsLooking] = useState(false)
+  const [templateApplied, setTemplateApplied] = useState(false)
+  const lastQueriedRef = useRef<string>("")
 
   useEffect(() => {
     async function loadAkun() {
@@ -62,6 +72,159 @@ export default function KasirJurnalPage() {
     if (res.success && res.code) {
       setForm(prev => ({ ...prev, noRegistrasi: res.code }));
     }
+  };
+
+  // Tentukan kelompok Kas/Bank berdasarkan prefix noRegistrasi (BK/BD/KK)
+  const resolveKelompokKasBank = (noReg: string): string | null => {
+    const prefix = (noReg || "").trim().split(/[_\/\s-]/)[0].toUpperCase();
+    if (prefix === "KK") return "KAS";
+    if (prefix === "BK" || prefix === "BD") return "BANK";
+    return null;
+  };
+
+  // Auto-fill baris jurnal dari hasil lookup referensi
+  const applyTemplate = useCallback(
+    async (m: ReferensiMatch) => {
+      if (m.found === null) {
+        setTemplateApplied(false);
+        return;
+      }
+
+      const kelompokKasBank = resolveKelompokKasBank(form.noRegistrasi);
+      if (!kelompokKasBank) {
+        setTemplateApplied(false);
+        return;
+      }
+
+      const [akunKasBank, akunPiutang, akunHutang] = await Promise.all([
+        getAkunByKelompok(kelompokKasBank),
+        getAkunByKelompok("PIUTANG"),
+        getAkunByKelompok("HUTANG"),
+      ]);
+
+      if (!akunKasBank) {
+        setTemplateApplied(false);
+        return;
+      }
+
+      // INVOICE
+      if (m.found === "invoice") {
+        const inv = m.data;
+        const adaBayaran = inv.bayar_1 > 0 || inv.status === "Lunas";
+        if (!adaBayaran) {
+          setTemplateApplied(false);
+          return;
+        }
+        if (!akunPiutang) {
+          setTemplateApplied(false);
+          return;
+        }
+        const nominal = inv.status === "Lunas" ? inv.total : inv.bayar_1;
+        if (!nominal || nominal <= 0) {
+          setTemplateApplied(false);
+          return;
+        }
+        const fase = inv.status === "Lunas" ? "Pelunasan" : "Pembayaran DP";
+        setForm(prev => ({
+          ...prev,
+          penerima: inv.perusahaan_tujuan,
+          keterangan: `${fase} invoice ${inv.nomor} - ${inv.perusahaan_tujuan}`,
+          items: [
+            {
+              accountCode: akunKasBank.no_akun,
+              accountName: akunKasBank.nama_akun,
+              accountType: akunKasBank.nama_kelompok,
+              debit: nominal,
+              kredit: 0,
+            },
+            {
+              accountCode: akunPiutang.no_akun,
+              accountName: akunPiutang.nama_akun,
+              accountType: akunPiutang.nama_kelompok,
+              debit: 0,
+              kredit: nominal,
+            },
+          ],
+        }));
+        setTemplateApplied(true);
+        return;
+      }
+
+      // PO
+      if (m.found === "po") {
+        const po = m.data;
+        if (po.status_pembayaran === "SUDAH BAYAR") {
+          setTemplateApplied(false);
+          return;
+        }
+        if (!akunHutang) {
+          setTemplateApplied(false);
+          return;
+        }
+        if (!po.total_harga || po.total_harga <= 0) {
+          setTemplateApplied(false);
+          return;
+        }
+        setForm(prev => ({
+          ...prev,
+          penerima: po.vendor_nama,
+          keterangan: `Pembayaran PO ${po.nomor} - ${po.vendor_nama}`,
+          items: [
+            {
+              accountCode: akunHutang.no_akun,
+              accountName: akunHutang.nama_akun,
+              accountType: akunHutang.nama_kelompok,
+              debit: po.total_harga,
+              kredit: 0,
+            },
+            {
+              accountCode: akunKasBank.no_akun,
+              accountName: akunKasBank.nama_akun,
+              accountType: akunKasBank.nama_kelompok,
+              debit: 0,
+              kredit: po.total_harga,
+            },
+          ],
+        }));
+        setTemplateApplied(true);
+      }
+    },
+    [form.noRegistrasi]
+  );
+
+  // Debounce lookup noReferensi ~400ms
+  useEffect(() => {
+    const noRef = (form.noReferensi || "").trim();
+    if (noRef.length < 3) {
+      setReferensiMatch({ found: null });
+      setIsLooking(false);
+      setTemplateApplied(false);
+      lastQueriedRef.current = "";
+      return;
+    }
+    if (noRef === lastQueriedRef.current) return;
+
+    setIsLooking(true);
+    const timer = setTimeout(async () => {
+      try {
+        const result = await lookupReferensi(noRef);
+        lastQueriedRef.current = noRef;
+        setReferensiMatch(result);
+        await applyTemplate(result);
+      } catch (e) {
+        setReferensiMatch({ found: null });
+      } finally {
+        setIsLooking(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [form.noReferensi, applyTemplate]);
+
+  // Reset template (kembalikan ke baris kosong)
+  const handleResetTemplate = () => {
+    setForm(prev => ({ ...prev, items: makeEmptyItems() }));
+    setTemplateApplied(false);
   };
 
   const handleHeaderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -105,21 +268,21 @@ export default function KasirJurnalPage() {
     if (!isBalanced) return swal.warning("Total Debit dan Kredit harus seimbang (Balanced)!")
 
     setLoading(true)
-    const res = await createJurnalUmum(form) 
+    const res = await createJurnalDenganReferensiInvoiceOnly(form) 
     
     if (res.success) {
       swal.success(res.message)
       setForm({
         tanggal: new Date().toISOString().split("T")[0],
-        noRegistrasi: "", 
-        noReferensi: "", 
+        noRegistrasi: "",
+        noReferensi: "",
         penerima: "",
         keterangan: "",
-        items: [
-          { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 },
-          { accountCode: "", accountName: "", accountType: "", debit: 0, kredit: 0 },
-        ],
+        items: makeEmptyItems(),
       })
+      setReferensiMatch({ found: null })
+      setTemplateApplied(false)
+      lastQueriedRef.current = ""
     } else {
       swal.error("Gagal Simpan: " + res.message)
     }
@@ -207,8 +370,83 @@ export default function KasirJurnalPage() {
 
             {/* 3. NO. REFERENSI */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase italic text-zinc-500 ml-1">No. Referensi / Nota Asli</label>
-              <Input placeholder="Contoh: INV-9921, REF-KAS" name="noReferensi" value={form.noReferensi} onChange={handleHeaderChange} className="h-10 font-bold bg-white border-zinc-300 rounded-sm" />
+              <label className="text-[10px] font-black uppercase italic text-zinc-500 ml-1 flex items-center justify-between">
+                <span>No. Referensi / Nota Asli</span>
+                {templateApplied && (
+                  <button
+                    type="button"
+                    onClick={handleResetTemplate}
+                    className="text-[9px] font-bold text-rose-600 hover:text-rose-800 inline-flex items-center gap-1"
+                    title="Reset baris debit/kredit ke kosong"
+                  >
+                    <RotateCcw className="h-3 w-3" /> RESET TEMPLATE
+                  </button>
+                )}
+              </label>
+              <div className="relative">
+                <Input
+                  placeholder="Contoh: 001/INV/VIII/2026/G atau 001/PO-GA/..."
+                  name="noReferensi"
+                  value={form.noReferensi}
+                  onChange={handleHeaderChange}
+                  className="h-10 font-bold bg-white border-zinc-300 rounded-sm pr-10"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                  {isLooking ? (
+                    <Search className="h-4 w-4 text-zinc-400 animate-pulse" />
+                  ) : referensiMatch.found ? (
+                    <Search className="h-4 w-4 text-emerald-500" />
+                  ) : (
+                    <Search className="h-4 w-4 text-zinc-300" />
+                  )}
+                </div>
+              </div>
+              {/* BADGE STATUS REFERENSI */}
+              <div className="min-h-[20px] flex flex-wrap items-center gap-1.5 pt-1">
+                {isLooking && (
+                  <Badge variant="outline" className="text-[9px] font-bold rounded-[2px] border-zinc-300 text-zinc-500">
+                    <Search className="h-3 w-3 mr-1 animate-pulse" /> Mencari referensi...
+                  </Badge>
+                )}
+                {!isLooking && referensiMatch.found === "invoice" && (
+                  <Badge className="bg-emerald-100 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-[9px] font-bold rounded-[2px] px-2 py-1">
+                    ✓ INVOICE: {referensiMatch.data.nomor} — {referensiMatch.data.perusahaan_tujuan}
+                    <span className="ml-1 font-mono">
+                      (Sisa Rp {referensiMatch.data.sisa_tagihan.toLocaleString("id-ID")})
+                    </span>
+                  </Badge>
+                )}
+                {!isLooking && referensiMatch.found === "po" && (
+                  <Badge className="bg-amber-100 hover:bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-bold rounded-[2px] px-2 py-1">
+                    ✓ PO: {referensiMatch.data.nomor} — {referensiMatch.data.vendor_nama}
+                    <span className="ml-1 font-mono">
+                      (Total Rp {referensiMatch.data.total_harga.toLocaleString("id-ID")})
+                    </span>
+                  </Badge>
+                )}
+                {!isLooking &&
+                  referensiMatch.found === null &&
+                  form.noReferensi.trim().length >= 3 && (
+                    <Badge variant="outline" className="text-[9px] font-bold rounded-[2px] border-zinc-300 text-zinc-500">
+                      Referensi bebas — tidak terhubung ke invoice/PO
+                    </Badge>
+                  )}
+                {!isLooking &&
+                  referensiMatch.found === "invoice" &&
+                  referensiMatch.data.bayar_1 === 0 &&
+                  referensiMatch.data.status !== "Lunas" && (
+                    <Badge variant="outline" className="text-[9px] font-bold rounded-[2px] border-amber-300 text-amber-700 bg-amber-50">
+                      ⚠ Invoice belum ada pembayaran — isi jurnal manual
+                    </Badge>
+                  )}
+                {!isLooking &&
+                  referensiMatch.found === "po" &&
+                  referensiMatch.data.status_pembayaran === "SUDAH BAYAR" && (
+                    <Badge variant="outline" className="text-[9px] font-bold rounded-[2px] border-rose-300 text-rose-700 bg-rose-50">
+                      ⚠ PO sudah dibayar — tidak dibuat jurnal otomatis
+                    </Badge>
+                  )}
+              </div>
             </div>
 
             {/* 4. PENERIMA / VENDOR */}
