@@ -83,9 +83,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             { title: "Jurnal Umum", url: "/dashboard/finance/pos/jurnal" },
             { title: "Kasir", url: "/dashboard/finance/pos/kasir" },
             { title: "Daftar Akun", url: "/dashboard/finance/pos/akun" },
+          ],
+        },
+
+        // DATA MASTER
+        {
+          title: "Data Master",
+          url: "#",
+          icon: <Settings2 />,
+          roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+          items: [
             {
               title: "Kelompok Biaya",
               url: "/dashboard/finance/pos/kelompok-biaya",
+            },
+            {
+              title: "Pemohon",
+              url: "/dashboard/finance/data-master/pemohon",
+            },
+            {
+              title: "Penerima",
+              url: "/dashboard/finance/data-master/penerima",
             },
           ],
         },
