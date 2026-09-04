@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { deleteFileFromR2Action } from '@/app/actions/upload-r2';
 
-// 1. GET: Ambil Data Matrix (bisa filter ?batch_id=1)
+const JENIS_PELATIHAN_VALID = ['AKBB', 'ABB'] as const;
+
+function parseDdtValue(value: FormDataEntryValue | null): number {
+  if (value === null || value === undefined) return 0;
+  const str = String(value).toLowerCase().trim();
+  return str === 'true' || str === '1' || str === 'ya' ? 1 : 0;
+}
+
+// 1. GET: Ambil Data Matrix
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -32,7 +40,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// 2. POST: Simpan Data Peserta Baru (foto_url sudah berisi URL R2 dari frontend)
+// 2. POST: Simpan Peserta Baru
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -52,15 +60,14 @@ export async function POST(req: NextRequest) {
     const foto_sim = (formData.get('foto_sim') as string) || null;
     const pas_foto = (formData.get('pas_foto') as string) || null;
 
-    const JENIS_PELATIHAN_VALID = ['AKBB', 'ABB', 'OTHERS'] as const;
-    const rawJenisPelatihan = (formData.get('jenis_pelatihan') as string) || 'AKBB';
-    if (!JENIS_PELATIHAN_VALID.includes(rawJenisPelatihan as any)) {
-      return NextResponse.json(
-        { success: false, error: 'jenis_pelatihan harus AKBB, ABB, atau OTHERS' },
-        { status: 400 }
-      );
+    const ddt = parseDdtValue(formData.get('ddt'));
+
+    // Boleh kosong / null
+    const rawJenisPelatihan = formData.get('jenis_pelatihan') as string;
+    let jenis_pelatihan: 'AKBB' | 'ABB' | null = null;
+    if (rawJenisPelatihan && JENIS_PELATIHAN_VALID.includes(rawJenisPelatihan as any)) {
+      jenis_pelatihan = rawJenisPelatihan as 'AKBB' | 'ABB';
     }
-    const jenis_pelatihan = rawJenisPelatihan as 'AKBB' | 'ABB' | 'OTHERS';
 
     if (tanggal_lahir && tanggal_lahir.includes('-')) {
       const parts = tanggal_lahir.split('-');
@@ -73,8 +80,8 @@ export async function POST(req: NextRequest) {
       INSERT INTO tb_matrix (
         batch_id, nama, tempat_lahir, tanggal_lahir, nik,
         nomor_sim, jenis_sim, perusahaan, lokasi, jenis_muatan,
-        foto_ktp, foto_sim, pas_foto, jenis_pelatihan
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        foto_ktp, foto_sim, pas_foto, jenis_pelatihan, ddt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const [result]: any = await db.execute(sql, [
@@ -92,6 +99,7 @@ export async function POST(req: NextRequest) {
       foto_sim,
       pas_foto,
       jenis_pelatihan,
+      ddt,
     ]);
 
     return NextResponse.json({
@@ -107,7 +115,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// 3. PATCH: Update Data Peserta (id via query ?id=)
+// 3. PATCH: Update Peserta
 export async function PATCH(req: NextRequest) {
   try {
     const url = new URL(req.url);
@@ -121,7 +129,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const [existingRows]: any = await db.query(
-      'SELECT foto_ktp, foto_sim, pas_foto FROM tb_matrix WHERE id = ?',
+      'SELECT foto_ktp, foto_sim, pas_foto, jenis_pelatihan, ddt FROM tb_matrix WHERE id = ?',
       [id]
     );
     if (!existingRows || existingRows.length === 0) {
@@ -153,15 +161,20 @@ export async function PATCH(req: NextRequest) {
     const foto_sim = newFotoSim || existing.foto_sim;
     const pas_foto = newPasFoto || existing.pas_foto;
 
-    const JENIS_PELATIHAN_VALID = ['AKBB', 'ABB', 'OTHERS'] as const;
-    const rawJenisPelatihan = (formData.get('jenis_pelatihan') as string) || 'AKBB';
-    if (!JENIS_PELATIHAN_VALID.includes(rawJenisPelatihan as any)) {
-      return NextResponse.json(
-        { success: false, error: 'jenis_pelatihan harus AKBB, ABB, atau OTHERS' },
-        { status: 400 }
-      );
+    const ddt = formData.has('ddt')
+      ? parseDdtValue(formData.get('ddt'))
+      : existing.ddt;
+
+    // Boleh kosong / null
+    let jenis_pelatihan: 'AKBB' | 'ABB' | null = existing.jenis_pelatihan;
+    if (formData.has('jenis_pelatihan')) {
+      const rawJenis = formData.get('jenis_pelatihan') as string;
+      if (rawJenis && JENIS_PELATIHAN_VALID.includes(rawJenis as any)) {
+        jenis_pelatihan = rawJenis as 'AKBB' | 'ABB';
+      } else {
+        jenis_pelatihan = null;
+      }
     }
-    const jenis_pelatihan = rawJenisPelatihan as 'AKBB' | 'ABB' | 'OTHERS';
 
     if (tanggal_lahir && tanggal_lahir.includes('-')) {
       const parts = tanggal_lahir.split('-');
@@ -174,7 +187,7 @@ export async function PATCH(req: NextRequest) {
       UPDATE tb_matrix SET
         batch_id = ?, nama = ?, tempat_lahir = ?, tanggal_lahir = ?, nik = ?,
         nomor_sim = ?, jenis_sim = ?, perusahaan = ?, lokasi = ?, jenis_muatan = ?,
-        foto_ktp = ?, foto_sim = ?, pas_foto = ?, jenis_pelatihan = ?
+        foto_ktp = ?, foto_sim = ?, pas_foto = ?, jenis_pelatihan = ?, ddt = ?
       WHERE id = ?
     `;
 
@@ -193,6 +206,7 @@ export async function PATCH(req: NextRequest) {
       foto_sim,
       pas_foto,
       jenis_pelatihan,
+      ddt,
       id,
     ]);
 
@@ -215,7 +229,7 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// 4. DELETE: Hapus Peserta (id via query ?id=)
+// 4. DELETE: Hapus Peserta
 export async function DELETE(req: NextRequest) {
   try {
     const url = new URL(req.url);

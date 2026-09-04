@@ -4,8 +4,6 @@ import React, { useState, useEffect, useId } from "react"
 import Swal from "sweetalert2"
 import { createWorker } from "tesseract.js"
 import { uploadFileToR2Action } from "@/app/actions/upload-r2"
-import ExcelJS from "exceljs"
-import { FileSpreadsheet } from "lucide-react"
 import {
   Search,
   Eye,
@@ -24,6 +22,8 @@ import {
   FolderPlus,
   Pencil,
   Trash2,
+  FileSpreadsheet,
+  CheckCircle2,
 } from "lucide-react"
 
 export interface TbBatch {
@@ -34,7 +34,7 @@ export interface TbBatch {
   lokasi: string | null
 }
 
-export type JenisPelatihan = "AKBB" | "ABB" | "OTHERS"
+export type JenisPelatihan = "AKBB" | "ABB"
 
 export interface TbMatrix {
   id: number
@@ -53,6 +53,7 @@ export interface TbMatrix {
   foto_sim: string | null
   pas_foto: string | null
   jenis_pelatihan: JenisPelatihan | null
+  ddt?: boolean | string | number | null
   created_at: string
 }
 
@@ -65,6 +66,7 @@ export default function PelatihanMatrixPage() {
   const [loadingData, setLoadingData] = useState(false)
   const [search, setSearch] = useState("")
   const [filterJenisPelatihan, setFilterJenisPelatihan] = useState<"ALL" | JenisPelatihan>("ALL")
+  const [filterDdt, setFilterDdt] = useState<"ALL" | "YA" | "TIDAK">("ALL")
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -84,7 +86,7 @@ export default function PelatihanMatrixPage() {
     lokasi: "",
   })
 
-  // Form Peserta State
+  // Form Peserta State: jenis_pelatihan default kosong ("")
   const [formValues, setFormValues] = useState({
     batch_id: "",
     nama: "",
@@ -96,7 +98,8 @@ export default function PelatihanMatrixPage() {
     perusahaan: "",
     lokasi: "",
     jenis_muatan: "",
-    jenis_pelatihan: "AKBB" as JenisPelatihan,
+    jenis_pelatihan: "" as JenisPelatihan | "",
+    ddt: "TIDAK" as "YA" | "TIDAK",
   })
 
   // Files & Previews
@@ -181,72 +184,7 @@ export default function PelatihanMatrixPage() {
     return `${age}`
   }
 
-  const cmToPx = (cm: number) => (cm * 96) / 2.54
-  const ptToPx = (pt: number) => (pt * 96) / 72
-
-  // Lebar kolom Excel (dalam "karakter") -> pixel, formula standar Excel
-  // dengan asumsi font default Calibri 11 (Maximum Digit Width = 7px)
-  const excelColWidthToPx = (charWidth: number) => {
-    const mdw = 7
-    return Math.round(((256 * charWidth + Math.trunc(128 / mdw)) / 256) * mdw)
-  }
-
-  // Kebalikannya: dari target pixel -> lebar kolom Excel (karakter)
-  const pxToExcelColWidth = (px: number) => {
-    const mdw = 7
-    return (px - Math.trunc(128 / mdw) * (mdw / 256)) / mdw
-  }
-
-  // ------------------------------------------------------------------
-  // FETCH GAMBAR: buffer + tipe + dimensi asli (untuk pas foto)
-  // ------------------------------------------------------------------
- async function fetchImageAsBuffer(url: string | null): Promise<{
-  buffer: ArrayBuffer
-  extension: "jpeg" | "png"
-  naturalWidth: number
-  naturalHeight: number
-} | null> {
-  if (!url) return null
-  try {
-    // Lewatkan lewat API route Next.js untuk melewati pembatasan CORS browser
-    const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
-    const res = await fetch(proxyUrl)
-    
-    if (!res.ok) return null
-    const buffer = await res.arrayBuffer()
-    const contentType = res.headers.get("content-type") || ""
-    const extension = contentType.includes("png") ? "png" : "jpeg"
-
-    let naturalWidth = 0
-    let naturalHeight = 0
-    try {
-      const blob = new Blob([buffer], {
-        type: contentType || `image/${extension}`,
-      })
-      const bitmap = await createImageBitmap(blob)
-      naturalWidth = bitmap.width
-      naturalHeight = bitmap.height
-      bitmap.close()
-    } catch {
-      naturalWidth = 0
-      naturalHeight = 0
-    }
-
-    return { buffer, extension, naturalWidth, naturalHeight }
-  } catch (err) {
-    console.warn("Gagal fetch gambar untuk export:", url, err)
-    return null
-  }
-}
-
-  // Hitung ukuran "contain" (fit tanpa distorsi) ke dalam kotak maksimal
-  function fitContain(natW: number, natH: number, maxW: number, maxH: number) {
-    if (!natW || !natH) return { width: maxW, height: maxH }
-    const scale = Math.min(maxW / natW, maxH / natH)
-    return { width: Math.round(natW * scale), height: Math.round(natH * scale) }
-  }
-
-  // Helper untuk format rentang tanggal pelatihan (tetap sama seperti sebelumnya)
+  // Helper Tanggal Indonesia
   const BULAN_ID = [
     "JANUARI",
     "FEBRUARI",
@@ -268,94 +206,156 @@ export default function PelatihanMatrixPage() {
     return `${d.getDate()} ${BULAN_ID[d.getMonth()]} ${d.getFullYear()}`
   }
 
-  function formatRentangTanggal(
-    mulai: string | null,
-    selesai: string | null
-  ): string {
-    if (!mulai) return "-"
-    const dMulai = new Date(mulai)
-    if (isNaN(dMulai.getTime())) return "-"
+  // 1. Preprocessing Khusus KTP (Grayscale + Adaptive Contrast agar latar biru & garis pudar, teks NIK tetap hitam pekat)
+  const preprocessKtpImage = async (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement("canvas")
+        const ctx = canvas.getContext("2d")
+        if (!ctx) return resolve(URL.createObjectURL(file))
 
-    if (!selesai) {
-      return `${dMulai.getDate()} ${BULAN_ID[dMulai.getMonth()]} ${dMulai.getFullYear()}`
-    }
+        // Naikkan resolusi (Upscale) 2x lipat agar font dot-matrix/OCR-B terbaca utuh
+        const targetWidth = Math.max(img.width * 2, 1400)
+        const scale = targetWidth / img.width
+        canvas.width = targetWidth
+        canvas.height = img.height * scale
 
-    const dSelesai = new Date(selesai)
-    if (isNaN(dSelesai.getTime())) {
-      return `${dMulai.getDate()} ${BULAN_ID[dMulai.getMonth()]} ${dMulai.getFullYear()}`
-    }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const d = imgData.data
 
-    const sameMonth =
-      dMulai.getMonth() === dSelesai.getMonth() &&
-      dMulai.getFullYear() === dSelesai.getFullYear()
+        // Filter: Buang channel biru/cyan latar KTP dengan memberi bobot lebih pada red/green
+        for (let i = 0; i < d.length; i += 4) {
+          // Bobot dominan di merah & hijau untuk meredam background cyan KTP
+          const gray = 0.5 * d[i] + 0.4 * d[i + 1] + 0.1 * d[i + 2]
+          
+          // Dynamic Binarization: font NIK hitam pekat akan masuk ke 0 (hitam), background ke 255 (putih)
+          const val = gray < 110 ? 0 : 255
+          d[i] = val
+          d[i + 1] = val
+          d[i + 2] = val
+        }
 
-    if (sameMonth) {
-      return `${dMulai.getDate()}-${dSelesai.getDate()} ${BULAN_ID[dMulai.getMonth()]} ${dMulai.getFullYear()}`
-    }
-
-    return `${dMulai.getDate()} ${BULAN_ID[dMulai.getMonth()]} - ${dSelesai.getDate()} ${BULAN_ID[dSelesai.getMonth()]} ${dSelesai.getFullYear()}`
+        ctx.putImageData(imgData, 0, 0)
+        resolve(canvas.toDataURL("image/png"))
+      }
+      img.src = URL.createObjectURL(file)
+    })
   }
 
+  // 2. Parser NIK Khusus OCR KTP
+  const extractNikFromOcr = (text: string): string => {
+    // Normalisasi karakter yang sering tertukar pada OCR-B e-KTP
+    const cleanOcrDigits = (str: string) =>
+      str
+        .replace(/[OoDdQq]/g, "0")
+        .replace(/[IiLl|!]/g, "1")
+        .replace(/[Bb]/g, "8")
+        .replace(/[Ss]/g, "5")
+        .replace(/[Zz]/g, "2")
+        .replace(/[Gg]/g, "6")
+        .replace(/[^0-9]/g, "")
+
+    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean)
+
+    // Cara 1: Ambil teks di samping label NIK (meskipun ada spasi di tengah nomor)
+    for (const line of lines) {
+      if (/N\s*[I1Ll|!]\s*[Kk]/i.test(line)) {
+        const afterNik = line.replace(/.*N\s*[I1Ll|!]\s*[Kk]\s*[:=.\-]?\s*/i, "")
+        const digitsOnly = cleanOcrDigits(afterNik)
+        if (digitsOnly.length >= 16) {
+          return digitsOnly.slice(0, 16)
+        }
+      }
+    }
+
+    // Cara 2: Cari deretan angka/huruf mirip 16 digit di seluruh baris teks
+    // Toleran terhadap spasi seperti: "140109 080378 0001" atau "14O1O9O8O378OOO1"
+    const wordsAndChunks = text.match(/[0-9OoDdQqIiLl|!BbSsZz\s-]{16,28}/g) || []
+    for (const chunk of wordsAndChunks) {
+      const digits = cleanOcrDigits(chunk)
+      // NIK selalu 16 digit dan diawali kode provinsi (11-92)
+      if (digits.length === 16 && /^[1-9][0-9]/.test(digits)) {
+        return digits
+      }
+    }
+
+    return ""
+  }
+
+  // Export Excel
   const handleExportExcel = async () => {
-  if (filteredData.length === 0) {
-    Swal.fire({
-      icon: "info",
-      title: "Tidak ada data",
-      text: "Tidak ada peserta pada batch ini untuk diekspor.",
-    })
-    return
-  }
-
-  setIsExporting(true)
-  try {
-    const res = await fetch("/api/matrix/export", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        data: filteredData,
-        batchInfo: currentBatchInfo,
-      }),
-    })
-
-    if (!res.ok) {
-      throw new Error("Gagal generate excel di server")
+    if (filteredData.length === 0) {
+      Swal.fire({
+        icon: "info",
+        title: "Tidak ada data",
+        text: "Tidak ada peserta pada filter/batch ini untuk diekspor.",
+      })
+      return
     }
 
-    // Ambil blob file langsung dari server
-    const blob = await res.blob()
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    
-    const namaBatchFile = currentBatchInfo?.nama?.replace(/[^a-zA-Z0-9]/g, "_") || "Semua_Batch"
-    const tanggalFile = new Date().toISOString().slice(0, 10)
-    const fileName = `Matrix_Peserta_${namaBatchFile}_${tanggalFile}.xlsx`
-    
-    link.download = fileName
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
+    setIsExporting(true)
+    try {
+      const res = await fetch("/api/matrix/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: filteredData,
+          batchInfo: currentBatchInfo,
+        }),
+      })
 
-    Swal.fire({
-      icon: "success",
-      title: "Berhasil",
-      text: `File "${fileName}" berhasil diunduh.`,
-      timer: 2000,
-      showConfirmButton: true,
-    })
-  } catch (err: any) {
-    console.error("Export Excel error:", err)
-    Swal.fire({
-      icon: "error",
-      title: "Gagal Export",
-      text: err.message || "Terjadi kesalahan saat mengekspor data.",
-    })
-  } finally {
-    setIsExporting(false)
+      if (!res.ok) {
+        throw new Error("Gagal generate excel di server")
+      }
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+
+      const namaBatchFile =
+        currentBatchInfo?.nama?.replace(/[^a-zA-Z0-9]/g, "_") || "Semua_Batch"
+      const tanggalFile = new Date().toISOString().slice(0, 10)
+      const fileName = `Matrix_Peserta_${namaBatchFile}_${tanggalFile}.xlsx`
+
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      Swal.fire({
+        icon: "success",
+        title: "Berhasil",
+        text: `File "${fileName}" berhasil diunduh.`,
+        timer: 2000,
+        showConfirmButton: true,
+      })
+    } catch (err: any) {
+      console.error("Export Excel error:", err)
+      Swal.fire({
+        icon: "error",
+        title: "Gagal Export",
+        text: err.message || "Terjadi kesalahan saat mengekspor data.",
+      })
+    } finally {
+      setIsExporting(false)
+    }
   }
-}
-  // 3. OCR KTP (Robust Parser)
+
+  // OCR KTP
+  const cleanOcrDigits = (str: string) =>
+    str
+      .replace(/[OoDdQq]/g, "0")
+      .replace(/[IiLl|!]/g, "1")
+      .replace(/[Bb]/g, "8")
+      .replace(/[Ss]/g, "5")
+      .replace(/[Zz]/g, "2")
+      .replace(/[Gg]/g, "6")
+      .replace(/[^0-9]/g, "")
+
   const handleKtpUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -367,78 +367,55 @@ export default function PelatihanMatrixPage() {
     let worker: any = null
     try {
       worker = await createWorker("ind")
-      const {
-        data: { text },
-      } = await worker.recognize(file)
+
+      // Langsung baca file gambar asli tanpa canvas binarization
+      const { data } = await worker.recognize(file)
+      const text: string = data.text || ""
       console.log("--- OCR KTP RAW OUTPUT --- \n", text)
 
-      const lines = text
+      const lines: string[] = text
         .split("\n")
         .map((l: string) => l.trim())
-        .filter((l: string) => l.length > 0)
+        .filter(Boolean)
 
       let extractedNik = ""
       let extractedNama = ""
       let extractedTempat = ""
       let extractedTgl = ""
-      let nikLineIdx = -1
 
-      // A. Ekstraksi NIK (robust: handles spaces, dashes, OCR typos)
-      let nikCandidate = ""
-
-      // Coba pola label NIK + angka (dengan spasi/garis/ titik diperbolehkan)
-      const nikLabelMatch = text.match(
-        /(?:NIK|N1K|N[Il|]K|NI[Kk])\s*[:=;.\s]*\s*([0-9OBIDSZol|L\s.,-]{16,30})/i
-      )
-      if (nikLabelMatch && nikLabelMatch[1]) {
-        nikCandidate = nikLabelMatch[1]
-      } else {
-        // Fallback: cari sekumpulan 16+ karakter angka/typo di setiap baris
-        for (const line of lines) {
-          const normalizedLine = line.replace(/[\s.-]/g, "")
-          const potentialNik = normalizedLine.match(
-            /[0-9OBIDSZol|L]{16,30}/i
-          )
-          if (potentialNik) {
-            nikCandidate = potentialNik[0]
+      // 1. Ekstraksi NIK
+      // Cari baris yang mengandung kata NIK
+      for (const line of lines) {
+        if (/N\s*[I1Ll|!]\s*[Kk]/i.test(line)) {
+          const afterLabel = line.replace(/.*N\s*[I1Ll|!]\s*[Kk]\s*[:=.\-]?\s*/i, "")
+          const digits = cleanOcrDigits(afterLabel)
+          if (digits.length >= 16) {
+            extractedNik = digits.slice(0, 16)
             break
           }
         }
       }
 
-      if (nikCandidate) {
-        const cleanNumbers = nikCandidate
-          .toUpperCase()
-          .replace(/[\s.,-]/g, "")
-          .replace(/[OD]/g, "0")
-          .replace(/[IL]/g, "1")
-          .replace(/Z/g, "2")
-          .replace(/S/g, "5")
-          .replace(/[B]/g, "8")
-        const digitMatch = cleanNumbers.match(/\d{16}/)
-        if (digitMatch) {
-          extractedNik = digitMatch[0]
+      // Fallback NIK jika label NIK tidak terbaca: cari deretan 16 digit angka
+      if (!extractedNik) {
+        const potentialChunks = text.match(/[0-9OoDdQqIiLl|!BbSsZz\s-]{16,30}/g) || []
+        for (const chunk of potentialChunks) {
+          const digits = cleanOcrDigits(chunk)
+          if (digits.length === 16 && /^[1-9]/.test(digits)) {
+            extractedNik = digits
+            break
+          }
         }
       }
 
-      // Cari index baris NIK untuk fallback nama
-      lines.forEach((line: string, idx: number) => {
-        if (
-          /NIK|N1K/i.test(line) ||
-          /\d{16}/.test(line.replace(/[\s.-]/g, ""))
-        ) {
-          nikLineIdx = idx
-        }
-      })
-
-      // B. Ekstraksi Nama
+      // 2. Ekstraksi Nama (mendukung format "Nama : BERTO WIDODO")
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
-        // Match kata "Nama" atau "Nam a"
-        if (/Nam[a|e]/i.test(line)) {
-          let clean = line.replace(/.*Nam[a|e]\s*[:=]?\s*/i, "").trim()
-          // Bersihkan karakter non-huruf di awal
-          clean = clean.replace(/^[^a-zA-Z]+/, "")
+        if (/Nam[ae]/i.test(line)) {
+          let clean = line
+            .replace(/.*Nam[ae]\s*[:=.\-]?\s*/i, "")
+            .replace(/[^a-zA-Z\s.,'-]/g, "")
+            .trim()
           if (clean.length > 2) {
             extractedNama = clean
             break
@@ -446,29 +423,32 @@ export default function PelatihanMatrixPage() {
         }
       }
 
-      // Fallback Nama: Jika tidak ada label "Nama", ambil baris setelah baris NIK
-      if (!extractedNama && nikLineIdx !== -1 && lines[nikLineIdx + 1]) {
-        const candidate = lines[nikLineIdx + 1].replace(/.*[:=]\s*/, "").trim()
-        // Pastikan bukan baris TTL
-        if (!/Tempat|Lahir|Tgl/i.test(candidate) && candidate.length > 2) {
-          extractedNama = candidate
+      // Fallback Nama: baris tepat setelah baris NIK
+      if (!extractedNama) {
+        const nikIdx = lines.findIndex(
+          (l: string) => /N\s*[I1Ll|!]\s*[Kk]/i.test(l) || (extractedNik && l.includes(extractedNik))
+        )
+        if (nikIdx !== -1 && lines[nikIdx + 1]) {
+          const candidate = lines[nikIdx + 1]
+            .replace(/.*[:=.\-]\s*/, "")
+            .replace(/[^a-zA-Z\s.,'-]/g, "")
+            .trim()
+          if (!/Tempat|Lahir|Tgl/i.test(candidate) && candidate.length > 2) {
+            extractedNama = candidate
+          }
         }
       }
 
-      // C. Ekstraksi Tempat & Tanggal Lahir
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i]
+      // 3. Ekstraksi Tempat & Tanggal Lahir (cth: "GEMA, 19-07-1997")
+      for (const line of lines) {
         if (/Tempat|Tgl\s*Lahir|Lahir/i.test(line)) {
-          const rawTTL = line
-            .replace(/.*(?:Lahir|Tgl Lahir|Tempat)\s*[:=]?\s*/i, "")
-            .trim()
+          const rawTTL = line.replace(/.*(?:Lahir|Tgl\s*Lahir|Tempat)\s*[:=.\-]?\s*/i, "").trim()
           const parts = rawTTL.split(",")
           if (parts.length >= 2) {
             extractedTempat = parts[0].replace(/[^a-zA-Z\s]/g, "").trim()
-            const dMatch = parts[1].match(/\d{2}[-\s/]\d{2}[-\s/]\d{4}/)
+            const dMatch = parts[1].match(/(\d{2})[-/\s.](\d{2})[-/\s.](\d{4})/)
             if (dMatch) {
-              const [d, m, y] = dMatch[0].replace(/\s|\//g, "-").split("-")
-              extractedTgl = `${y}-${m}-${d}`
+              extractedTgl = `${dMatch[3]}-${dMatch[2]}-${dMatch[1]}`
             }
           }
         }
@@ -478,21 +458,23 @@ export default function PelatihanMatrixPage() {
         ...prev,
         nik: extractedNik || prev.nik,
         nama: extractedNama ? extractedNama.toUpperCase() : prev.nama,
-        tempat_lahir: extractedTempat
-          ? extractedTempat.toUpperCase()
-          : prev.tempat_lahir,
+        tempat_lahir: extractedTempat ? extractedTempat.toUpperCase() : prev.tempat_lahir,
         tanggal_lahir: extractedTgl || prev.tanggal_lahir,
       }))
     } catch (err) {
       console.error("OCR KTP Error:", err)
-      alert("Gagal memproses OCR KTP")
+      Swal.fire({
+        icon: "warning",
+        title: "OCR Terbatas",
+        text: "Gagal memproses gambar KTP. Silakan isi form secara manual.",
+      })
     } finally {
       if (worker) await worker.terminate()
       setLoadingOcrKtp(false)
     }
   }
 
-  // 4. OCR SIM
+  // OCR SIM
   const handleSimUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -507,7 +489,6 @@ export default function PelatihanMatrixPage() {
       const {
         data: { text },
       } = await worker.recognize(file)
-      console.log("--- OCR SIM RAW OUTPUT --- \n", text)
 
       let jenisSim = ""
       let noSim = ""
@@ -525,7 +506,7 @@ export default function PelatihanMatrixPage() {
       const lines = text.split("\n").map((l: string) => l.trim()).filter(Boolean)
 
       const simIndex = lines.findIndex((l: string) =>
-        /SURAT\s*IZIN\s*MENGEMUDI|SIM/i.test(l),
+        /SURAT\s*IZIN\s*MENGEMUDI|SIM/i.test(l)
       )
 
       if (simIndex !== -1) {
@@ -548,7 +529,7 @@ export default function PelatihanMatrixPage() {
 
       if (!noSim) {
         const labeledNoMatch = text.match(
-          /(?:NO(?:\.|\s+SIM)?|NOMOR)\s*[:=.\s]*([\d\s-]{12,20})/i,
+          /(?:NO(?:\.|\s+SIM)?|NOMOR)\s*[:=.\s]*([\d\s-]{12,20})/i
         )
         if (labeledNoMatch) {
           noSim = normalizeSimNumber(labeledNoMatch[1]).slice(0, 16)
@@ -572,7 +553,6 @@ export default function PelatihanMatrixPage() {
           .trim()
         if (!s) return ""
         const compact = s.replace(/\s+/g, "")
-        // B II UMUM (handle OCR: BII, B 11, B 1I, B2, 8 II, B ll, dll)
         if (
           /\bB\s*(I{1,2}|1{1,2}|L{1,2}|2|II)\b.*UMUM/i.test(s) &&
           !/B\s*I\s*UMUM/.test(s) &&
@@ -582,28 +562,25 @@ export default function PelatihanMatrixPage() {
         }
         if (/\bB\s*(II|2|11|I{2})\s*UMUM/i.test(s) || /\bB2\s*UMUM/i.test(s))
           return "B II UMUM"
-        // B I UMUM
         if (/\bB\s*(I|1|L)\s*UMUM/i.test(s) || /\bB1\s*UMUM/i.test(s))
           return "B I UMUM"
         if (/\bB\s*II\b/i.test(s) || /\bB2\b/.test(compact)) return "B II UMUM"
         if (/\bB\s*I\b/i.test(s) || /\bB1\b/.test(compact)) return "B I UMUM"
-        if (/\bA\s*UMUM\b/i.test(s) || /\bA(?![A-Z])/.test(s) && /A/.test(compact))
+        if (/\bA\s*UMUM\b/i.test(s) || (/\bA(?![A-Z])/.test(s) && /A/.test(compact)))
           return "A"
         if (/\bC(?![A-Z])/.test(s) || /\bC\s*UMUM\b/i.test(s)) return "C"
         if (/\bD(?![A-Z])/.test(s) || /\bD\s*UMUM\b/i.test(s)) return "D"
         return s
       }
 
-      // 1) Label "Golongan SIM" / "Jenis SIM" / "Gol." / "Type"
       const labelTypeMatch = text.match(
-        /(?:GOLONGAN|GOL|JENIS|TYPE|TIPE)\s*(?:SIM|SURAT\s*IZIN)?\s*[:=.\s]*\s*([A-D](?:\s*(?:I{1,2}|1{1,2}|L{1,2}|2))?(?:\s*UMUM)?)/i,
+        /(?:GOLONGAN|GOL|JENIS|TYPE|TIPE)\s*(?:SIM|SURAT\s*IZIN)?\s*[:=.\s]*\s*([A-D](?:\s*(?:I{1,2}|1{1,2}|L{1,2}|2))?(?:\s*UMUM)?)/i
       )
       if (labelTypeMatch) {
         const v = mapSimType(labelTypeMatch[1])
         if (v) jenisSim = v
       }
 
-      // 2) Setelah header "SURAT IZIN MENGEMUDI" / "SIM" -> 1-2 token berikutnya
       if (!jenisSim) {
         for (let i = 0; i < lines.length; i++) {
           if (/SURAT\s*IZIN\s*MENGEMUDI|^SIM\s*$|DRIVING\s*LICENSE/i.test(lines[i])) {
@@ -622,7 +599,6 @@ export default function PelatihanMatrixPage() {
         }
       }
 
-      // 3) Pada baris yang sama dengan nomor SIM
       if (!jenisSim && noSim) {
         for (const line of lines) {
           if (!/[\d\s-]{12,20}/.test(line)) continue
@@ -634,7 +610,6 @@ export default function PelatihanMatrixPage() {
         }
       }
 
-      // 4) Fallback: cari token yang terlihat seperti golongan SIM di seluruh teks
       if (!jenisSim) {
         const fallback =
           text.match(/\b([A-D])\s*UMUM\b/i) ||
@@ -661,8 +636,7 @@ export default function PelatihanMatrixPage() {
     }
   }
 
-  // 5. Submit Tambah Batch Baru
-  // Submit batch (Buat / Edit)
+  // Submit Batch
   const handleSubmitBatch = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmittingBatch(true)
@@ -687,21 +661,6 @@ export default function PelatihanMatrixPage() {
         })
         setIsBatchEditMode(false)
         await fetchBatches()
-        if (isBatchEditMode) {
-          // tetap di batch yang diedit
-        } else if (result.insertId) {
-          setSelectedBatchId(String(result.insertId))
-          setFormValues((prev) => ({
-            ...prev,
-            batch_id: String(result.insertId),
-          }))
-        } else if (result.data?.id) {
-          setSelectedBatchId(String(result.data.id))
-          setFormValues((prev) => ({
-            ...prev,
-            batch_id: String(result.data.id),
-          }))
-        }
       } else {
         alert(
           (isBatchEditMode
@@ -721,83 +680,12 @@ export default function PelatihanMatrixPage() {
     }
   }
 
-  // Buka modal edit batch (prefill dari currentBatchInfo)
-  const handleOpenEditBatch = () => {
-    if (!currentBatchInfo) return
-    setBatchForm({
-      nama: currentBatchInfo.nama || "",
-      tanggal_mulai: currentBatchInfo.tanggal_mulai || "",
-      tanggal_selesai: currentBatchInfo.tanggal_selesai || "",
-      lokasi: currentBatchInfo.lokasi || "",
-    })
-    setIsBatchEditMode(true)
-    setIsBatchModalOpen(true)
-  }
-
-  // Hapus batch (cascade peserta)
-  const handleDeleteBatch = async () => {
-    if (!currentBatchInfo) return
-
-    const confirm = await Swal.fire({
-      title: "Hapus Batch?",
-      text: `Batch "${currentBatchInfo.nama}" dan seluruh peserta di dalamnya akan dihapus permanen.`,
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#d33",
-      cancelButtonColor: "#3085d6",
-      confirmButtonText: "Ya, hapus!",
-      cancelButtonText: "Batal",
-    })
-
-    if (!confirm.isConfirmed) return
-
-    try {
-      const res = await fetch(`/api/batch?id=${currentBatchInfo.id}`, {
-        method: "DELETE",
-      })
-      const result = await res.json()
-      if (result.success) {
-        const updated = await fetchBatches()
-        if (updated.length > 0) {
-          const first = updated[0]
-          setSelectedBatchId(String(first.id))
-          setFormValues((prev) => ({ ...prev, batch_id: String(first.id) }))
-        } else {
-          setSelectedBatchId("")
-          setFormValues((prev) => ({ ...prev, batch_id: "" }))
-        }
-        setData([])
-        await Swal.fire({
-          icon: "success",
-          title: "Terhapus!",
-          text: result.message || "Batch berhasil dihapus.",
-          timer: 2000,
-          showConfirmButton: true,
-        })
-      } else {
-        Swal.fire({
-          icon: "error",
-          title: "Gagal",
-          text: "Gagal menghapus batch: " + (result.error || "unknown error"),
-        })
-      }
-    } catch (err) {
-      console.error(err)
-      Swal.fire({
-        icon: "error",
-        title: "Kesalahan",
-        text: "Terjadi kesalahan saat menghapus batch",
-      })
-    }
-  }
-
-  // 6. Submit Peserta (Buat / Edit dengan upload R2)
+  // Submit Peserta
   const handleSubmitPeserta = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
 
     try {
-      // Upload foto baru ke R2 (jika ada), kalau tidak → pakai existing
       let fotoKtpUrl = existingFoto.ktp
       let fotoSimUrl = existingFoto.sim
       let pasFotoUrl = existingFoto.pasFoto
@@ -841,7 +729,8 @@ export default function PelatihanMatrixPage() {
       payload.append("perusahaan", formValues.perusahaan)
       payload.append("lokasi", formValues.lokasi)
       payload.append("jenis_muatan", formValues.jenis_muatan)
-      payload.append("jenis_pelatihan", formValues.jenis_pelatihan)
+      payload.append("jenis_pelatihan", formValues.jenis_pelatihan || "")
+      payload.append("ddt", formValues.ddt === "YA" ? "true" : "false")
       payload.append("foto_ktp", fotoKtpUrl)
       payload.append("foto_sim", fotoSimUrl)
       payload.append("pas_foto", pasFotoUrl)
@@ -899,7 +788,8 @@ export default function PelatihanMatrixPage() {
       perusahaan: "",
       lokasi: "",
       jenis_muatan: "",
-      jenis_pelatihan: "AKBB",
+      jenis_pelatihan: "", // Kosong sebagai default
+      ddt: "TIDAK",
     })
     setFileKtp(null)
     setFileSim(null)
@@ -913,6 +803,12 @@ export default function PelatihanMatrixPage() {
   }
 
   const handleOpenEditPeserta = (row: TbMatrix) => {
+    const isDdt =
+      row.ddt === true ||
+      row.ddt === 1 ||
+      String(row.ddt).toLowerCase() === "true" ||
+      String(row.ddt).toLowerCase() === "ya"
+
     setFormValues({
       batch_id: row.batch_id ? String(row.batch_id) : selectedBatchId,
       nama: row.nama || "",
@@ -926,7 +822,8 @@ export default function PelatihanMatrixPage() {
       perusahaan: row.perusahaan || "",
       lokasi: row.lokasi || "",
       jenis_muatan: row.jenis_muatan || "",
-      jenis_pelatihan: (row.jenis_pelatihan as JenisPelatihan) || "AKBB",
+      jenis_pelatihan: (row.jenis_pelatihan as JenisPelatihan) || "",
+      ddt: isDdt ? "YA" : "TIDAK",
     })
     setExistingFoto({
       ktp: row.foto_ktp || "",
@@ -988,6 +885,7 @@ export default function PelatihanMatrixPage() {
 
   const currentBatchInfo = batches.find((b) => String(b.id) === selectedBatchId)
 
+  // Filter Data Matrix
   const filteredData = data.filter((item) => {
     const q = search.toLowerCase()
     const matchSearch =
@@ -1000,7 +898,18 @@ export default function PelatihanMatrixPage() {
       filterJenisPelatihan === "ALL" ||
       item.jenis_pelatihan === filterJenisPelatihan
 
-    return matchSearch && matchJenis
+    const isDdtTrue =
+      item.ddt === true ||
+      item.ddt === 1 ||
+      String(item.ddt).toLowerCase() === "true" ||
+      String(item.ddt).toLowerCase() === "ya"
+
+    const matchDdt =
+      filterDdt === "ALL" ||
+      (filterDdt === "YA" && isDdtTrue) ||
+      (filterDdt === "TIDAK" && !isDdtTrue)
+
+    return matchSearch && matchJenis && matchDdt
   })
 
   return (
@@ -1035,7 +944,7 @@ export default function PelatihanMatrixPage() {
               )}
               <span>Export Excel</span>
             </button>
-            {/* Tombol Tambah Batch */}
+
             <button
               onClick={() => {
                 setIsBatchEditMode(false)
@@ -1053,7 +962,6 @@ export default function PelatihanMatrixPage() {
               <span>Tambah Batch</span>
             </button>
 
-            {/* Tombol Tambah Peserta */}
             <button
               onClick={() => setIsModalOpen(true)}
               disabled={!selectedBatchId}
@@ -1095,7 +1003,7 @@ export default function PelatihanMatrixPage() {
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/50 p-4">
           <div className="flex flex-wrap items-center gap-2">
             {/* Search */}
-            <div className="relative w-80">
+            <div className="relative w-72 sm:w-80">
               <Search className="absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
@@ -1105,6 +1013,7 @@ export default function PelatihanMatrixPage() {
                 className="w-full rounded-xl border border-slate-200 bg-white py-2 pr-4 pl-9 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
               />
             </div>
+
             {/* Filter Jenis Pelatihan */}
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <Layers className="h-4 w-4 text-indigo-500" />
@@ -1121,10 +1030,27 @@ export default function PelatihanMatrixPage() {
                 <option value="ALL">Semua Jenis</option>
                 <option value="AKBB">AKBB</option>
                 <option value="ABB">ABB</option>
-                <option value="OTHERS">Lainnya</option>
               </select>
             </div>
-            {/* Batch Selector (dipindahkan ke sini) */}
+
+            {/* Filter DDT */}
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              <select
+                aria-label="Filter DDT"
+                value={filterDdt}
+                onChange={(e) =>
+                  setFilterDdt(e.target.value as "ALL" | "YA" | "TIDAK")
+                }
+                className="bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+              >
+                <option value="ALL">Semua DDT</option>
+                <option value="YA">DDT: Ya</option>
+                <option value="TIDAK">DDT: Tidak</option>
+              </select>
+            </div>
+
+            {/* Batch Selector */}
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <Calendar className="h-4 w-4 text-slate-400" />
               <select
@@ -1171,7 +1097,7 @@ export default function PelatihanMatrixPage() {
                 <th className="px-4 py-3.5">Kualifikasi SIM</th>
                 <th className="px-4 py-3.5">Perusahaan & Muatan</th>
                 <th className="px-4 py-3.5">Lokasi</th>
-                <th className="px-4 py-3.5">Jenis Pelatihan</th>
+                <th className="px-4 py-3.5">Pelatihan & DDT</th>
                 <th className="w-20 px-4 py-3.5 text-center">Aksi</th>
               </tr>
             </thead>
@@ -1188,8 +1114,7 @@ export default function PelatihanMatrixPage() {
                   <td colSpan={9} className="py-12 text-center text-slate-400">
                     <FileText className="mx-auto mb-2 h-8 w-8 text-slate-300" />
                     <span>
-                      Belum ada peserta di batch ini. Silakan klik{" "}
-                      <b>Tambah Peserta</b>.
+                      Tidak ada data peserta yang cocok dengan filter yang dipilih.
                     </span>
                   </td>
                 </tr>
@@ -1258,22 +1183,41 @@ export default function PelatihanMatrixPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3.5">
-                      {row.jenis_pelatihan ? (
+                      <div className="flex flex-col items-start gap-1">
+                        {row.jenis_pelatihan ? (
+                          <span
+                            className={
+                              "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold tracking-wide " +
+                              (row.jenis_pelatihan === "AKBB"
+                                ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                                : "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200")
+                            }
+                          >
+                            {row.jenis_pelatihan}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
                         <span
                           className={
-                            "inline-flex items-center rounded-md px-2 py-1 text-[11px] font-bold tracking-wide " +
-                            (row.jenis_pelatihan === "AKBB"
-                              ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
-                              : row.jenis_pelatihan === "ABB"
-                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                                : "bg-slate-100 text-slate-600 ring-1 ring-slate-200")
+                            "inline-flex items-center rounded px-1.5 py-0.2 text-[10px] font-semibold " +
+                            (row.ddt === true ||
+                            row.ddt === 1 ||
+                            String(row.ddt).toLowerCase() === "true" ||
+                            String(row.ddt).toLowerCase() === "ya"
+                              ? "bg-teal-50 text-teal-700"
+                              : "bg-slate-100 text-slate-500")
                           }
                         >
-                          {row.jenis_pelatihan}
+                          DDT:{" "}
+                          {row.ddt === true ||
+                          row.ddt === 1 ||
+                          String(row.ddt).toLowerCase() === "true" ||
+                          String(row.ddt).toLowerCase() === "ya"
+                            ? "Ya"
+                            : "Tidak"}
                         </span>
-                      ) : (
-                        <span className="text-xs text-slate-400">-</span>
-                      )}
+                      </div>
                     </td>
                     <td className="px-4 py-3.5 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -1436,7 +1380,7 @@ export default function PelatihanMatrixPage() {
         </div>
       )}
 
-      {/* MODAL 2: TAMBAH PESERTA MATRIX */}
+      {/* MODAL 2: TAMBAH / EDIT PESERTA MATRIX */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-4xl space-y-6 overflow-y-auto rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl">
@@ -1482,7 +1426,7 @@ export default function PelatihanMatrixPage() {
                 </select>
               </div>
 
-              {/* 3 Upload Cards */}
+              {/* Upload Cards */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 {/* Upload KTP */}
                 <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-center">
@@ -1821,24 +1765,45 @@ export default function PelatihanMatrixPage() {
                   />
                 </div>
 
-                <div className="md:col-span-3">
+                {/* Jenis Pelatihan: Not Null / Boleh Kosong & Default Placeholder */}
+                <div className="md:col-span-2">
                   <label className="mb-1 block text-xs font-semibold text-slate-600">
-                    Jenis Pelatihan *
+                    Jenis Pelatihan (Opsional)
                   </label>
                   <select
-                    required
                     value={formValues.jenis_pelatihan}
                     onChange={(e) =>
                       setFormValues({
                         ...formValues,
-                        jenis_pelatihan: e.target.value as JenisPelatihan,
+                        jenis_pelatihan: e.target.value as JenisPelatihan | "",
                       })
                     }
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-indigo-500/20"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20"
                   >
+                    <option value="">Pilih Jenis Pelatihan</option>
                     <option value="AKBB">AKBB</option>
                     <option value="ABB">ABB</option>
-                    <option value="OTHERS">Lainnya</option>
+                  </select>
+                </div>
+
+                {/* PILIHAN DDT (Ya / Tidak) */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">
+                    DDT (Defensive Driving Training) *
+                  </label>
+                  <select
+                    required
+                    value={formValues.ddt}
+                    onChange={(e) =>
+                      setFormValues({
+                        ...formValues,
+                        ddt: e.target.value as "YA" | "TIDAK",
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    <option value="TIDAK">Tidak</option>
+                    <option value="YA">Ya</option>
                   </select>
                 </div>
               </div>
@@ -1997,12 +1962,25 @@ export default function PelatihanMatrixPage() {
                   {selectedDetail.lokasi || "-"}
                 </span>
               </div>
-              <div className="col-span-2 rounded-lg bg-slate-50 p-2.5">
+              <div className="rounded-lg bg-slate-50 p-2.5">
                 <span className="block text-[11px] text-slate-400">
                   Jenis Pelatihan
                 </span>
                 <span className="font-semibold text-indigo-700">
                   {selectedDetail.jenis_pelatihan || "-"}
+                </span>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-2.5">
+                <span className="block text-[11px] text-slate-400">
+                  Status DDT
+                </span>
+                <span className="font-semibold text-slate-700">
+                  {selectedDetail.ddt === true ||
+                  selectedDetail.ddt === 1 ||
+                  String(selectedDetail.ddt).toLowerCase() === "true" ||
+                  String(selectedDetail.ddt).toLowerCase() === "ya"
+                    ? "Ya"
+                    : "Tidak"}
                 </span>
               </div>
               <div className="col-span-2 rounded-lg bg-slate-50 p-2.5">
