@@ -200,43 +200,44 @@ export default function PelatihanMatrixPage() {
   // ------------------------------------------------------------------
   // FETCH GAMBAR: buffer + tipe + dimensi asli (untuk pas foto)
   // ------------------------------------------------------------------
-  async function fetchImageAsBuffer(url: string | null): Promise<{
-    buffer: ArrayBuffer
-    extension: "jpeg" | "png"
-    naturalWidth: number
-    naturalHeight: number
-  } | null> {
-    if (!url) return null
+ async function fetchImageAsBuffer(url: string | null): Promise<{
+  buffer: ArrayBuffer
+  extension: "jpeg" | "png"
+  naturalWidth: number
+  naturalHeight: number
+} | null> {
+  if (!url) return null
+  try {
+    // Lewatkan lewat API route Next.js untuk melewati pembatasan CORS browser
+    const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
+    const res = await fetch(proxyUrl)
+    
+    if (!res.ok) return null
+    const buffer = await res.arrayBuffer()
+    const contentType = res.headers.get("content-type") || ""
+    const extension = contentType.includes("png") ? "png" : "jpeg"
+
+    let naturalWidth = 0
+    let naturalHeight = 0
     try {
-      const res = await fetch(url)
-      if (!res.ok) return null
-      const buffer = await res.arrayBuffer()
-      const contentType = res.headers.get("content-type") || ""
-      const extension = contentType.includes("png") ? "png" : "jpeg"
-
-      // Ambil dimensi asli gambar via createImageBitmap (tersedia di browser modern)
-      let naturalWidth = 0
-      let naturalHeight = 0
-      try {
-        const blob = new Blob([buffer], {
-          type: contentType || `image/${extension}`,
-        })
-        const bitmap = await createImageBitmap(blob)
-        naturalWidth = bitmap.width
-        naturalHeight = bitmap.height
-        bitmap.close()
-      } catch {
-        // fallback kalau createImageBitmap gagal / tidak didukung
-        naturalWidth = 0
-        naturalHeight = 0
-      }
-
-      return { buffer, extension, naturalWidth, naturalHeight }
-    } catch (err) {
-      console.warn("Gagal fetch gambar untuk export:", url, err)
-      return null
+      const blob = new Blob([buffer], {
+        type: contentType || `image/${extension}`,
+      })
+      const bitmap = await createImageBitmap(blob)
+      naturalWidth = bitmap.width
+      naturalHeight = bitmap.height
+      bitmap.close()
+    } catch {
+      naturalWidth = 0
+      naturalHeight = 0
     }
+
+    return { buffer, extension, naturalWidth, naturalHeight }
+  } catch (err) {
+    console.warn("Gagal fetch gambar untuk export:", url, err)
+    return null
   }
+}
 
   // Hitung ukuran "contain" (fit tanpa distorsi) ke dalam kotak maksimal
   function fitContain(natW: number, natH: number, maxW: number, maxH: number) {
