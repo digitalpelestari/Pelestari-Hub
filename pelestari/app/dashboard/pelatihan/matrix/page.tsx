@@ -297,317 +297,64 @@ export default function PelatihanMatrixPage() {
   }
 
   const handleExportExcel = async () => {
-    if (filteredData.length === 0) {
-      Swal.fire({
-        icon: "info",
-        title: "Tidak ada data",
-        text: "Tidak ada peserta pada batch ini untuk diekspor.",
-      })
-      return
-    }
-
-    setIsExporting(true)
-    try {
-      const workbook = new ExcelJS.Workbook()
-      workbook.creator = "Sistem Pelatihan"
-      workbook.created = new Date()
-
-      const sheet = workbook.addWorksheet("Matrix Peserta", {
-        views: [{ state: "frozen", ySplit: 4 }],
-      })
-
-      // ------------------------------------------------------------------
-      // UKURAN FOTO (dalam pixel, dikonversi dari cm)
-      // ------------------------------------------------------------------
-      const KTP_SIM_SIZE_PX = {
-        width: 240,
-        height: 153,
-      }
-      const PAS_FOTO_MAX_BOX_PX = {
-        width: 124,
-        height: 151,
-      }
-      const PADDING_PX = 16
-
-      const COLS = [
-        { header: "No", width: 6 },
-        { header: "Nama", width: 26 },
-        { header: "Tempat, Tanggal Lahir", width: 26 },
-        { header: "Nama Perusahaan", width: 24 },
-        { header: "No. NIK", width: 20 },
-        { header: "No. SIM", width: 20 },
-        { header: "Klasifikasi (Jenis SIM)", width: 16 },
-        { header: "Jenis Muatan yang Dibawa Driver", width: 28 },
-        { header: "Usia", width: 10 },
-        {
-          header: "KTP",
-          width: pxToExcelColWidth(KTP_SIM_SIZE_PX.width + PADDING_PX),
-        },
-        {
-          header: "SIM",
-          width: pxToExcelColWidth(KTP_SIM_SIZE_PX.width + PADDING_PX),
-        },
-        {
-          header: "Foto",
-          width: pxToExcelColWidth(PAS_FOTO_MAX_BOX_PX.width + PADDING_PX),
-        },
-        { header: "Lokasi", width: 18 },
-      ]
-      const TOTAL_COLS = COLS.length
-
-      COLS.forEach((c, i) => {
-        sheet.getColumn(i + 1).width = c.width
-      })
-
-      // ------------------------------------------------------------------
-      // JUDUL DI ATAS TABEL (3 baris, merge sepanjang seluruh kolom)
-      // ------------------------------------------------------------------
-      const namaBatchTitle = currentBatchInfo?.nama?.toUpperCase() || "SEMUA BATCH"
-      const lokasiTitle = currentBatchInfo?.lokasi?.toUpperCase() || ""
-      const rentangTanggal = formatRentangTanggal(
-        currentBatchInfo?.tanggal_mulai || null,
-        currentBatchInfo?.tanggal_selesai || null
-      )
-
-      const titleLines = [
-        "DAFTAR NAMA PESERTA DIKLAT AWAK ANGKUTAN BARANG BERBAHAYA",
-        "DILAKSANAKAN OLEH PT PEDULI LESTARI INDONESIA",
-        `TANGGAL PELATIHAN ${rentangTanggal} ${namaBatchTitle}${lokasiTitle ? " " + lokasiTitle : ""}`.trim(),
-      ]
-
-      titleLines.forEach((text, i) => {
-        const rowNum = i + 1
-        sheet.mergeCells(rowNum, 1, rowNum, TOTAL_COLS)
-        const cell = sheet.getCell(rowNum, 1)
-        cell.value = text
-        cell.font = { bold: true, size: i === 0 ? 13 : 11 }
-        cell.alignment = { vertical: "middle", horizontal: "center" }
-        sheet.getRow(rowNum).height = i === 0 ? 22 : 18
-      })
-
-      // ------------------------------------------------------------------
-      // HEADER TABEL (baris ke-4) — background putih, teks hitam bold
-      // ------------------------------------------------------------------
-      const HEADER_ROW_NUM = 4
-      const headerRow = sheet.getRow(HEADER_ROW_NUM)
-      COLS.forEach((c, i) => {
-        const cell = headerRow.getCell(i + 1)
-        cell.value = c.header
-        cell.font = { bold: true, color: { argb: "FF000000" } }
-        cell.fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: "FFFFFFFF" },
-        }
-        cell.alignment = {
-          vertical: "middle",
-          horizontal: "center",
-          wrapText: true,
-        }
-        cell.border = {
-          top: { style: "thin" },
-          bottom: { style: "thin" },
-          left: { style: "thin" },
-          right: { style: "thin" },
-        }
-      })
-      headerRow.height = 30
-
-      const IDX_KTP = COLS.findIndex((c) => c.header === "KTP") + 1
-      const IDX_SIM = COLS.findIndex((c) => c.header === "SIM") + 1
-      const IDX_FOTO = COLS.findIndex((c) => c.header === "Foto") + 1
-
-      // Tinggi baris (points) dibuat cukup untuk memuat foto 5,398 cm + padding
-      const IMAGE_ROW_HEIGHT_PT =
-        ((KTP_SIM_SIZE_PX.height + PADDING_PX) * 72) / 96
-
-      // Lebar kolom foto dalam pixel (dipakai untuk menghitung centering)
-      const colWidthPxKtp = excelColWidthToPx(COLS[IDX_KTP - 1].width)
-      const colWidthPxSim = excelColWidthToPx(COLS[IDX_SIM - 1].width)
-      const colWidthPxFoto = excelColWidthToPx(COLS[IDX_FOTO - 1].width)
-      const rowHeightPx = ptToPx(IMAGE_ROW_HEIGHT_PT)
-
-      // Helper: hitung posisi tl (top-left) fractional supaya gambar center
-      // di dalam sel (col/row berupa index 0-based + pecahan posisi dlm sel)
-      function centeredAnchor(
-        colIndex0: number,
-        rowIndex0: number,
-        colWidthPx: number,
-        imgWidthPx: number,
-        imgHeightPx: number
-      ) {
-        const offsetXFrac = Math.max(
-          0,
-          (colWidthPx - imgWidthPx) / 2 / colWidthPx
-        )
-        const offsetYFrac = Math.max(
-          0,
-          (rowHeightPx - imgHeightPx) / 2 / rowHeightPx
-        )
-        return { col: colIndex0 + offsetXFrac, row: rowIndex0 + offsetYFrac }
-      }
-
-      // ------------------------------------------------------------------
-      // DATA PESERTA
-      // ------------------------------------------------------------------
-      for (let idx = 0; idx < filteredData.length; idx++) {
-        const row = filteredData[idx]
-        const rowNum = HEADER_ROW_NUM + 1 + idx
-        const dataRow = sheet.getRow(rowNum)
-
-        const ttl = `${row.tempat_lahir || "-"}, ${formatTanggalIndo(row.tanggal_lahir)}`
-
-        const values = [
-          idx + 1,
-          row.nama || "-",
-          ttl,
-          row.perusahaan || "-",
-          row.nik || "-",
-          row.nomor_sim || "-",
-          row.jenis_sim || "-",
-          row.jenis_muatan || "-",
-          calculateAge(row.tanggal_lahir),
-          "",
-          "",
-          "",
-          row.lokasi || "-",
-        ]
-
-        values.forEach((val, colIdx) => {
-          const cell = dataRow.getCell(colIdx + 1)
-          cell.value = val
-          cell.border = {
-            top: { style: "thin", color: { argb: "FFE2E8F0" } },
-            bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
-            left: { style: "thin", color: { argb: "FFE2E8F0" } },
-            right: { style: "thin", color: { argb: "FFE2E8F0" } },
-          }
-          cell.alignment = {
-            vertical: "middle",
-            horizontal: [1, 3, 4, 7].includes(colIdx) ? "left" : "center",
-          }
-          if (idx % 2 === 1) {
-            cell.fill = {
-              type: "pattern",
-              pattern: "solid",
-              fgColor: { argb: "FFF8FAFC" },
-            }
-          }
-        })
-
-        dataRow.height = IMAGE_ROW_HEIGHT_PT
-
-        const [imgKtp, imgSim, imgPas] = await Promise.all([
-          fetchImageAsBuffer(row.foto_ktp),
-          fetchImageAsBuffer(row.foto_sim),
-          fetchImageAsBuffer(row.pas_foto),
-        ])
-
-        const rowIndex0 = rowNum - 1
-
-        // --- Foto KTP: ukuran FIX 8,56 x 5,398 cm, center di kolom ---
-        if (imgKtp) {
-          const imageId = workbook.addImage({
-            buffer: imgKtp.buffer as any,
-            extension: imgKtp.extension,
-          })
-          const anchor = centeredAnchor(
-            IDX_KTP - 1,
-            rowIndex0,
-            colWidthPxKtp,
-            KTP_SIM_SIZE_PX.width,
-            KTP_SIM_SIZE_PX.height
-          )
-          sheet.addImage(imageId, { tl: anchor, ext: KTP_SIM_SIZE_PX })
-        } else {
-          dataRow.getCell(IDX_KTP).value = "-"
-        }
-
-        // --- Foto SIM: ukuran FIX 8,56 x 5,398 cm, center di kolom ---
-        if (imgSim) {
-          const imageId = workbook.addImage({
-            buffer: imgSim.buffer as any,
-            extension: imgSim.extension,
-          })
-          const anchor = centeredAnchor(
-            IDX_SIM - 1,
-            rowIndex0,
-            colWidthPxSim,
-            KTP_SIM_SIZE_PX.width,
-            KTP_SIM_SIZE_PX.height
-          )
-          sheet.addImage(imageId, { tl: anchor, ext: KTP_SIM_SIZE_PX })
-        } else {
-          dataRow.getCell(IDX_SIM).value = "-"
-        }
-
-        // --- Pas Foto: ukuran menyesuaikan rasio aslinya (contain), center di kolom ---
-        if (imgPas) {
-          const imageId = workbook.addImage({
-            buffer: imgPas.buffer as any,
-            extension: imgPas.extension,
-          })
-          const fitted = fitContain(
-            imgPas.naturalWidth,
-            imgPas.naturalHeight,
-            PAS_FOTO_MAX_BOX_PX.width,
-            PAS_FOTO_MAX_BOX_PX.height
-          )
-          const anchor = centeredAnchor(
-            IDX_FOTO - 1,
-            rowIndex0,
-            colWidthPxFoto,
-            fitted.width,
-            fitted.height
-          )
-          sheet.addImage(imageId, { tl: anchor, ext: fitted })
-        } else {
-          dataRow.getCell(IDX_FOTO).value = "-"
-        }
-      }
-
-      sheet.autoFilter = {
-        from: { row: HEADER_ROW_NUM, column: 1 },
-        to: { row: HEADER_ROW_NUM, column: TOTAL_COLS },
-      }
-
-      const buffer = await workbook.xlsx.writeBuffer()
-      const blob = new Blob([buffer], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      })
-
-      const namaBatchFile =
-        currentBatchInfo?.nama?.replace(/[^a-zA-Z0-9]/g, "_") || "Semua_Batch"
-      const tanggalFile = new Date().toISOString().slice(0, 10)
-      const fileName = `Matrix_Peserta_${namaBatchFile}_${tanggalFile}.xlsx`
-
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-
-      Swal.fire({
-        icon: "success",
-        title: "Berhasil",
-        text: `File "${fileName}" berhasil diunduh.`,
-        timer: 2000,
-        showConfirmButton: true,
-      })
-    } catch (err) {
-      console.error("Export Excel error:", err)
-      Swal.fire({
-        icon: "error",
-        title: "Gagal Export",
-        text: "Terjadi kesalahan saat membuat file Excel. Kemungkinan gambar gagal diambil (cek CORS di R2).",
-      })
-    } finally {
-      setIsExporting(false)
-    }
+  if (filteredData.length === 0) {
+    Swal.fire({
+      icon: "info",
+      title: "Tidak ada data",
+      text: "Tidak ada peserta pada batch ini untuk diekspor.",
+    })
+    return
   }
+
+  setIsExporting(true)
+  try {
+    const res = await fetch("/api/matrix/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        data: filteredData,
+        batchInfo: currentBatchInfo,
+      }),
+    })
+
+    if (!res.ok) {
+      throw new Error("Gagal generate excel di server")
+    }
+
+    // Ambil blob file langsung dari server
+    const blob = await res.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    
+    const namaBatchFile = currentBatchInfo?.nama?.replace(/[^a-zA-Z0-9]/g, "_") || "Semua_Batch"
+    const tanggalFile = new Date().toISOString().slice(0, 10)
+    const fileName = `Matrix_Peserta_${namaBatchFile}_${tanggalFile}.xlsx`
+    
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+
+    Swal.fire({
+      icon: "success",
+      title: "Berhasil",
+      text: `File "${fileName}" berhasil diunduh.`,
+      timer: 2000,
+      showConfirmButton: true,
+    })
+  } catch (err: any) {
+    console.error("Export Excel error:", err)
+    Swal.fire({
+      icon: "error",
+      title: "Gagal Export",
+      text: err.message || "Terjadi kesalahan saat mengekspor data.",
+    })
+  } finally {
+    setIsExporting(false)
+  }
+}
   // 3. OCR KTP (Robust Parser)
   const handleKtpUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
