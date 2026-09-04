@@ -52,6 +52,16 @@ export async function POST(req: NextRequest) {
     const foto_sim = (formData.get('foto_sim') as string) || null;
     const pas_foto = (formData.get('pas_foto') as string) || null;
 
+    const JENIS_PELATIHAN_VALID = ['AKBB', 'ABB', 'OTHERS'] as const;
+    const rawJenisPelatihan = (formData.get('jenis_pelatihan') as string) || 'AKBB';
+    if (!JENIS_PELATIHAN_VALID.includes(rawJenisPelatihan as any)) {
+      return NextResponse.json(
+        { success: false, error: 'jenis_pelatihan harus AKBB, ABB, atau OTHERS' },
+        { status: 400 }
+      );
+    }
+    const jenis_pelatihan = rawJenisPelatihan as 'AKBB' | 'ABB' | 'OTHERS';
+
     if (tanggal_lahir && tanggal_lahir.includes('-')) {
       const parts = tanggal_lahir.split('-');
       if (parts[0].length === 2 && parts[2].length === 4) {
@@ -63,8 +73,8 @@ export async function POST(req: NextRequest) {
       INSERT INTO tb_matrix (
         batch_id, nama, tempat_lahir, tanggal_lahir, nik,
         nomor_sim, jenis_sim, perusahaan, lokasi, jenis_muatan,
-        foto_ktp, foto_sim, pas_foto
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        foto_ktp, foto_sim, pas_foto, jenis_pelatihan
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const [result]: any = await db.execute(sql, [
@@ -81,6 +91,7 @@ export async function POST(req: NextRequest) {
       foto_ktp,
       foto_sim,
       pas_foto,
+      jenis_pelatihan,
     ]);
 
     return NextResponse.json({
@@ -142,6 +153,16 @@ export async function PATCH(req: NextRequest) {
     const foto_sim = newFotoSim || existing.foto_sim;
     const pas_foto = newPasFoto || existing.pas_foto;
 
+    const JENIS_PELATIHAN_VALID = ['AKBB', 'ABB', 'OTHERS'] as const;
+    const rawJenisPelatihan = (formData.get('jenis_pelatihan') as string) || 'AKBB';
+    if (!JENIS_PELATIHAN_VALID.includes(rawJenisPelatihan as any)) {
+      return NextResponse.json(
+        { success: false, error: 'jenis_pelatihan harus AKBB, ABB, atau OTHERS' },
+        { status: 400 }
+      );
+    }
+    const jenis_pelatihan = rawJenisPelatihan as 'AKBB' | 'ABB' | 'OTHERS';
+
     if (tanggal_lahir && tanggal_lahir.includes('-')) {
       const parts = tanggal_lahir.split('-');
       if (parts[0].length === 2 && parts[2].length === 4) {
@@ -153,7 +174,7 @@ export async function PATCH(req: NextRequest) {
       UPDATE tb_matrix SET
         batch_id = ?, nama = ?, tempat_lahir = ?, tanggal_lahir = ?, nik = ?,
         nomor_sim = ?, jenis_sim = ?, perusahaan = ?, lokasi = ?, jenis_muatan = ?,
-        foto_ktp = ?, foto_sim = ?, pas_foto = ?
+        foto_ktp = ?, foto_sim = ?, pas_foto = ?, jenis_pelatihan = ?
       WHERE id = ?
     `;
 
@@ -171,6 +192,7 @@ export async function PATCH(req: NextRequest) {
       foto_ktp,
       foto_sim,
       pas_foto,
+      jenis_pelatihan,
       id,
     ]);
 

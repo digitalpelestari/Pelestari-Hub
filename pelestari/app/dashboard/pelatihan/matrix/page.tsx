@@ -34,6 +34,8 @@ export interface TbBatch {
   lokasi: string | null
 }
 
+export type JenisPelatihan = "AKBB" | "ABB" | "OTHERS"
+
 export interface TbMatrix {
   id: number
   batch_id: number | null
@@ -50,6 +52,7 @@ export interface TbMatrix {
   foto_ktp: string | null
   foto_sim: string | null
   pas_foto: string | null
+  jenis_pelatihan: JenisPelatihan | null
   created_at: string
 }
 
@@ -61,6 +64,7 @@ export default function PelatihanMatrixPage() {
   const [loadingBatch, setLoadingBatch] = useState(true)
   const [loadingData, setLoadingData] = useState(false)
   const [search, setSearch] = useState("")
+  const [filterJenisPelatihan, setFilterJenisPelatihan] = useState<"ALL" | JenisPelatihan>("ALL")
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -92,6 +96,7 @@ export default function PelatihanMatrixPage() {
     perusahaan: "",
     lokasi: "",
     jenis_muatan: "",
+    jenis_pelatihan: "AKBB" as JenisPelatihan,
   })
 
   // Files & Previews
@@ -128,10 +133,6 @@ export default function PelatihanMatrixPage() {
       if (json.success) {
         const data = (json.data || []) as TbBatch[]
         setBatches(data)
-        if (data.length > 0 && !selectedBatchId) {
-          setSelectedBatchId(String(data[0].id))
-          setFormValues((prev) => ({ ...prev, batch_id: String(data[0].id) }))
-        }
         return data
       }
       return []
@@ -149,10 +150,10 @@ export default function PelatihanMatrixPage() {
 
   // 2. Fetch Data Matrix
   const fetchMatrixData = async (batchId: string) => {
-    if (!batchId) return
     try {
       setLoadingData(true)
-      const res = await fetch(`/api/matrix?batch_id=${batchId}`)
+      const url = batchId ? `/api/matrix?batch_id=${batchId}` : `/api/matrix`
+      const res = await fetch(url)
       const json = await res.json()
       if (json.success) {
         setData(json.data)
@@ -165,9 +166,7 @@ export default function PelatihanMatrixPage() {
   }
 
   useEffect(() => {
-    if (selectedBatchId) {
-      fetchMatrixData(selectedBatchId)
-    }
+    fetchMatrixData(selectedBatchId)
   }, [selectedBatchId])
 
   // Helper Usia
@@ -362,7 +361,7 @@ export default function PelatihanMatrixPage() {
       // ------------------------------------------------------------------
       // JUDUL DI ATAS TABEL (3 baris, merge sepanjang seluruh kolom)
       // ------------------------------------------------------------------
-      const namaBatchTitle = currentBatchInfo?.nama?.toUpperCase() || ""
+      const namaBatchTitle = currentBatchInfo?.nama?.toUpperCase() || "SEMUA BATCH"
       const lokasiTitle = currentBatchInfo?.lokasi?.toUpperCase() || ""
       const rentangTanggal = formatRentangTanggal(
         currentBatchInfo?.tanggal_mulai || null,
@@ -577,7 +576,7 @@ export default function PelatihanMatrixPage() {
       })
 
       const namaBatchFile =
-        currentBatchInfo?.nama?.replace(/[^a-zA-Z0-9]/g, "_") || "Batch"
+        currentBatchInfo?.nama?.replace(/[^a-zA-Z0-9]/g, "_") || "Semua_Batch"
       const tanggalFile = new Date().toISOString().slice(0, 10)
       const fileName = `Matrix_Peserta_${namaBatchFile}_${tanggalFile}.xlsx`
 
@@ -953,6 +952,7 @@ export default function PelatihanMatrixPage() {
       payload.append("perusahaan", formValues.perusahaan)
       payload.append("lokasi", formValues.lokasi)
       payload.append("jenis_muatan", formValues.jenis_muatan)
+      payload.append("jenis_pelatihan", formValues.jenis_pelatihan)
       payload.append("foto_ktp", fotoKtpUrl)
       payload.append("foto_sim", fotoSimUrl)
       payload.append("pas_foto", pasFotoUrl)
@@ -1010,6 +1010,7 @@ export default function PelatihanMatrixPage() {
       perusahaan: "",
       lokasi: "",
       jenis_muatan: "",
+      jenis_pelatihan: "AKBB",
     })
     setFileKtp(null)
     setFileSim(null)
@@ -1036,6 +1037,7 @@ export default function PelatihanMatrixPage() {
       perusahaan: row.perusahaan || "",
       lokasi: row.lokasi || "",
       jenis_muatan: row.jenis_muatan || "",
+      jenis_pelatihan: (row.jenis_pelatihan as JenisPelatihan) || "AKBB",
     })
     setExistingFoto({
       ktp: row.foto_ktp || "",
@@ -1099,12 +1101,17 @@ export default function PelatihanMatrixPage() {
 
   const filteredData = data.filter((item) => {
     const q = search.toLowerCase()
-    return (
+    const matchSearch =
       item.nama?.toLowerCase().includes(q) ||
       item.nik?.includes(q) ||
       item.nomor_sim?.includes(q) ||
       item.perusahaan?.toLowerCase().includes(q)
-    )
+
+    const matchJenis =
+      filterJenisPelatihan === "ALL" ||
+      item.jenis_pelatihan === filterJenisPelatihan
+
+    return matchSearch && matchJenis
   })
 
   return (
@@ -1209,6 +1216,25 @@ export default function PelatihanMatrixPage() {
                 className="w-full rounded-xl border border-slate-200 bg-white py-2 pr-4 pl-9 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
               />
             </div>
+            {/* Filter Jenis Pelatihan */}
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <Layers className="h-4 w-4 text-indigo-500" />
+              <select
+                aria-label="Filter Jenis Pelatihan"
+                value={filterJenisPelatihan}
+                onChange={(e) =>
+                  setFilterJenisPelatihan(
+                    e.target.value as "ALL" | JenisPelatihan
+                  )
+                }
+                className="bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+              >
+                <option value="ALL">Semua Jenis</option>
+                <option value="AKBB">AKBB</option>
+                <option value="ABB">ABB</option>
+                <option value="OTHERS">Lainnya</option>
+              </select>
+            </div>
             {/* Batch Selector (dipindahkan ke sini) */}
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <Calendar className="h-4 w-4 text-slate-400" />
@@ -1228,11 +1254,14 @@ export default function PelatihanMatrixPage() {
                 {batches.length === 0 ? (
                   <option value="">Belum ada batch</option>
                 ) : (
-                  batches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.nama} {b.lokasi ? `(${b.lokasi})` : ""}
-                    </option>
-                  ))
+                  <>
+                    <option value="">Semua Batch</option>
+                    {batches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.nama} {b.lokasi ? `(${b.lokasi})` : ""}
+                      </option>
+                    ))}
+                  </>
                 )}
               </select>
             </div>
@@ -1253,20 +1282,21 @@ export default function PelatihanMatrixPage() {
                 <th className="px-4 py-3.5">Kualifikasi SIM</th>
                 <th className="px-4 py-3.5">Perusahaan & Muatan</th>
                 <th className="px-4 py-3.5">Lokasi</th>
+                <th className="px-4 py-3.5">Jenis Pelatihan</th>
                 <th className="w-20 px-4 py-3.5 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {loadingData ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-indigo-500" />
                     <span>Memuat data peserta...</span>
                   </td>
                 </tr>
               ) : filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     <FileText className="mx-auto mb-2 h-8 w-8 text-slate-300" />
                     <span>
                       Belum ada peserta di batch ini. Silakan klik{" "}
@@ -1337,6 +1367,24 @@ export default function PelatihanMatrixPage() {
                         <MapPin className="h-3.5 w-3.5 text-slate-400" />{" "}
                         {row.lokasi || "-"}
                       </div>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      {row.jenis_pelatihan ? (
+                        <span
+                          className={
+                            "inline-flex items-center rounded-md px-2 py-1 text-[11px] font-bold tracking-wide " +
+                            (row.jenis_pelatihan === "AKBB"
+                              ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                              : row.jenis_pelatihan === "ABB"
+                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                                : "bg-slate-100 text-slate-600 ring-1 ring-slate-200")
+                          }
+                        >
+                          {row.jenis_pelatihan}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -1888,6 +1936,27 @@ export default function PelatihanMatrixPage() {
                     placeholder="Contoh: Bahan Kimia Cair (B3)"
                   />
                 </div>
+
+                <div className="md:col-span-3">
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">
+                    Jenis Pelatihan *
+                  </label>
+                  <select
+                    required
+                    value={formValues.jenis_pelatihan}
+                    onChange={(e) =>
+                      setFormValues({
+                        ...formValues,
+                        jenis_pelatihan: e.target.value as JenisPelatihan,
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    <option value="AKBB">AKBB</option>
+                    <option value="ABB">ABB</option>
+                    <option value="OTHERS">Lainnya</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
@@ -2042,6 +2111,14 @@ export default function PelatihanMatrixPage() {
                 <span className="block text-[11px] text-slate-400">Lokasi</span>
                 <span className="font-medium">
                   {selectedDetail.lokasi || "-"}
+                </span>
+              </div>
+              <div className="col-span-2 rounded-lg bg-slate-50 p-2.5">
+                <span className="block text-[11px] text-slate-400">
+                  Jenis Pelatihan
+                </span>
+                <span className="font-semibold text-indigo-700">
+                  {selectedDetail.jenis_pelatihan || "-"}
                 </span>
               </div>
               <div className="col-span-2 rounded-lg bg-slate-50 p-2.5">
