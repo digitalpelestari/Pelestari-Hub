@@ -92,7 +92,7 @@ export default function PelatihanMatrixPage() {
     tanggal_lahir: "",
     nik: "",
     nomor_sim: "",
-    jenis_sim: "B II UMUM",
+    jenis_sim: "",
     perusahaan: "",
     lokasi: "",
     jenis_muatan: "",
@@ -635,22 +635,50 @@ export default function PelatihanMatrixPage() {
       let extractedTgl = ""
       let nikLineIdx = -1
 
-      // A. Ekstraksi NIK
-      const nikMatch =
-        text.match(/\b\d{16}\b/) ||
-        text.match(/(?:NIK|N1K|N|K)\s*[:=]?\s*([0-9OBIDSZ]{16})/i)
-      if (nikMatch) {
-        extractedNik = (nikMatch[1] || nikMatch[0])
-          .replace(/O|D/g, "0")
-          .replace(/I|l/g, "1")
-          .replace(/B/g, "8")
-          .replace(/S/g, "5")
+      // A. Ekstraksi NIK (robust: handles spaces, dashes, OCR typos)
+      let nikCandidate = ""
+
+      // Coba pola label NIK + angka (dengan spasi/garis/ titik diperbolehkan)
+      const nikLabelMatch = text.match(
+        /(?:NIK|N1K|N[Il|]K|NI[Kk])\s*[:=;.\s]*\s*([0-9OBIDSZol|L\s.,-]{16,30})/i
+      )
+      if (nikLabelMatch && nikLabelMatch[1]) {
+        nikCandidate = nikLabelMatch[1]
+      } else {
+        // Fallback: cari sekumpulan 16+ karakter angka/typo di setiap baris
+        for (const line of lines) {
+          const normalizedLine = line.replace(/[\s.-]/g, "")
+          const potentialNik = normalizedLine.match(
+            /[0-9OBIDSZol|L]{16,30}/i
+          )
+          if (potentialNik) {
+            nikCandidate = potentialNik[0]
+            break
+          }
+        }
+      }
+
+      if (nikCandidate) {
+        const cleanNumbers = nikCandidate
+          .toUpperCase()
+          .replace(/[\s.,-]/g, "")
+          .replace(/[OD]/g, "0")
+          .replace(/[IL]/g, "1")
           .replace(/Z/g, "2")
+          .replace(/S/g, "5")
+          .replace(/[B]/g, "8")
+        const digitMatch = cleanNumbers.match(/\d{16}/)
+        if (digitMatch) {
+          extractedNik = digitMatch[0]
+        }
       }
 
       // Cari index baris NIK untuk fallback nama
       lines.forEach((line: string, idx: number) => {
-        if (/NIK|N1K/i.test(line) || /\d{16}/.test(line)) {
+        if (
+          /NIK|N1K/i.test(line) ||
+          /\d{16}/.test(line.replace(/[\s.-]/g, ""))
+        ) {
           nikLineIdx = idx
         }
       })
@@ -736,26 +764,139 @@ export default function PelatihanMatrixPage() {
       let jenisSim = ""
       let noSim = ""
 
-      const jenisMatch =
-        text.match(
-          /\b(?:SIM|SURAT\s*IZIN\s*MENGEMUDI)?\s*([A-C](?:\s*I{1,2})?)\b/i
-        ) || text.match(/\b(BI|BII|B1|B2|A|C)\b/i)
-      if (jenisMatch) {
-        const matched = jenisMatch[1].toUpperCase().replace(/\s+/g, " ")
-        if (matched.includes("B1") || matched.includes("B I"))
-          jenisSim = "B I UMUM"
-        else if (matched.includes("B2") || matched.includes("B II"))
-          jenisSim = "B II UMUM"
-        else if (matched.includes("A")) jenisSim = "A"
-        else if (matched.includes("C")) jenisSim = "C"
-        else jenisSim = matched
+      const normalizeSimNumber = (val: string) =>
+        val
+          .toUpperCase()
+          .replace(/[\s-]/g, "")
+          .replace(/O/g, "0")
+          .replace(/I/g, "1")
+          .replace(/Z/g, "2")
+          .replace(/S/g, "5")
+          .replace(/B/g, "8")
+
+      const lines = text.split("\n").map((l: string) => l.trim()).filter(Boolean)
+
+      const simIndex = lines.findIndex((l: string) =>
+        /SURAT\s*IZIN\s*MENGEMUDI|SIM/i.test(l),
+      )
+
+      if (simIndex !== -1) {
+        const afterSimLine = lines[simIndex + 1] || ""
+        const afterSimDigits = afterSimLine.match(/[\d\s-]{12,20}/)
+        if (afterSimDigits) {
+          noSim = normalizeSimNumber(afterSimDigits[0]).slice(0, 16)
+        }
       }
 
-      const noSimMatch =
-        text.match(/(?:NO|NOMOR|NO\.)\s*[:=]?\s*([0-9-]{12,18})/i) ||
-        text.match(/\b\d{4}[-\s]?\d{4}[-\s]?\d{4,6}\b/)
-      if (noSimMatch) {
-        noSim = (noSimMatch[1] || noSimMatch[0]).replace(/[^0-9]/g, "")
+      if (!noSim) {
+        const simSection = text.match(/SURAT\s*IZIN\s*MENGEMUDI[\s\S]{0,100}/i)
+        if (simSection) {
+          const digitsInSection = simSection[0].match(/[\d\s-]{12,20}/)
+          if (digitsInSection) {
+            noSim = normalizeSimNumber(digitsInSection[0]).slice(0, 16)
+          }
+        }
+      }
+
+      if (!noSim) {
+        const labeledNoMatch = text.match(
+          /(?:NO(?:\.|\s+SIM)?|NOMOR)\s*[:=.\s]*([\d\s-]{12,20})/i,
+        )
+        if (labeledNoMatch) {
+          noSim = normalizeSimNumber(labeledNoMatch[1]).slice(0, 16)
+        }
+      }
+
+      if (!noSim) {
+        const patternMatch =
+          text.match(/\b(\d{4}[-\s]?\d{4}[-\s]?\d{4}(?:[-\s]?\d{4})?)\b/) ||
+          text.match(/\b(\d{12,16})\b/)
+        if (patternMatch) {
+          noSim = normalizeSimNumber(patternMatch[1]).slice(0, 16)
+        }
+      }
+
+      const mapSimType = (raw: string): string => {
+        const s = raw
+          .toUpperCase()
+          .replace(/[^A-Z0-9 ]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+        if (!s) return ""
+        const compact = s.replace(/\s+/g, "")
+        // B II UMUM (handle OCR: BII, B 11, B 1I, B2, 8 II, B ll, dll)
+        if (
+          /\bB\s*(I{1,2}|1{1,2}|L{1,2}|2|II)\b.*UMUM/i.test(s) &&
+          !/B\s*I\s*UMUM/.test(s) &&
+          (/\bB\s*(II|2|I{2})\b/.test(s) || /B2/.test(compact))
+        ) {
+          return "B II UMUM"
+        }
+        if (/\bB\s*(II|2|11|I{2})\s*UMUM/i.test(s) || /\bB2\s*UMUM/i.test(s))
+          return "B II UMUM"
+        // B I UMUM
+        if (/\bB\s*(I|1|L)\s*UMUM/i.test(s) || /\bB1\s*UMUM/i.test(s))
+          return "B I UMUM"
+        if (/\bB\s*II\b/i.test(s) || /\bB2\b/.test(compact)) return "B II UMUM"
+        if (/\bB\s*I\b/i.test(s) || /\bB1\b/.test(compact)) return "B I UMUM"
+        if (/\bA\s*UMUM\b/i.test(s) || /\bA(?![A-Z])/.test(s) && /A/.test(compact))
+          return "A"
+        if (/\bC(?![A-Z])/.test(s) || /\bC\s*UMUM\b/i.test(s)) return "C"
+        if (/\bD(?![A-Z])/.test(s) || /\bD\s*UMUM\b/i.test(s)) return "D"
+        return s
+      }
+
+      // 1) Label "Golongan SIM" / "Jenis SIM" / "Gol." / "Type"
+      const labelTypeMatch = text.match(
+        /(?:GOLONGAN|GOL|JENIS|TYPE|TIPE)\s*(?:SIM|SURAT\s*IZIN)?\s*[:=.\s]*\s*([A-D](?:\s*(?:I{1,2}|1{1,2}|L{1,2}|2))?(?:\s*UMUM)?)/i,
+      )
+      if (labelTypeMatch) {
+        const v = mapSimType(labelTypeMatch[1])
+        if (v) jenisSim = v
+      }
+
+      // 2) Setelah header "SURAT IZIN MENGEMUDI" / "SIM" -> 1-2 token berikutnya
+      if (!jenisSim) {
+        for (let i = 0; i < lines.length; i++) {
+          if (/SURAT\s*IZIN\s*MENGEMUDI|^SIM\s*$|DRIVING\s*LICENSE/i.test(lines[i])) {
+            for (let j = 1; j <= 3 && i + j < lines.length; j++) {
+              const next = lines[i + j]
+              if (/\b[A-D]\b/i.test(next) || /UMUM/i.test(next)) {
+                const v = mapSimType(next)
+                if (v && /^(A|B|C|D)/.test(v)) {
+                  jenisSim = v
+                  break
+                }
+              }
+            }
+            if (jenisSim) break
+          }
+        }
+      }
+
+      // 3) Pada baris yang sama dengan nomor SIM
+      if (!jenisSim && noSim) {
+        for (const line of lines) {
+          if (!/[\d\s-]{12,20}/.test(line)) continue
+          const v = mapSimType(line)
+          if (v && /^(A|B|C|D)/.test(v) && v.length <= 20) {
+            jenisSim = v
+            break
+          }
+        }
+      }
+
+      // 4) Fallback: cari token yang terlihat seperti golongan SIM di seluruh teks
+      if (!jenisSim) {
+        const fallback =
+          text.match(/\b([A-D])\s*UMUM\b/i) ||
+          text.match(/\bSIM\s*([A-D])\b/i) ||
+          text.match(/\b([A-D])\s*(I{1,2}|1{1,2})\s*UMUM\b/i) ||
+          text.match(/\b(B\s*II|B\s*I|B2|B1|BII|B1I|B11|81)\b/i)
+        if (fallback) {
+          const v = mapSimType(fallback[1] || fallback[0])
+          if (v) jenisSim = v
+        }
       }
 
       setFormValues((prev) => ({
@@ -1006,7 +1147,7 @@ export default function PelatihanMatrixPage() {
       tanggal_lahir: "",
       nik: "",
       nomor_sim: "",
-      jenis_sim: "B II UMUM",
+      jenis_sim: "",
       perusahaan: "",
       lokasi: "",
       jenis_muatan: "",
@@ -1033,7 +1174,7 @@ export default function PelatihanMatrixPage() {
         : "",
       nik: row.nik || "",
       nomor_sim: row.nomor_sim || "",
-      jenis_sim: row.jenis_sim || "B II UMUM",
+      jenis_sim: row.jenis_sim || "",
       perusahaan: row.perusahaan || "",
       lokasi: row.lokasi || "",
       jenis_muatan: row.jenis_muatan || "",
@@ -1849,7 +1990,8 @@ export default function PelatihanMatrixPage() {
                   <label className="mb-1 block text-xs font-semibold text-slate-600">
                     Jenis SIM
                   </label>
-                  <select
+                  <input
+                    type="text"
                     value={formValues.jenis_sim}
                     onChange={(e) =>
                       setFormValues({
@@ -1858,14 +2000,8 @@ export default function PelatihanMatrixPage() {
                       })
                     }
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  >
-                    <option value="A">SIM A</option>
-                    <option value="B I">SIM B I</option>
-                    <option value="B I UMUM">SIM B I Umum</option>
-                    <option value="B II">SIM B II</option>
-                    <option value="B II UMUM">SIM B II Umum</option>
-                    <option value="C">SIM C</option>
-                  </select>
+                    placeholder="misal B II Umum, C, A"
+                  />
                 </div>
 
                 <div>
