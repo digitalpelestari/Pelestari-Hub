@@ -9,6 +9,7 @@ export interface RiwayatSemuaTransaksi {
   no_registrasi: string
   no_referensi: string
   penerima: string
+  penerima_id?: number | null
   keterangan: string
   sumber_dana: string
   tujuan_alokasi: string
@@ -76,8 +77,8 @@ export async function getJurnalList(
         (
           LOWER(j.no_registrasi) LIKE LOWER(?)
           OR LOWER(j.no_referensi) LIKE LOWER(?)
-          OR LOWER(j.penerima) LIKE LOWER(?)
           OR LOWER(j.keterangan) LIKE LOWER(?)
+          OR LOWER(p.nama_penerima) LIKE LOWER(?)
           OR EXISTS (
             SELECT 1
             FROM tb_jurnal_item si
@@ -90,13 +91,13 @@ export async function getJurnalList(
           )
         )
       `)
-      params.push(searchValue, searchValue, searchValue, searchValue, searchValue, searchValue)
+      params.push(searchValue, searchValue, searchValue, searchValue, searchValue)
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
 
     // TOTAL DATA
-    const countQuery = `SELECT COUNT(*) AS total FROM tb_jurnal j ${whereClause}`
+    const countQuery = `SELECT COUNT(*) AS total FROM tb_jurnal j LEFT JOIN tb_penerima p ON j.penerima_id = p.id ${whereClause}`
     const [countRows]: any = await db.query(countQuery, params)
     const total = Number(countRows[0]?.total || 0)
 
@@ -107,6 +108,7 @@ export async function getJurnalList(
         COALESCE(SUM(i.kredit), 0) AS totalKredit
       FROM tb_jurnal_item i
       INNER JOIN tb_jurnal j ON i.jurnal_id = j.id
+      LEFT JOIN tb_penerima p ON j.penerima_id = p.id
       ${whereClause}
     `
     const [summaryRows]: any = await db.query(summaryQuery, params)
@@ -160,9 +162,11 @@ export async function getJurnalList(
         j.tanggal,
         j.no_registrasi,
         j.no_referensi,
-        j.penerima,
+        p.nama_penerima AS penerima,
+        j.penerima_id,
         j.keterangan
       FROM tb_jurnal j
+      LEFT JOIN tb_penerima p ON j.penerima_id = p.id
       ${whereClause}
       ORDER BY j.tanggal DESC, j.id DESC
     `
@@ -225,6 +229,7 @@ export async function getJurnalList(
       no_registrasi: jurnal.no_registrasi,
       no_referensi: jurnal.no_referensi,
       penerima: jurnal.penerima || "-",
+      penerima_id: jurnal.penerima_id || null,
       keterangan: jurnal.keterangan,
       items: itemsMap.get(Number(jurnal.id)) || [],
     }))

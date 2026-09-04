@@ -43,6 +43,7 @@ import {
   generateNoRegistrasiOtomatis,
 } from "@/app/actions/jurnal"
 import { getAkunList } from "@/app/actions/akun"
+import { getPenerima } from "@/app/actions/penerima"
 import Link from "next/link"
 import { swal } from "@/lib/sweetalert"
 
@@ -50,6 +51,8 @@ export default function JurnalUmumListPage() {
   const pathname = usePathname()
   const [jurnalList, setJurnalList] = useState<any[]>([])
   const [akunList, setAkunList] = useState<any[]>([])
+  const [penerimaList, setPenerimaList] = useState<{ id: number; nama_penerima: string }[]>([])
+  const [loadingPenerima, setLoadingPenerima] = useState(false)
 
   const [searchInput, setSearchInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
@@ -167,6 +170,21 @@ export default function JurnalUmumListPage() {
   }
 
   useEffect(() => {
+    const fetchPenerima = async () => {
+      setLoadingPenerima(true)
+      try {
+        const data = await getPenerima()
+        setPenerimaList(Array.isArray(data) ? data : [])
+      } catch (error) {
+        setPenerimaList([])
+      } finally {
+        setLoadingPenerima(false)
+      }
+    }
+    fetchPenerima()
+  }, [])
+
+  useEffect(() => {
     loadData()
   }, [startDate, endDate, currentPage, pageSize, searchQuery, pathname])
 
@@ -178,7 +196,7 @@ export default function JurnalUmumListPage() {
         : "",
       no_registrasi: jurnal.no_registrasi || "",
       no_referensi: jurnal.no_referensi || "",
-      penerima: jurnal.penerima || "",
+      penerimaId: jurnal.penerima_id || "",
       keterangan: jurnal.keterangan || "",
     })
     setEditItemsForm(JSON.parse(JSON.stringify(jurnal.items || [])))
@@ -249,7 +267,7 @@ export default function JurnalUmumListPage() {
           tanggal: editHeaderForm.tanggal,
           no_registrasi: editHeaderForm.no_registrasi,
           no_referensi: editHeaderForm.no_referensi,
-          penerima: editHeaderForm.penerima,
+          penerimaId: editHeaderForm.penerimaId ? Number(editHeaderForm.penerimaId) : null,
           keterangan_umum: editHeaderForm.keterangan,
           no_akun: item.no_akun,
           debit: Number(item.debit) || 0,
@@ -603,18 +621,23 @@ export default function JurnalUmumListPage() {
                               className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top text-xs text-zinc-700"
                             >
                               {isJurnalEditing ? (
-                                <Input
-                                  type="text"
-                                  placeholder="Nama Penerima..."
-                                  value={editHeaderForm.penerima || ""}
+                                <select
+                                  value={editHeaderForm.penerimaId || ""}
                                   onChange={(e) =>
                                     handleHeaderChange(
-                                      "penerima",
+                                      "penerimaId",
                                       e.target.value
                                     )
                                   }
-                                  className="h-8 rounded-md border-zinc-300 bg-white font-mono !text-xs"
-                                />
+                                  className="h-8 rounded-md border-zinc-300 bg-white px-2 text-xs focus:outline-none"
+                                >
+                                  <option value="">Pilih Penerima</option>
+                                  {penerimaList.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.nama_penerima}
+                                    </option>
+                                  ))}
+                                </select>
                               ) : (
                                 <div className="flex items-center gap-1.5">
                                   <User className="h-3.5 w-3.5 text-zinc-400 shrink-0" />

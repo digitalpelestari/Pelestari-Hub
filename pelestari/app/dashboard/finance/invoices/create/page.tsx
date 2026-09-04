@@ -93,8 +93,8 @@ export default function CreateInvoicePage() {
     const subtotalDasar = sub1 + sub2
     const totalPesertaAll = formData.jumlah_peserta + formData.jumlah_peserta_2
 
-    let pph = formData.is_pph23 ? subtotalDasar * 0.02 : 0
-    let ppn = formData.is_ppn11 ? subtotalDasar * 0.11 : 0
+    const pph = formData.is_pph23 ? subtotalDasar * 0.02 : 0
+    const ppn = formData.is_ppn11 ? subtotalDasar * 0.11 : 0
     const nominal_pnbp = formData.is_pnbp ? totalPesertaAll * 600000 : 0
 
     const totalAkhir = subtotalDasar + ppn + nominal_pnbp - pph

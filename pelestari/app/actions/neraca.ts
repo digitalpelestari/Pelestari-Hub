@@ -65,9 +65,9 @@ export async function getNeracaData(year: string = "2026"): Promise<NeracaData> 
       `SELECT no_akun, nama_akun, saldo FROM tb_akun ORDER BY no_akun ASC`
     );
 
-    let aktivaLancar: NeracaItem[] = [];
-    let kewajiban: NeracaItem[] = [];
-    let ekuitas: NeracaItem[] = [];
+    const aktivaLancar: NeracaItem[] = [];
+    const kewajiban: NeracaItem[] = [];
+    const ekuitas: NeracaItem[] = [];
 
     let totalAktivaLancar = 0;
     let totalKewajiban = 0;

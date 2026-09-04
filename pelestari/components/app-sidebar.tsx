@@ -95,7 +95,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           items: [
             {
               title: "Kelompok Biaya",
-              url: "/dashboard/finance/pos/kelompok-biaya",
+              url: "/dashboard/finance/data-master/kelompok-biaya",
             },
             {
               title: "Pemohon",
