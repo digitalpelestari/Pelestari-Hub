@@ -14,11 +14,13 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Inisialisasi Tesseract Worker dengan bahasa Indonesia (ind) + Inggris (eng)
+    // Inisialisasi Tesseract Worker
     worker = await createWorker(['ind', 'eng']);
-    const { data: { text } } = await worker.recognize(buffer);
+    const {
+      data: { text },
+    } = await worker.recognize(buffer);
 
-    // Parsing teks mentah menggunakan Regex
+    // Parsing teks mentah
     const parsedData = parseKtpText(text);
 
     return NextResponse.json({
@@ -52,37 +54,67 @@ function parseKtpText(raw: string) {
   let tempatLahir = '';
   let tanggalLahir = '';
 
-  // 1. Ekstrak NIK (16 digit angka, toleransi typo huruf O/D/I jadi angka)
-  const nikMatch = raw.match(/(?:NIK|N1K|N|K)\s*[:=]?\s*([0-9OBIDSZ]{16})/i) 
-                || raw.match(/\b\d{16}\b/);
-  if (nikMatch) {
-    nik = nikMatch[1]
-      .replace(/O|D/g, '0')
-      .replace(/I|l/g, '1')
-      .replace(/B/g, '8')
-      .replace(/S/g, '5')
-      .replace(/Z/g, '2');
+  // 1. Ekstrak NIK
+  // Tangkap teks setelah label NIK/N1K/N|K termasuk pemisah titik dua/titik/spasi
+  const nikLabelPattern = /(?:NIK|N1K|N[Il|]K|NI[Kk])\s*[:=;.\s]*\s*([0-9OBIDSZol|L\s-]{16,30})/i;
+  const labelMatch = raw.match(nikLabelPattern);
+
+  let candidate = '';
+
+  if (labelMatch && labelMatch[1]) {
+    // Ambil string tepat di belakang label NIK
+    candidate = labelMatch[1];
+  } else {
+    // Fallback: Jika kata "NIK" gagal terbaca, cari baris atau susunan 16 karakter angka/typo
+    for (const line of lines) {
+      // Hilangkan spasi & strip untuk tes panjang
+      const normalizedLine = line.replace(/[\s-]/g, '');
+      const potentialNik = normalizedLine.match(/[0-9OBIDSZol|L]{16}/i);
+      if (potentialNik) {
+        candidate = potentialNik[0];
+        break;
+      }
+    }
   }
 
-  // 2. Ekstrak Nama & Tempat/Tanggal Lahir dari baris teks
+  if (candidate) {
+    // Normalisasi karakter typo OCR ke angka
+    const cleanNumbers = candidate
+      .toUpperCase()
+      .replace(/[\s-]/g, '') // Hapus spasi & dash
+      .replace(/[OD]/g, '0')
+      .replace(/[IL|]/g, '1')
+      .replace(/Z/g, '2')
+      .replace(/S/g, '5')
+      .replace(/B/g, '8');
+
+    // Ambil tepat 16 digit pertama
+    const digitMatch = cleanNumbers.match(/\d{16}/);
+    if (digitMatch) {
+      nik = digitMatch[0];
+    }
+  }
+
+  // 2. Ekstrak Nama & Tempat/Tanggal Lahir
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
     // Cek baris Nama
-    if (/Nama/i.test(line)) {
-      nama = line.replace(/.*Nama\s*[:=]?\s*/i, '').trim();
+    if (/Nama/i.test(line) && !nama) {
+      nama = line.replace(/.*Nama\s*[:=;.\s]*/i, '').trim();
     }
 
     // Cek baris Tempat/Tgl Lahir
-    if (/Tempat|Tgl\s*Lahir|Lahir/i.test(line)) {
-      const ttlRaw = line.replace(/.*(?:Lahir|Tgl Lahir)\s*[:=]?\s*/i, '').trim();
+    if (/Tempat|Tgl\s*Lahir|Lahir/i.test(line) && (!tempatLahir || !tanggalLahir)) {
+      const ttlRaw = line.replace(/.*(?:Lahir|Tgl Lahir)\s*[:=;.\s]*/i, '').trim();
       const parts = ttlRaw.split(',');
+
       if (parts.length >= 2) {
         tempatLahir = parts[0].trim();
-        // Cari pola tanggal DD-MM-YYYY
+        // Cari pola tanggal DD-MM-YYYY atau DD MM YYYY
         const dateMatch = parts[1].match(/\d{2}[-\s/]\d{2}[-\s/]\d{4}/);
         if (dateMatch) {
-          tanggalLahir = dateMatch[0].replace(/\s|\//g, '-');
+          tanggalLahir = dateMatch[0].replace(/[\s/]/g, '-');
         }
       }
     }
