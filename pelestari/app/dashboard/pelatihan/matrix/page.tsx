@@ -206,84 +206,6 @@ export default function PelatihanMatrixPage() {
     return `${d.getDate()} ${BULAN_ID[d.getMonth()]} ${d.getFullYear()}`
   }
 
-  // 1. Preprocessing Khusus KTP (Grayscale + Adaptive Contrast agar latar biru & garis pudar, teks NIK tetap hitam pekat)
-  const preprocessKtpImage = async (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement("canvas")
-        const ctx = canvas.getContext("2d")
-        if (!ctx) return resolve(URL.createObjectURL(file))
-
-        // Naikkan resolusi (Upscale) 2x lipat agar font dot-matrix/OCR-B terbaca utuh
-        const targetWidth = Math.max(img.width * 2, 1400)
-        const scale = targetWidth / img.width
-        canvas.width = targetWidth
-        canvas.height = img.height * scale
-
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-        const d = imgData.data
-
-        // Filter: Buang channel biru/cyan latar KTP dengan memberi bobot lebih pada red/green
-        for (let i = 0; i < d.length; i += 4) {
-          // Bobot dominan di merah & hijau untuk meredam background cyan KTP
-          const gray = 0.5 * d[i] + 0.4 * d[i + 1] + 0.1 * d[i + 2]
-          
-          // Dynamic Binarization: font NIK hitam pekat akan masuk ke 0 (hitam), background ke 255 (putih)
-          const val = gray < 110 ? 0 : 255
-          d[i] = val
-          d[i + 1] = val
-          d[i + 2] = val
-        }
-
-        ctx.putImageData(imgData, 0, 0)
-        resolve(canvas.toDataURL("image/png"))
-      }
-      img.src = URL.createObjectURL(file)
-    })
-  }
-
-  // 2. Parser NIK Khusus OCR KTP
-  const extractNikFromOcr = (text: string): string => {
-    // Normalisasi karakter yang sering tertukar pada OCR-B e-KTP
-    const cleanOcrDigits = (str: string) =>
-      str
-        .replace(/[OoDdQq]/g, "0")
-        .replace(/[IiLl|!]/g, "1")
-        .replace(/[Bb]/g, "8")
-        .replace(/[Ss]/g, "5")
-        .replace(/[Zz]/g, "2")
-        .replace(/[Gg]/g, "6")
-        .replace(/[^0-9]/g, "")
-
-    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean)
-
-    // Cara 1: Ambil teks di samping label NIK (meskipun ada spasi di tengah nomor)
-    for (const line of lines) {
-      if (/N\s*[I1Ll|!]\s*[Kk]/i.test(line)) {
-        const afterNik = line.replace(/.*N\s*[I1Ll|!]\s*[Kk]\s*[:=.\-]?\s*/i, "")
-        const digitsOnly = cleanOcrDigits(afterNik)
-        if (digitsOnly.length >= 16) {
-          return digitsOnly.slice(0, 16)
-        }
-      }
-    }
-
-    // Cara 2: Cari deretan angka/huruf mirip 16 digit di seluruh baris teks
-    // Toleran terhadap spasi seperti: "140109 080378 0001" atau "14O1O9O8O378OOO1"
-    const wordsAndChunks = text.match(/[0-9OoDdQqIiLl|!BbSsZz\s-]{16,28}/g) || []
-    for (const chunk of wordsAndChunks) {
-      const digits = cleanOcrDigits(chunk)
-      // NIK selalu 16 digit dan diawali kode provinsi (11-92)
-      if (digits.length === 16 && /^[1-9][0-9]/.test(digits)) {
-        return digits
-      }
-    }
-
-    return ""
-  }
-
   // Export Excel
   const handleExportExcel = async () => {
     if (filteredData.length === 0) {
@@ -346,16 +268,6 @@ export default function PelatihanMatrixPage() {
   }
 
   // OCR KTP
-  const cleanOcrDigits = (str: string) =>
-    str
-      .replace(/[OoDdQq]/g, "0")
-      .replace(/[IiLl|!]/g, "1")
-      .replace(/[Bb]/g, "8")
-      .replace(/[Ss]/g, "5")
-      .replace(/[Zz]/g, "2")
-      .replace(/[Gg]/g, "6")
-      .replace(/[^0-9]/g, "")
-
   const handleKtpUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -367,55 +279,67 @@ export default function PelatihanMatrixPage() {
     let worker: any = null
     try {
       worker = await createWorker("ind")
+      const {
+        data: { text },
+      } = await worker.recognize(file)
 
-      // Langsung baca file gambar asli tanpa canvas binarization
-      const { data } = await worker.recognize(file)
-      const text: string = data.text || ""
-      console.log("--- OCR KTP RAW OUTPUT --- \n", text)
-
-      const lines: string[] = text
+      const lines = text
         .split("\n")
         .map((l: string) => l.trim())
-        .filter(Boolean)
+        .filter((l: string) => l.length > 0)
 
       let extractedNik = ""
       let extractedNama = ""
       let extractedTempat = ""
       let extractedTgl = ""
+      let nikLineIdx = -1
 
-      // 1. Ekstraksi NIK
-      // Cari baris yang mengandung kata NIK
-      for (const line of lines) {
-        if (/N\s*[I1Ll|!]\s*[Kk]/i.test(line)) {
-          const afterLabel = line.replace(/.*N\s*[I1Ll|!]\s*[Kk]\s*[:=.\-]?\s*/i, "")
-          const digits = cleanOcrDigits(afterLabel)
-          if (digits.length >= 16) {
-            extractedNik = digits.slice(0, 16)
+      let nikCandidate = ""
+      const nikLabelMatch = text.match(
+        /(?:NIK|N1K|N[Il|]K|NI[Kk])\s*[:=;.\s]*\s*([0-9OBIDSZol|L\s.,-]{16,30})/i
+      )
+      if (nikLabelMatch && nikLabelMatch[1]) {
+        nikCandidate = nikLabelMatch[1]
+      } else {
+        for (const line of lines) {
+          const normalizedLine = line.replace(/[\s.-]/g, "")
+          const potentialNik = normalizedLine.match(/[0-9OBIDSZol|L]{16,30}/i)
+          if (potentialNik) {
+            nikCandidate = potentialNik[0]
             break
           }
         }
       }
 
-      // Fallback NIK jika label NIK tidak terbaca: cari deretan 16 digit angka
-      if (!extractedNik) {
-        const potentialChunks = text.match(/[0-9OoDdQqIiLl|!BbSsZz\s-]{16,30}/g) || []
-        for (const chunk of potentialChunks) {
-          const digits = cleanOcrDigits(chunk)
-          if (digits.length === 16 && /^[1-9]/.test(digits)) {
-            extractedNik = digits
-            break
-          }
+      if (nikCandidate) {
+        const cleanNumbers = nikCandidate
+          .toUpperCase()
+          .replace(/[\s.,-]/g, "")
+          .replace(/[OD]/g, "0")
+          .replace(/[IL]/g, "1")
+          .replace(/Z/g, "2")
+          .replace(/S/g, "5")
+          .replace(/[B]/g, "8")
+        const digitMatch = cleanNumbers.match(/\d{16}/)
+        if (digitMatch) {
+          extractedNik = digitMatch[0]
         }
       }
 
-      // 2. Ekstraksi Nama (mendukung format "Nama : BERTO WIDODO")
+      lines.forEach((line: string, idx: number) => {
+        if (
+          /NIK|N1K/i.test(line) ||
+          /\d{16}/.test(line.replace(/[\s.-]/g, ""))
+        ) {
+          nikLineIdx = idx
+        }
+      })
+
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
-        if (/Nam[ae]/i.test(line)) {
-          let clean = line
-            .replace(/.*Nam[ae]\s*[:=.\-]?\s*/i, "")
-            .replace(/[^a-zA-Z\s.,'-]/g, "")
-            .trim()
+        if (/Nam[a|e]/i.test(line)) {
+          let clean = line.replace(/.*Nam[a|e]\s*[:=]?\s*/i, "").trim()
+          clean = clean.replace(/^[^a-zA-Z]+/, "")
           if (clean.length > 2) {
             extractedNama = clean
             break
@@ -423,32 +347,26 @@ export default function PelatihanMatrixPage() {
         }
       }
 
-      // Fallback Nama: baris tepat setelah baris NIK
-      if (!extractedNama) {
-        const nikIdx = lines.findIndex(
-          (l: string) => /N\s*[I1Ll|!]\s*[Kk]/i.test(l) || (extractedNik && l.includes(extractedNik))
-        )
-        if (nikIdx !== -1 && lines[nikIdx + 1]) {
-          const candidate = lines[nikIdx + 1]
-            .replace(/.*[:=.\-]\s*/, "")
-            .replace(/[^a-zA-Z\s.,'-]/g, "")
-            .trim()
-          if (!/Tempat|Lahir|Tgl/i.test(candidate) && candidate.length > 2) {
-            extractedNama = candidate
-          }
+      if (!extractedNama && nikLineIdx !== -1 && lines[nikLineIdx + 1]) {
+        const candidate = lines[nikLineIdx + 1].replace(/.*[:=]\s*/, "").trim()
+        if (!/Tempat|Lahir|Tgl/i.test(candidate) && candidate.length > 2) {
+          extractedNama = candidate
         }
       }
 
-      // 3. Ekstraksi Tempat & Tanggal Lahir (cth: "GEMA, 19-07-1997")
-      for (const line of lines) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
         if (/Tempat|Tgl\s*Lahir|Lahir/i.test(line)) {
-          const rawTTL = line.replace(/.*(?:Lahir|Tgl\s*Lahir|Tempat)\s*[:=.\-]?\s*/i, "").trim()
+          const rawTTL = line
+            .replace(/.*(?:Lahir|Tgl Lahir|Tempat)\s*[:=]?\s*/i, "")
+            .trim()
           const parts = rawTTL.split(",")
           if (parts.length >= 2) {
             extractedTempat = parts[0].replace(/[^a-zA-Z\s]/g, "").trim()
-            const dMatch = parts[1].match(/(\d{2})[-/\s.](\d{2})[-/\s.](\d{4})/)
+            const dMatch = parts[1].match(/\d{2}[-\s/]\d{2}[-\s/]\d{4}/)
             if (dMatch) {
-              extractedTgl = `${dMatch[3]}-${dMatch[2]}-${dMatch[1]}`
+              const [d, m, y] = dMatch[0].replace(/\s|\//g, "-").split("-")
+              extractedTgl = `${y}-${m}-${d}`
             }
           }
         }
@@ -458,16 +376,14 @@ export default function PelatihanMatrixPage() {
         ...prev,
         nik: extractedNik || prev.nik,
         nama: extractedNama ? extractedNama.toUpperCase() : prev.nama,
-        tempat_lahir: extractedTempat ? extractedTempat.toUpperCase() : prev.tempat_lahir,
+        tempat_lahir: extractedTempat
+          ? extractedTempat.toUpperCase()
+          : prev.tempat_lahir,
         tanggal_lahir: extractedTgl || prev.tanggal_lahir,
       }))
     } catch (err) {
       console.error("OCR KTP Error:", err)
-      Swal.fire({
-        icon: "warning",
-        title: "OCR Terbatas",
-        text: "Gagal memproses gambar KTP. Silakan isi form secara manual.",
-      })
+      alert("Gagal memproses OCR KTP")
     } finally {
       if (worker) await worker.terminate()
       setLoadingOcrKtp(false)
