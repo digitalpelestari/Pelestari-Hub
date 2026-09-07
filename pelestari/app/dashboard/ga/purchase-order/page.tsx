@@ -109,9 +109,9 @@ export default function PurchaseOrderPage() {
     setEditTempoHari(po.tempo_hari || 0);
     setEditStatusPembayaran(po.status_pembayaran || "Belum Bayar");
     
-    // Jika data dari database sudah memiliki tanggal_bayar, gunakan data tersebut. Jika tidak, set ke hari ini.
-    if (po.tanggal_bayar) {
-      setEditTanggalBayar(new Date(po.tanggal_bayar).toISOString().split("T")[0]);
+    // Jika data dari database sudah memiliki tanggal_bayar_1, gunakan data tersebut. Jika tidak, set ke hari ini.
+    if (po.tanggal_bayar_1) {
+      setEditTanggalBayar(new Date(po.tanggal_bayar_1).toISOString().split("T")[0]);
     } else {
       setEditTanggalBayar(new Date().toISOString().split("T")[0]);
     }
@@ -125,8 +125,8 @@ export default function PurchaseOrderPage() {
 
     setLoading(true);
     
-    // Mengirimkan parameter tambahan berupa tanggal pembayaran jika statusnya 'SUDAH BAYAR'
-    const tglBayarPayload = editStatusPembayaran === "SUDAH BAYAR" ? editTanggalBayar : null;
+    // Mengirimkan parameter tambahan berupa tanggal pembayaran jika statusnya 'Lunas'
+    const tglBayarPayload = editStatusPembayaran === "Lunas" ? editTanggalBayar : null;
     
     // Catatan: Pastikan updatePaymentStatusAction di file backend Anda menerima parameter tanggal ini (baik sebagai argumen ke-4 atau dalam objek payload)
     const res = await updatePaymentStatusAction(
@@ -335,7 +335,7 @@ export default function PurchaseOrderPage() {
                   
                   <td className="p-3 text-center">
                     <span className={`px-2 py-1 rounded text-[10px] font-bold ${
-                      po.status_pembayaran === "SUDAH BAYAR" 
+                       po.status_pembayaran === "Lunas" 
                         ? "bg-green-50 text-green-700 border border-green-200" 
                         : "bg-amber-50 text-amber-700 border border-amber-200"
                     }`}>
@@ -345,14 +345,14 @@ export default function PurchaseOrderPage() {
 
                   <td className="p-3 text-center">
                     {/* TAMPILAN DINAMIS: Jika LUNAS, tampilkan tanggal pembayarannya */}
-                    {po.status_pembayaran === "SUDAH BAYAR" ? (
+                     {po.status_pembayaran === "Lunas" ? (
                       <div className="text-center">
                         <span className="text-green-700 font-bold text-[11px] bg-green-50 px-2 py-0.5 rounded border border-green-200 flex items-center justify-center gap-1 w-fit mx-auto">
                           <CheckCircle className="h-3.5 w-3.5 text-green-500" /> Lunas
                         </span>
-                        {po.tanggal_bayar && (
+                        {po.tanggal_bayar_1 && (
                           <span className="block text-[10px] text-zinc-500 font-medium mt-1">
-                            Pd: {new Date(po.tanggal_bayar).toLocaleDateString("id-ID")}
+                            Pd: {new Date(po.tanggal_bayar_1).toLocaleDateString("id-ID")}
                           </span>
                         )}
                       </div>
@@ -454,9 +454,9 @@ export default function PurchaseOrderPage() {
                     <p><span className="font-semibold">PIC Hub:</span> {detailPo.vendor_pic || "-"}</p>
                     <p><span className="font-semibold">Email:</span> {detailPo.vendor_email || "-"}</p>
                     <p><span className="font-semibold">PO Date:</span> {new Date(detailPo.tanggal_po).toLocaleDateString("id-ID")}</p>
-                    {detailPo.status_pembayaran === "SUDAH BAYAR" && detailPo.tanggal_bayar && (
-                      <p className="text-green-600 font-bold"><span className="font-semibold text-zinc-600">Payment Date:</span> {new Date(detailPo.tanggal_bayar).toLocaleDateString("id-ID")}</p>
-                    )}
+                      {detailPo.status_pembayaran === "Lunas" && detailPo.tanggal_bayar_1 && (
+                       <p className="text-green-600 font-bold"><span className="font-semibold text-zinc-600">Payment Date:</span> {new Date(detailPo.tanggal_bayar_1).toLocaleDateString("id-ID")}</p>
+                     )}
                   </div>
                 </div>
               </div>
@@ -536,12 +536,12 @@ export default function PurchaseOrderPage() {
                   className="w-full border border-zinc-300 bg-white p-2 rounded text-zinc-800 font-semibold focus:outline-none cursor-pointer" 
                 >
                   <option value="Belum Bayar">Belum Bayar</option>
-                  <option value="SUDAH BAYAR">SUDAH BAYAR</option>
+                  <option value="Lunas">Lunas</option>
                 </select>
               </div>
 
-              {/* FITUR KALENDER: Muncul secara bersyarat ketika status diset ke 'SUDAH BAYAR' */}
-              {editStatusPembayaran === "SUDAH BAYAR" && (
+               {/* FITUR KALENDER: Muncul secara bersyarat ketika status diset ke 'Lunas' */}
+               {editStatusPembayaran === "Lunas" && (
                 <div className="p-3 bg-green-50/60 border border-green-200 rounded transition-all">
                   <label className="block text-green-900 font-bold mb-1 flex items-center gap-1">
                     <Calendar className="h-3.5 w-3.5 text-green-600" /> Tanggal Realisasi Pembayaran
@@ -562,7 +562,7 @@ export default function PurchaseOrderPage() {
                   value={editTempoHari} 
                   onChange={(e) => setEditTempoHari(Number(e.target.value))} 
                   className="w-full border border-zinc-300 bg-white p-2 rounded text-zinc-800 font-semibold focus:outline-none cursor-pointer"
-                  disabled={editStatusPembayaran === "SUDAH BAYAR"} // Nonaktifkan jika sudah lunas
+                   disabled={editStatusPembayaran === "Lunas"} // Nonaktifkan jika sudah lunas
                 >
                   <option value={0}>Cash Langsung (Hari H)</option>
                   <option value={7}>7 Hari Kalender</option>

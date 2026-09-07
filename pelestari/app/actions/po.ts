@@ -47,7 +47,7 @@ export async function createPurchaseOrderAction(payload: any) {
     // A. Simpan data ke tabel induk (tb_po)
     const [poResult]: any = await connection.execute(
       `INSERT INTO tb_po (nomor_po, tanggal_po, vendor_nama, vendor_pic, vendor_email, 
-       alamat_pengantaran, penerima_nama, sub_total, ppn, total_harga, status_pembayaran, tempo_hari, jatuh_tempo, tanggal_bayar) 
+       alamat_pengantaran, penerima_nama, sub_total, ppn, total_harga, status_pembayaran, tempo_hari, jatuh_tempo, tanggal_bayar_1) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Belum Bayar', ?, ?, NULL)`,
       [
         nomor_po, tanggal_po, vendor_nama, vendor_pic, vendor_email,
@@ -127,7 +127,7 @@ export async function updatePaymentStatusAction(
     }
     // ========================================================
 
-    const tglBayarFinal = status_baru === "SUDAH BAYAR" ? tanggal_bayar_baru : null;
+    const tglBayarFinal = status_baru === "Lunas" ? tanggal_bayar_baru : null;
 
     await connection.beginTransaction();
 
@@ -137,7 +137,7 @@ export async function updatePaymentStatusAction(
        SET status_pembayaran = ?, 
            tempo_hari = ?, 
            jatuh_tempo = ?,
-           tanggal_bayar = ? 
+           tanggal_bayar_1 = ? 
        WHERE id_po = ?`,
       [status_baru, Number(tempo_hari_baru), jatuhTempoDate, tglBayarFinal, id_po]
     );

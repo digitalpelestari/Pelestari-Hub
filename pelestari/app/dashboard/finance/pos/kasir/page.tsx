@@ -13,19 +13,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import {
-  Plus,
-  Save,
-  X,
-  FileText,
-  ArrowLeft,
-  Search,
-  RotateCcw,
-} from "lucide-react"
+import { Plus, Save, X, FileText, ArrowLeft, Search } from "lucide-react"
 import {
   createJurnalDenganReferensiInvoiceOnly,
   generateNoRegistrasiOtomatis,
-  getAkunByKelompok,
 } from "@/app/actions/jurnal"
 import { getAkunList } from "@/app/actions/akun"
 import { getPenerima } from "@/app/actions/penerima"
@@ -46,6 +37,8 @@ interface JournalForm {
   tanggal: string
   noRegistrasi: string
   noReferensi: string
+  invoiceId?: number | null
+  poId?: number | null
   penerimaId: number | null
   keterangan: string
   items: JournalItem[]
@@ -88,11 +81,11 @@ export default function KasirJurnalPage() {
     items: makeEmptyItems(),
   })
 
+  // State lookup referensi -- HANYA untuk info sisa tagihan & validasi, TIDAK auto-fill baris jurnal
   const [referensiMatch, setReferensiMatch] = useState<ReferensiMatch>({
     found: null,
   })
   const [isLooking, setIsLooking] = useState(false)
-  const [templateApplied, setTemplateApplied] = useState(false)
   const lastQueriedRef = useRef<string>("")
 
   useEffect(() => {
@@ -136,146 +129,12 @@ export default function KasirJurnalPage() {
     }
   }
 
-  // Tentukan kelompok Kas/Bank berdasarkan prefix noRegistrasi (BK/BD/KK)
-  const resolveKelompokKasBank = (noReg: string): string | null => {
-    const prefix = (noReg || "")
-      .trim()
-      .split(/[_\/\s-]/)[0]
-      .toUpperCase()
-    if (prefix === "KK") return "KAS"
-    if (prefix === "BK" || prefix === "BD") return "BANK"
-    return null
-  }
-
-  // Auto-fill baris jurnal dari hasil lookup referensi
-  const applyTemplate = useCallback(
-    async (m: ReferensiMatch) => {
-      if (m.found === null) {
-        setTemplateApplied(false)
-        return
-      }
-
-      const kelompokKasBank = resolveKelompokKasBank(form.noRegistrasi)
-      if (!kelompokKasBank) {
-        setTemplateApplied(false)
-        return
-      }
-
-      const [akunKasBank, akunPiutang, akunHutang] = await Promise.all([
-        getAkunByKelompok(kelompokKasBank),
-        getAkunByKelompok("PIUTANG"),
-        getAkunByKelompok("HUTANG"),
-      ])
-
-      if (!akunKasBank) {
-        setTemplateApplied(false)
-        return
-      }
-
-      // INVOICE
-      if (m.found === "invoice") {
-        const inv = m.data
-        const adaBayaran = inv.bayar_1 > 0 || inv.status === "Lunas"
-        if (!adaBayaran) {
-          setTemplateApplied(false)
-          return
-        }
-        if (!akunPiutang) {
-          setTemplateApplied(false)
-          return
-        }
-        const nominal = inv.status === "Lunas" ? inv.total : inv.bayar_1
-        if (!nominal || nominal <= 0) {
-          setTemplateApplied(false)
-          return
-        }
-        const fase = inv.status === "Lunas" ? "Pelunasan" : "Pembayaran DP"
-        const matchedPenerima = penerimaList.find(
-          (p) =>
-            p.nama_penerima.toLowerCase() ===
-            inv.perusahaan_tujuan.toLowerCase()
-        )
-        setForm((prev) => ({
-          ...prev,
-          penerimaId: matchedPenerima ? matchedPenerima.id : null,
-          keterangan: `${fase} invoice ${inv.nomor} - ${inv.perusahaan_tujuan}`,
-          items: [
-            {
-              accountCode: akunKasBank.no_akun,
-              accountName: akunKasBank.nama_akun,
-              accountType: akunKasBank.nama_kelompok,
-              debit: nominal,
-              kredit: 0,
-              keterangan: `${fase} via ${kelompokKasBank}`,
-            },
-            {
-              accountCode: akunPiutang.no_akun,
-              accountName: akunPiutang.nama_akun,
-              accountType: akunPiutang.nama_kelompok,
-              debit: 0,
-              kredit: nominal,
-              keterangan: `Pelunasan piutang invoice ${inv.nomor}`,
-            },
-          ],
-        }))
-        setTemplateApplied(true)
-        return
-      }
-
-      // PO
-      if (m.found === "po") {
-        const po = m.data
-        if (po.status_pembayaran === "SUDAH BAYAR") {
-          setTemplateApplied(false)
-          return
-        }
-        if (!akunHutang) {
-          setTemplateApplied(false)
-          return
-        }
-        if (!po.total_harga || po.total_harga <= 0) {
-          setTemplateApplied(false)
-          return
-        }
-        const matchedPenerima = penerimaList.find(
-          (p) => p.nama_penerima.toLowerCase() === po.vendor_nama.toLowerCase()
-        )
-        setForm((prev) => ({
-          ...prev,
-          penerimaId: matchedPenerima ? matchedPenerima.id : null,
-          keterangan: `Pembayaran PO ${po.nomor} - ${po.vendor_nama}`,
-          items: [
-            {
-              accountCode: akunHutang.no_akun,
-              accountName: akunHutang.nama_akun,
-              accountType: akunHutang.nama_kelompok,
-              debit: po.total_harga,
-              kredit: 0,
-              keterangan: `Hutang atas PO ${po.nomor}`,
-            },
-            {
-              accountCode: akunKasBank.no_akun,
-              accountName: akunKasBank.nama_akun,
-              accountType: akunKasBank.nama_kelompok,
-              debit: 0,
-              kredit: po.total_harga,
-              keterangan: `Pembayaran PO ${po.nomor} via ${kelompokKasBank}`,
-            },
-          ],
-        }))
-        setTemplateApplied(true)
-      }
-    },
-    [form.noRegistrasi]
-  )
-
-  // Debounce lookup noReferensi ~400ms
+  // Debounce lookup noReferensi ~400ms -- HANYA menampilkan info sisa tagihan, tidak isi baris jurnal
   useEffect(() => {
     const noRef = (form.noReferensi || "").trim()
     if (noRef.length < 3) {
       setReferensiMatch({ found: null })
       setIsLooking(false)
-      setTemplateApplied(false)
       lastQueriedRef.current = ""
       return
     }
@@ -287,7 +146,6 @@ export default function KasirJurnalPage() {
         const result = await lookupReferensi(noRef)
         lastQueriedRef.current = noRef
         setReferensiMatch(result)
-        await applyTemplate(result)
       } catch (e) {
         setReferensiMatch({ found: null })
       } finally {
@@ -296,13 +154,7 @@ export default function KasirJurnalPage() {
     }, 400)
 
     return () => clearTimeout(timer)
-  }, [form.noReferensi, applyTemplate])
-
-  // Reset template (kembalikan ke baris kosong)
-  const handleResetTemplate = () => {
-    setForm((prev) => ({ ...prev, items: makeEmptyItems() }))
-    setTemplateApplied(false)
-  }
+  }, [form.noReferensi])
 
   const handleHeaderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -363,8 +215,51 @@ export default function KasirJurnalPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Validasi awal: jika referensi invoice/PO, pastikan akun target dan bank/kas diisi
+    if (referensiMatch.found === "invoice" || referensiMatch.found === "po") {
+      const keyword = referensiMatch.found === "invoice" ? "PIUTANG" : "UTANG"
+      const hasTarget = form.items.some(item => {
+        const tipe = (item.accountType || "").toUpperCase()
+        const nominal = (Number(item.debit) || 0) + (Number(item.kredit) || 0)
+        return tipe.includes(keyword) && nominal > 0
+      })
+      const hasBank = form.items.some(item => {
+        const tipe = (item.accountType || "").toUpperCase()
+        const nominal = (Number(item.debit) || 0) + (Number(item.kredit) || 0)
+        return tipe.includes("KAS/BANK") && nominal > 0
+      })
+      
+      if (!hasTarget || !hasBank) {
+        const pesan = referensiMatch.found === "invoice"
+          ? "Untuk pembayaran invoice, harap isi akun Piutang (Kredit) dan Bank/Kas (Debit)!"
+          : "Untuk pembayaran PO, harap isi akun Utang (Debit) dan Bank/Kas (Kredit)!"
+        return swal.warning(pesan)
+      }
+    }
+
     if (!isBalanced)
       return swal.warning("Total Debit dan Kredit harus seimbang (Balanced)!")
+
+    // Validasi dini: cek apakah nominal bayar melebihi sisa tagihan invoice/PO
+    if (referensiMatch.found === "invoice" || referensiMatch.found === "po") {
+      const sisaTagihan = Number(referensiMatch.data.sisa_tagihan) || 0
+      const keyword = referensiMatch.found === "invoice" ? "PIUTANG" : "UTANG"
+
+      const nominalTerkait = form.items.reduce((sum, item) => {
+        const tipe = (item.accountType || "").toUpperCase()
+        if (tipe.includes(keyword)) {
+          return sum + (Number(item.debit) || 0) + (Number(item.kredit) || 0)
+        }
+        return sum
+      }, 0)
+
+      if (nominalTerkait > sisaTagihan) {
+        return swal.warning(
+          `Nominal pembayaran (Rp ${nominalTerkait.toLocaleString("id-ID")}) melebihi sisa tagihan ${referensiMatch.data.nomor} (Rp ${sisaTagihan.toLocaleString("id-ID")}). Periksa kembali nominal debit/kredit.`
+        )
+      }
+    }
 
     setLoading(true)
     const res = await createJurnalDenganReferensiInvoiceOnly(form)
@@ -375,12 +270,13 @@ export default function KasirJurnalPage() {
         tanggal: new Date().toISOString().split("T")[0],
         noRegistrasi: "",
         noReferensi: "",
+        invoiceId: null,
+        poId: null,
         penerimaId: null,
         keterangan: "",
         items: makeEmptyItems(),
       })
       setReferensiMatch({ found: null })
-      setTemplateApplied(false)
       lastQueriedRef.current = ""
     } else {
       swal.error("Gagal Simpan: " + res.message)
@@ -481,16 +377,6 @@ export default function KasirJurnalPage() {
             <div className="space-y-1.5">
               <label className="ml-1 flex items-center justify-between text-[10px] font-black text-zinc-500 uppercase italic">
                 <span>No. Referensi / Nota Asli</span>
-                {templateApplied && (
-                  <button
-                    type="button"
-                    onClick={handleResetTemplate}
-                    className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-600 hover:text-rose-800"
-                    title="Reset baris debit/kredit ke kosong"
-                  >
-                    <RotateCcw className="h-3 w-3" /> RESET TEMPLATE
-                  </button>
-                )}
               </label>
               <div className="relative">
                 <Input
@@ -510,7 +396,7 @@ export default function KasirJurnalPage() {
                   )}
                 </div>
               </div>
-              {/* BADGE STATUS REFERENSI */}
+              {/* BADGE INFO SISA TAGIHAN -- untuk referensi kasir, TIDAK auto-fill apapun */}
               <div className="flex min-h-[20px] flex-wrap items-center gap-1.5 pt-1">
                 {isLooking && (
                   <Badge
@@ -537,8 +423,9 @@ export default function KasirJurnalPage() {
                     ✓ PO: {referensiMatch.data.nomor} —{" "}
                     {referensiMatch.data.vendor_nama}
                     <span className="ml-1 font-mono">
-                      (Total Rp{" "}
-                      {referensiMatch.data.total_harga.toLocaleString("id-ID")})
+                      (Sisa Rp{" "}
+                      {referensiMatch.data.sisa_tagihan.toLocaleString("id-ID")}
+                      )
                     </span>
                   </Badge>
                 )}
@@ -550,27 +437,6 @@ export default function KasirJurnalPage() {
                       className="rounded-[2px] border-zinc-300 text-[9px] font-bold text-zinc-500"
                     >
                       Referensi bebas — tidak terhubung ke invoice/PO
-                    </Badge>
-                  )}
-                {!isLooking &&
-                  referensiMatch.found === "invoice" &&
-                  referensiMatch.data.bayar_1 === 0 &&
-                  referensiMatch.data.status !== "Lunas" && (
-                    <Badge
-                      variant="outline"
-                      className="rounded-[2px] border-amber-300 bg-amber-50 text-[9px] font-bold text-amber-700"
-                    >
-                      ⚠ Invoice belum ada pembayaran — isi jurnal manual
-                    </Badge>
-                  )}
-                {!isLooking &&
-                  referensiMatch.found === "po" &&
-                  referensiMatch.data.status_pembayaran === "SUDAH BAYAR" && (
-                    <Badge
-                      variant="outline"
-                      className="rounded-[2px] border-rose-300 bg-rose-50 text-[9px] font-bold text-rose-700"
-                    >
-                      ⚠ PO sudah dibayar — tidak dibuat jurnal otomatis
                     </Badge>
                   )}
               </div>

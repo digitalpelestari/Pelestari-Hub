@@ -17,6 +17,7 @@ interface JurnalPayload {
   noRegistrasi: string;
   noReferensi: string;
   invoiceId?: number | null;
+  poId?: number | null;
   penerimaId?: number | null;
   keterangan: string;
   items: JurnalItemPayload[];
@@ -908,14 +909,15 @@ export async function createJurnalUmum(payload: JurnalPayload) {
     await connection.beginTransaction();
 
     const headerQuery = `
-      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, invoice_id, penerima_id, keterangan)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, invoice_id, po_id, penerima_id, keterangan)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
     const [headerResult]: any = await connection.query(headerQuery, [
       payload.tanggal,
       payload.noRegistrasi,
       payload.noReferensi,
       payload.invoiceId ?? null,
+      payload.poId ?? null,
       payload.penerimaId ?? null,
       payload.keterangan,
     ]);
@@ -959,100 +961,158 @@ export async function createJurnalUmum(payload: JurnalPayload) {
 }
 
 /**
- * 🛠️ ACTION: SIMPAN JURNAL + AUTO-UPDATE INVOICE (KASIR)
- * - Cek noReferensi ke tb_invoice via lookupReferensi
+ * 🛠️ ACTION: SIMPAN JURNAL + AUTO-UPDATE INVOICE/PO (KASIR)
+ * - Cek noReferensi ke tb_invoice lalu tb_po via lookupReferensi
  * - Kalau match invoice: insert jurnal + items + saldo, lalu UPDATE tb_invoice (bayar_1/2, status Sebagian/Lunas)
- * - Kalau bukan invoice (PO atau referensi bebas): fallback ke createJurnalUmum biasa
+ * - Kalau match po: insert jurnal + items + saldo, lalu UPDATE tb_po (bayar_1/2, status Sebagian/Lunas)
+ * - Kalau bukan invoice/PO (referensi bebas): fallback ke createJurnalUmum biasa
+ * - 🆕 VALIDASI: nominal pembayaran (netBayar) tidak boleh melebihi sisa tagihan
  */
 export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayload) {
-  // 1. Cek apakah noReferensi match ke invoice
+
   const lookup = await lookupReferensi(payload.noReferensi || "");
 
-  // 2. Kalau bukan invoice, fallback ke createJurnalUmum biasa
-  if (lookup.found !== "invoice") {
+  if (lookup.found !== "invoice" && lookup.found !== "po") {
     return await createJurnalUmum(payload);
   }
-
-  const invLookup = lookup.data; // { nomor, total, bayar_1, bayar_2, ... }
 
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
 
-    // 3. Ambil id invoice dari nomor_invoice
-    const [invoiceRows]: any = await connection.query(
-      `SELECT id, total, bayar_1, bayar_2, status FROM tb_invoice WHERE nomor_invoice = ? LIMIT 1`,
-      [invLookup.nomor]
-    );
-    if (!Array.isArray(invoiceRows) || invoiceRows.length === 0) {
-      throw new Error("Invoice tidak ditemukan di database");
-    }
-    const invoice = invoiceRows[0];
-    const invoiceId: number = Number(invoice.id);
-    const totalInv = Number(invoice.total) || 0;
-    const bayar1Lama = Number(invoice.bayar_1) || 0;
-    const bayar2Lama = Number(invoice.bayar_2) || 0;
+    // 3. Tentukan akun yang akan dicek di jurnal (PIUTANG untuk invoice, UTANG untuk po)
+    let targetAkunKeyword = "PIUTANG";
+    let refId = 0;
+    let refNomor = "";
+    let totalRef = 0;
+    let bayar1Lama = 0;
+    let bayar2Lama = 0;
+    let newStatus = "";
 
-    // 4. Cari akun-akun yang kelompok_biaya-nya mengandung kata 'PIUTANG'
-    //    Pakai LIKE '%PIUTANG%' agar bebas nama: 'Piutang', 'PIUTANG USAHA', 'Piutang Dagang', dll
-    const [piutangRows]: any = await connection.query(
+    if (lookup.found === "invoice") {
+      const invLookup = lookup.data;
+      const [invoiceRows]: any = await connection.query(
+        `SELECT id, total, bayar_1, bayar_2, status FROM tb_invoice WHERE nomor_invoice = ? LIMIT 1`,
+        [invLookup.nomor]
+      );
+      if (!Array.isArray(invoiceRows) || invoiceRows.length === 0) {
+        throw new Error("Invoice tidak ditemukan di database");
+      }
+      const invoice = invoiceRows[0];
+      refId = Number(invoice.id);
+      totalRef = Number(invoice.total) || 0;
+      bayar1Lama = Number(invoice.bayar_1) || 0;
+      bayar2Lama = Number(invoice.bayar_2) || 0;
+      refNomor = invLookup.nomor;
+      targetAkunKeyword = "PIUTANG";
+    } else {
+      const poLookup = lookup.data;
+      const [poRows]: any = await connection.query(
+        `SELECT id_po, total_harga, bayar_1, bayar_2, status_pembayaran FROM tb_po WHERE nomor_po = ? LIMIT 1`,
+        [poLookup.nomor]
+      );
+      if (!Array.isArray(poRows) || poRows.length === 0) {
+        throw new Error("Purchase Order tidak ditemukan di database");
+      }
+      const po = poRows[0];
+      refId = Number(po.id_po);
+      totalRef = Number(po.total_harga) || 0;
+      bayar1Lama = Number(po.bayar_1) || 0;
+      bayar2Lama = Number(po.bayar_2) || 0;
+      refNomor = poLookup.nomor;
+      targetAkunKeyword = "UTANG";
+    }
+
+     // 4. Cari akun-akun yang kelompok_biaya-nya mengandung kata target (PIUTANG/UTANG)
+    const [targetRows]: any = await connection.query(
       `SELECT a.no_akun
        FROM tb_akun a
        JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
-       WHERE k.kelompok_biaya LIKE '%PIUTANG%' AND a.is_aktif = 1`
+       WHERE k.kelompok_biaya LIKE ? AND a.is_aktif = 1`,
+      [`%${targetAkunKeyword}%`]
     );
-    const piutangAccounts = new Set<string>(
-      (piutangRows || []).map((r: any) => String(r.no_akun))
+    const targetAccounts = new Set<string>(
+      (targetRows || []).map((r: any) => String(r.no_akun))
     );
 
-    // 5. Hitung posisi akun piutang di jurnal
-    let piutangDebit = 0;
-    let piutangKredit = 0;
+    // 5. Hitung posisi akun target di jurnal
+    let targetDebit = 0;
+    let targetKredit = 0;
     for (const item of payload.items) {
       const kode = String(item.accountCode || "").trim();
-      if (piutangAccounts.has(kode)) {
-        piutangDebit += Number(item.debit) || 0;
-        piutangKredit += Number(item.kredit) || 0;
+      if (targetAccounts.has(kode)) {
+        targetDebit += Number(item.debit) || 0;
+        targetKredit += Number(item.kredit) || 0;
       }
     }
 
     // 6. Deteksi arah transaksi:
-    //    - piutangKredit > 0 && piutangDebit == 0 → BAYAR
-    //    - piutangKredit > 0 && piutangDebit > 0  → ADJUSTMENT (net = kredit - debit)
-    //    - piutangKredit == 0 && piutangDebit == 0 → bukan jurnal piutang, rollback & fallback
-    //    - piutangKredit == 0 && piutangDebit > 0  → KOREKSI (disabled di kasir)
-    if (piutangKredit === 0 && piutangDebit === 0) {
-      await connection.rollback();
-      return await createJurnalUmum(payload);
-    }
-
-    if (piutangDebit > 0 && piutangKredit === 0) {
+    //    - Untuk invoice (PIUTANG): targetKredit > 0 && targetDebit == 0 → BAYAR
+    //    - Untuk po (UTANG): targetDebit > 0 && targetKredit == 0 → BAYAR
+    //    - targetKredit == 0 && targetDebit == 0 → tidak ada akun target, error
+    if (targetKredit === 0 && targetDebit === 0) {
       await connection.rollback();
       return {
         success: false,
         message:
-          "Koreksi / pembatalan bayar (Piutang di Debit) tidak dapat dilakukan lewat Kasir. " +
+          (lookup.found === "invoice"
+            ? "Untuk pembayaran invoice, harap isi akun Piutang (Kredit) dan Bank/Kas (Debit)!"
+            : "Untuk pembayaran PO, harap isi akun Utang (Debit) dan Bank/Kas (Kredit)!") +
+          " Transaksi dibatalkan.",
+      };
+    }
+
+    const isPembayaran = targetAkunKeyword === "PIUTANG"
+      ? targetKredit > 0 && targetDebit === 0
+      : targetDebit > 0 && targetKredit === 0;
+
+    if (!isPembayaran) {
+      await connection.rollback();
+      return {
+        success: false,
+        message:
+          "Koreksi / pembatalan bayar tidak dapat dilakukan lewat Kasir. " +
           "Silakan hubungi admin untuk adjustment manual.",
       };
     }
 
-    const netBayar = piutangKredit - piutangDebit;
+    const netBayar = targetAkunKeyword === "PIUTANG"
+      ? targetKredit - targetDebit
+      : targetDebit - targetKredit;
+
     if (netBayar <= 0) {
-      // Adjustment hasilnya ≤ 0, tidak ada efek bayar ke invoice
       await connection.rollback();
       return await createJurnalUmum(payload);
     }
 
-    // 7. Insert header jurnal (dengan invoice_id)
+    // 6b. VALIDASI OVERPAYMENT: netBayar tidak boleh melebihi sisa tagihan
+    const sisaTagihan = totalRef - bayar1Lama - bayar2Lama;
+    // Toleransi kecil untuk pembulatan angka desimal/rupiah
+    const EPSILON = 1;
+
+    if (netBayar > sisaTagihan + EPSILON) {
+      await connection.rollback();
+      const jenisRef = lookup.found === "invoice" ? "invoice" : "PO";
+      return {
+        success: false,
+        message:
+          `Nominal pembayaran (Rp ${netBayar.toLocaleString("id-ID")}) melebihi sisa tagihan ${jenisRef} ` +
+          `${refNomor} (Rp ${sisaTagihan.toLocaleString("id-ID")}). ` +
+          `Mohon periksa kembali nominal debit/kredit yang diinput.`,
+      };
+    }
+
+    // 7. Insert header jurnal
     const headerQuery = `
-      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, invoice_id, penerima_id, keterangan)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, invoice_id, po_id, penerima_id, keterangan)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
     const [headerResult]: any = await connection.query(headerQuery, [
       payload.tanggal,
       payload.noRegistrasi,
       payload.noReferensi,
-      invoiceId,
+      lookup.found === "invoice" ? refId : null,
+      lookup.found === "po" ? refId : null,
       payload.penerimaId ?? null,
       payload.keterangan,
     ]);
@@ -1077,40 +1137,71 @@ export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayl
       await applySaldoAkun(connection, item.accountCode, debitVal, kreditVal, false);
     }
 
-    // 9. Update tb_invoice: bayar_1/bayar_2, tanggal_bayar_*, status
-    const nominalBayar = netBayar;
-    const totalBayarSetelah = bayar1Lama + bayar2Lama + nominalBayar;
-    const isLunas = totalBayarSetelah >= totalInv;
-    const newStatus = isLunas ? "Lunas" : "Sebagian";
+    // 9. Update referensi (invoice atau po)
+    if (lookup.found === "invoice") {
+      const totalBayarSetelah = bayar1Lama + bayar2Lama + netBayar;
+      const isLunas = totalBayarSetelah >= totalRef;
+      newStatus = isLunas ? "Lunas" : "Sebagian";
 
-    if (bayar1Lama === 0) {
-      await connection.query(
-        `UPDATE tb_invoice
-         SET bayar_1 = ?, tanggal_bayar_1 = ?, status = ?
-         WHERE id = ?`,
-        [nominalBayar, payload.tanggal, newStatus, invoiceId]
-      );
+      if (bayar1Lama === 0) {
+        await connection.query(
+          `UPDATE tb_invoice
+           SET bayar_1 = ?, tanggal_bayar_1 = ?, status = ?
+           WHERE id = ?`,
+          [netBayar, payload.tanggal, newStatus, refId]
+        );
+      } else {
+        await connection.query(
+          `UPDATE tb_invoice
+           SET bayar_2 = bayar_2 + ?, tanggal_bayar_2 = ?, status = ?
+           WHERE id = ?`,
+          [netBayar, payload.tanggal, newStatus, refId]
+        );
+      }
+
+      await connection.commit();
+      revalidatePath("/dashboard/finance/pos/jurnal");
+      revalidatePath("/dashboard/finance/riwayat");
+      revalidatePath("/dashboard/finance/invoices");
+      revalidatePath(`/dashboard/finance/invoices/${refId}`);
+
+      return {
+        success: true,
+        message: `Jurnal tersimpan & invoice ${refNomor} diperbarui ke status "${newStatus}". (Net bayar: Rp ${netBayar.toLocaleString("id-ID")})`,
+      };
     } else {
-      await connection.query(
-        `UPDATE tb_invoice
-         SET bayar_2 = bayar_2 + ?, tanggal_bayar_2 = ?, status = ?
-         WHERE id = ?`,
-        [nominalBayar, payload.tanggal, newStatus, invoiceId]
-      );
+      // lookup.found === "po"
+      const totalBayarSetelah = bayar1Lama + bayar2Lama + netBayar;
+      const isLunas = totalBayarSetelah >= totalRef;
+      newStatus = isLunas ? "Lunas" : "Sebagian";
+
+      if (bayar1Lama === 0) {
+        await connection.query(
+          `UPDATE tb_po
+           SET bayar_1 = ?, tanggal_bayar_1 = ?, status_pembayaran = ?
+           WHERE id_po = ?`,
+          [netBayar, payload.tanggal, newStatus, refId]
+        );
+      } else {
+        await connection.query(
+          `UPDATE tb_po
+           SET bayar_2 = bayar_2 + ?, tanggal_bayar_2 = ?, status_pembayaran = ?
+           WHERE id_po = ?`,
+          [netBayar, payload.tanggal, newStatus, refId]
+        );
+      }
+
+      await connection.commit();
+      revalidatePath("/dashboard/finance/pos/jurnal");
+      revalidatePath("/dashboard/finance/riwayat");
+      revalidatePath("/dashboard/ga/purchase-order");
+      revalidatePath(`/dashboard/finance/pos/kasir`);
+
+      return {
+        success: true,
+        message: `Jurnal tersimpan & PO ${refNomor} diperbarui ke status "${newStatus}". (Net bayar: Rp ${netBayar.toLocaleString("id-ID")})`,
+      };
     }
-
-    await connection.commit();
-
-    // 10. Revalidate paths
-    revalidatePath("/dashboard/finance/pos/jurnal");
-    revalidatePath("/dashboard/finance/riwayat");
-    revalidatePath("/dashboard/finance/invoices");
-    revalidatePath(`/dashboard/finance/invoices/${invoiceId}`);
-
-    return {
-      success: true,
-      message: `Jurnal tersimpan & invoice ${invLookup.nomor} diperbarui ke status "${newStatus}". (Net bayar: Rp ${nominalBayar.toLocaleString("id-ID")})`,
-    };
   } catch (error: any) {
     await connection.rollback();
     console.error("CREATE_JURNAL_DGN_REFENS_ERROR:", error.message);
@@ -1133,10 +1224,10 @@ export async function getAkunByKelompok(
       `SELECT a.no_akun, a.nama_akun, k.kelompok_biaya AS nama_kelompok
        FROM tb_akun a
        JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
-       WHERE k.kelompok_biaya = ? AND a.is_aktif = 1
+       WHERE k.kelompok_biaya LIKE ? AND a.is_aktif = 1
        ORDER BY a.no_akun ASC
        LIMIT 1`,
-      [kelompokBiaya]
+      [`%${kelompokBiaya}%`]
     );
     if (Array.isArray(rows) && rows.length > 0) {
       return {

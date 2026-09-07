@@ -29,6 +29,11 @@ export interface ReferensiPoData {
   jatuh_tempo: string | null;
   tempo_hari: number | null;
   total_harga: number;
+  bayar_1: number;
+  bayar_2: number;
+  tanggal_bayar_1: string | null;
+  tanggal_bayar_2: string | null;
+  sisa_tagihan: number;
   status_pembayaran: string;
 }
 
@@ -85,7 +90,8 @@ export async function lookupReferensi(noRef: string): Promise<ReferensiMatch> {
 
     const [pos]: any = await db.query(
       `SELECT nomor_po, vendor_nama, vendor_pic, vendor_email,
-              tanggal_po, jatuh_tempo, tempo_hari, total_harga, status_pembayaran
+              tanggal_po, jatuh_tempo, tempo_hari, total_harga, status_pembayaran,
+              bayar_1, bayar_2, tanggal_bayar_1, tanggal_bayar_2
        FROM tb_po
        WHERE nomor_po LIKE ?
        ORDER BY id_po DESC
@@ -95,6 +101,10 @@ export async function lookupReferensi(noRef: string): Promise<ReferensiMatch> {
 
     if (Array.isArray(pos) && pos.length > 0) {
       const po = pos[0];
+      const totalHarga = Number(po.total_harga) || 0;
+      const bayar1 = Number(po.bayar_1) || 0;
+      const bayar2 = Number(po.bayar_2) || 0;
+      const sisa = totalHarga - bayar1 - bayar2;
       return {
         found: "po",
         data: {
@@ -106,7 +116,12 @@ export async function lookupReferensi(noRef: string): Promise<ReferensiMatch> {
           tanggal_po: po.tanggal_po,
           jatuh_tempo: po.jatuh_tempo || null,
           tempo_hari: po.tempo_hari != null ? Number(po.tempo_hari) : null,
-          total_harga: Number(po.total_harga) || 0,
+          total_harga: totalHarga,
+          bayar_1: bayar1,
+          bayar_2: bayar2,
+          tanggal_bayar_1: po.tanggal_bayar_1 || null,
+          tanggal_bayar_2: po.tanggal_bayar_2 || null,
+          sisa_tagihan: sisa,
           status_pembayaran: po.status_pembayaran || "",
         },
       };

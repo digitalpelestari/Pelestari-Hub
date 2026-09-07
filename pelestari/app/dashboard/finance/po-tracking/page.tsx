@@ -98,7 +98,7 @@ export default function FinancePoTrackingPage() {
                   {/* BADGE STATUS */}
                   <td className="p-3 text-center">
                     <span className={`px-2.5 py-1 rounded text-[10px] font-bold border ${
-                      po.status_pembayaran === "SUDAH BAYAR" 
+                      po.status_pembayaran === "Lunas" 
                         ? "bg-green-50 text-green-700 border-green-200" 
                         : "bg-amber-50 text-amber-700 border-amber-200"
                     }`}>
@@ -108,7 +108,7 @@ export default function FinancePoTrackingPage() {
 
                   {/* LIVE COUNTDOWN TEMPO */}
                   <td className="p-3 text-center">
-                    {po.status_pembayaran === "SUDAH BAYAR" ? (
+                    {po.status_pembayaran === "Lunas" ? (
                       <span className="text-green-600 font-medium flex items-center justify-center gap-1"><CheckCircle className="h-3.5 w-3.5" /> Pembayaran Lunas</span>
                     ) : po.tempo_hari === 0 ? (
                       <span className="text-zinc-400 italic">Belum di-set tempo oleh GA</span>
