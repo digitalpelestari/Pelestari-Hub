@@ -70,6 +70,7 @@ import { InvoicePrint } from "@/components/invoice-print"
 import ExportInvoiceButton from "@/components/ExportInvoiceButton"
 import * as XLSX from "xlsx"
 import { swal } from "@/lib/sweetalert"
+import Swal from "sweetalert2"
 
 export default function InvoiceListPage() {
   const [invoices, setInvoices] = useState<any[]>([])
@@ -139,12 +140,57 @@ export default function InvoiceListPage() {
     loadData()
   }, [])
 
-  const handlePrint = (inv: any) => {
-    setPrintData(inv)
+const handlePrint = async (inv: any) => {
+  const pilihan = await Swal.fire({
+    title: "Pilih Metode Pembayaran",
+    text: "Metode pembayaran yang ditampilkan pada invoice",
+    icon: "question",
+    showDenyButton: true,
+    showCancelButton: true,
+    confirmButtonText: "Rekening Biasa",
+    denyButtonText: "Rekening VA",
+    cancelButtonText: "Batal",
+    confirmButtonColor: "#18181b",
+    denyButtonColor: "#0170c0",
+  })
+
+  if (pilihan.isConfirmed) {
+    // Rekening biasa -> langsung print
+    setPrintData({ ...inv, metode_pembayaran: "biasa" })
     setTimeout(() => {
       window.print()
     }, 200)
+    return
   }
+
+  if (pilihan.isDenied) {
+    // Rekening VA -> minta isi nomor VA dulu, baru print
+    const { value: noVA } = await Swal.fire({
+      title: "Masukkan Nomor Virtual Account",
+      input: "text",
+      inputPlaceholder: "Contoh: 88081234567890",
+      showCancelButton: true,
+      confirmButtonText: "Cetak Invoice",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#0170c0",
+      inputValidator: (value) => {
+        if (!value) return "Nomor VA wajib diisi"
+      },
+    })
+
+    if (noVA) {
+      setPrintData({
+        ...inv,
+        metode_pembayaran: "va",
+        va_nomor: noVA,
+        va_bank: "BCA",
+      })
+      setTimeout(() => {
+        window.print()
+      }, 200)
+    }
+  }
+}
 
   const handleDelete = async (id: number) => {
     const res = await deleteInvoice(id)
