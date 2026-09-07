@@ -1,12 +1,87 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { FileText, ExternalLink } from "lucide-react"
+import {
+  FileText,
+  ExternalLink,
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  AlertCircle,
+  Factory,
+  Loader2,
+} from "lucide-react"
 import { useSession } from "next-auth/react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts"
+
+// TODO: ganti dengan server action asli, mis. getDashboardSummary(), getBiayaBulanan(), getCashflowBulanan()
+// Struktur di bawah ini contoh (dummy) supaya UI bisa langsung dilihat.
+
+interface BiayaBulanan {
+  bulan: string
+  biaya: number
+}
+
+interface CashflowBulanan {
+  bulan: string
+  masuk: number
+  keluar: number
+}
+
+const DUMMY_BIAYA: BiayaBulanan[] = [
+  { bulan: "Jan", biaya: 42000000 },
+  { bulan: "Feb", biaya: 38500000 },
+  { bulan: "Mar", biaya: 51200000 },
+  { bulan: "Apr", biaya: 47800000 },
+  { bulan: "Mei", biaya: 39900000 },
+  { bulan: "Jun", biaya: 55300000 },
+  { bulan: "Jul", biaya: 48700000 },
+  { bulan: "Agu", biaya: 43200000 },
+  { bulan: "Sep", biaya: 60100000 },
+]
+
+const DUMMY_CASHFLOW: CashflowBulanan[] = [
+  { bulan: "Jan", masuk: 65000000, keluar: 42000000 },
+  { bulan: "Feb", masuk: 58000000, keluar: 38500000 },
+  { bulan: "Mar", masuk: 72000000, keluar: 51200000 },
+  { bulan: "Apr", masuk: 61000000, keluar: 47800000 },
+  { bulan: "Mei", masuk: 55000000, keluar: 39900000 },
+  { bulan: "Jun", masuk: 80000000, keluar: 55300000 },
+  { bulan: "Jul", masuk: 69000000, keluar: 48700000 },
+  { bulan: "Agu", masuk: 63000000, keluar: 43200000 },
+  { bulan: "Sep", masuk: 88000000, keluar: 60100000 },
+]
+
+const DUMMY_TOTAL_PRODUKSI_TAHUNAN = 1284 // contoh: jumlah peserta/unit produksi tahun berjalan
+const DUMMY_TOTAL_UTANG_OUTSTANDING = 214500000 // contoh: sisa piutang/utang belum tertagih
 
 export default function Page() {
   const { data: session } = useSession()
   const [isBlurred, setIsBlurred] = useState(false)
+
+  // TODO: state ini nantinya diisi dari server action asli
+  const [loadingRingkasan, setLoadingRingkasan] = useState(false)
+  const [biayaBulanan, setBiayaBulanan] = useState<BiayaBulanan[]>(DUMMY_BIAYA)
+  const [cashflowBulanan, setCashflowBulanan] =
+    useState<CashflowBulanan[]>(DUMMY_CASHFLOW)
+  const [totalProduksiTahunan, setTotalProduksiTahunan] = useState(
+    DUMMY_TOTAL_PRODUKSI_TAHUNAN
+  )
+  const [totalUtangOutstanding, setTotalUtangOutstanding] = useState(
+    DUMMY_TOTAL_UTANG_OUTSTANDING
+  )
 
   useEffect(() => {
     // 1. Mencegah Klik Kanan
@@ -22,14 +97,19 @@ export default function Page() {
       }
 
       // Blokir Ctrl+P (Print) / Ctrl+S (Save) / Ctrl+U (View Source)
-      if ((e.ctrlKey || e.metaKey) && ["p", "s", "u"].includes(e.key.toLowerCase())) {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        ["p", "s", "u"].includes(e.key.toLowerCase())
+      ) {
         e.preventDefault()
       }
 
       // Blokir F12 dan Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C (DevTools)
       if (
         e.key === "F12" ||
-        ((e.ctrlKey || e.metaKey) && e.shiftKey && ["i", "j", "c"].includes(e.key.toLowerCase()))
+        ((e.ctrlKey || e.metaKey) &&
+          e.shiftKey &&
+          ["i", "j", "c"].includes(e.key.toLowerCase()))
       ) {
         e.preventDefault()
       }
@@ -51,6 +131,37 @@ export default function Page() {
       window.removeEventListener("focus", handleFocus)
     }
   }, [])
+
+  // TODO: fetch data ringkasan dashboard dari server action asli
+  // useEffect(() => {
+  //   const loadRingkasan = async () => {
+  //     setLoadingRingkasan(true)
+  //     const res = await getDashboardSummary()
+  //     if (res.success && res.data) {
+  //       setBiayaBulanan(res.data.biayaBulanan)
+  //       setCashflowBulanan(res.data.cashflowBulanan)
+  //       setTotalProduksiTahunan(res.data.totalProduksiTahunan)
+  //       setTotalUtangOutstanding(res.data.totalUtangOutstanding)
+  //     }
+  //     setLoadingRingkasan(false)
+  //   }
+  //   loadRingkasan()
+  // }, [])
+
+  const formatIDR = (amount: number) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      minimumFractionDigits: 0,
+    }).format(amount)
+  }
+
+  const formatCompact = (amount: number) => {
+    return new Intl.NumberFormat("id-ID", {
+      notation: "compact",
+      compactDisplay: "short",
+    }).format(amount)
+  }
 
   const sopList = [
     {
@@ -74,15 +185,15 @@ export default function Page() {
 
   return (
     <div
-      className={`relative flex flex-1 flex-col font-sans select-none transition-all duration-150 ${
-        isBlurred ? "blur-md pointer-events-none" : ""
+      className={`relative flex flex-1 flex-col font-sans transition-all duration-150 select-none ${
+        isBlurred ? "pointer-events-none blur-md" : ""
       }`}
       onCopy={(e) => e.preventDefault()}
       onCut={(e) => e.preventDefault()}
     >
       {/* Overlay Watermark Dinamis */}
       <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center overflow-hidden opacity-[0.07]">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-24 -rotate-12 select-none text-black font-mono text-xs uppercase tracking-widest text-center">
+        <div className="grid -rotate-12 grid-cols-2 gap-24 text-center font-mono text-xs tracking-widest text-black uppercase select-none md:grid-cols-3">
           {Array.from({ length: 9 }).map((_, i) => (
             <div key={i}>
               <p>{userName}</p>
@@ -94,52 +205,258 @@ export default function Page() {
 
       <div className="@container/main flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-          
           {/* Header Dashboard */}
-          <div className="px-4 lg:px-6 mb-2">
-            <h1 className="text-xl font-bold text-black leading-tight">
+          <div className="mb-2 px-4 lg:px-6">
+            <h1 className="text-xl leading-tight font-bold text-black">
               Dashboard Manajemen Invoice
             </h1>
-            <p className="text-xs text-zinc-500 mt-1">
-              Selamat datang kembali, <span className="font-bold text-black">{userName}</span> • Anda masuk sebagai{" "}
-              <span className="px-1.5 py-0.5 bg-zinc-100 rounded text-[10px] font-bold uppercase text-zinc-700">
+            <p className="mt-1 text-xs text-zinc-500">
+              Selamat datang kembali,{" "}
+              <span className="font-bold text-black">{userName}</span> • Anda
+              masuk sebagai{" "}
+              <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold text-zinc-700 uppercase">
                 {(session?.user as any)?.role || "Staff"}
               </span>
             </p>
           </div>
 
           {/* Kumpulan Dokumen SOP */}
-          <div className="px-4 lg:px-6 my-2">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="my-2 px-4 lg:px-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {sopList.map((sop, idx) => (
                 <a
                   key={idx}
                   href={sop.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block w-full group"
+                  className="group block w-full"
                 >
-                  <div className="flex items-center justify-between p-4 bg-white border border-zinc-200 rounded-sm shadow-sm transition-all duration-200 hover:border-black hover:shadow-md cursor-pointer h-full">
+                  <div className="flex h-full cursor-pointer items-center justify-between rounded-sm border border-zinc-200 bg-white p-4 shadow-sm transition-all duration-200 hover:border-black hover:shadow-md">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-red-50 text-red-600 rounded-sm group-hover:bg-red-100 transition-colors shrink-0">
+                      <div className="shrink-0 rounded-sm bg-red-50 p-2.5 text-red-600 transition-colors group-hover:bg-red-100">
                         <FileText className="h-5 w-5" />
                       </div>
                       <div>
-                        <h3 className="text-xs font-black uppercase tracking-tight text-black m-0 p-0 leading-none">
+                        <h3 className="m-0 p-0 text-xs leading-none font-black tracking-tight text-black uppercase">
                           {sop.title}
                         </h3>
-                        <p className="text-[10px] font-bold text-zinc-400 uppercase mt-1.5 tracking-wider leading-none">
+                        <p className="mt-1.5 text-[10px] leading-none font-bold tracking-wider text-zinc-400 uppercase">
                           {sop.subtitle}
                         </p>
                       </div>
                     </div>
-                    <ExternalLink className="h-3.5 w-3.5 text-zinc-300 group-hover:text-black transition-colors shrink-0" />
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-zinc-300 transition-colors group-hover:text-black" />
                   </div>
                 </a>
               ))}
             </div>
           </div>
 
+          {/* RINGKASAN: TOTAL PRODUKSI TAHUNAN & TOTAL UTANG OUTSTANDING */}
+          <div className="px-4 lg:px-6">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Card className="rounded-sm border border-zinc-200/80 bg-white shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase italic">
+                    Total Produksi Tahunan
+                  </CardTitle>
+                  <div className="rounded-sm bg-blue-50 p-1.5">
+                    <Factory className="h-4 w-4 text-blue-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="font-mono text-[18px] font-black text-zinc-900">
+                    {loadingRingkasan ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-zinc-300" />
+                    ) : (
+                      new Intl.NumberFormat("id-ID").format(
+                        totalProduksiTahunan
+                      )
+                    )}
+                  </div>
+                  <p className="mt-1 text-[9px] font-bold text-zinc-400 uppercase">
+                    Akumulasi produksi tahun berjalan
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-sm border border-rose-200 bg-rose-50/10 shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-[10px] font-black tracking-wider text-rose-600 uppercase italic">
+                    Total Utang (Outstanding)
+                  </CardTitle>
+                  <div className="rounded-sm bg-rose-100 p-1.5">
+                    <AlertCircle className="h-4 w-4 text-rose-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="font-mono text-[18px] font-black text-rose-600">
+                    {loadingRingkasan ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-zinc-300" />
+                    ) : (
+                      formatIDR(totalUtangOutstanding)
+                    )}
+                  </div>
+                  <p className="mt-1 text-[9px] font-bold text-rose-500 uppercase">
+                    Sisa outstanding yang belum tertagih/terbayar
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* GRAFIK BIAYA & CASHFLOW */}
+          <div className="px-4 lg:px-6">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              {/* Grafik Biaya */}
+              <Card className="rounded-sm border border-zinc-200/80 bg-white shadow-sm">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase italic">
+                      Grafik Biaya Bulanan
+                    </CardTitle>
+                    <TrendingDown className="h-4 w-4 text-zinc-400" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {loadingRingkasan ? (
+                    <div className="flex h-[260px] items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-zinc-300" />
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart data={biayaBulanan}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
+                        <XAxis
+                          dataKey="bulan"
+                          tick={{ fontSize: 10, fill: "#71717a" }}
+                          axisLine={{ stroke: "#e4e4e7" }}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 10, fill: "#71717a" }}
+                          tickFormatter={(v) => formatCompact(v)}
+                          axisLine={{ stroke: "#e4e4e7" }}
+                        />
+                        <Tooltip
+                          formatter={(value) => formatIDR(Number(value ?? 0))}
+                          contentStyle={{
+                            fontSize: "11px",
+                            borderRadius: "4px",
+                            border: "1px solid #e4e4e7",
+                          }}
+                        />
+                        <Bar
+                          dataKey="biaya"
+                          fill="#18181b"
+                          radius={[3, 3, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Cashflow */}
+              <Card className="rounded-sm border border-zinc-200/80 bg-white shadow-sm">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase italic">
+                      Cashflow Bulanan
+                    </CardTitle>
+                    <TrendingUp className="h-4 w-4 text-zinc-400" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {loadingRingkasan ? (
+                    <div className="flex h-[260px] items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-zinc-300" />
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={260}>
+                      <AreaChart data={cashflowBulanan}>
+                        <defs>
+                          <linearGradient
+                            id="colorMasuk"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#059669"
+                              stopOpacity={0.35}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#059669"
+                              stopOpacity={0}
+                            />
+                          </linearGradient>
+                          <linearGradient
+                            id="colorKeluar"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#e11d48"
+                              stopOpacity={0.35}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#e11d48"
+                              stopOpacity={0}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
+                        <XAxis
+                          dataKey="bulan"
+                          tick={{ fontSize: 10, fill: "#71717a" }}
+                          axisLine={{ stroke: "#e4e4e7" }}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 10, fill: "#71717a" }}
+                          tickFormatter={(v) => formatCompact(v)}
+                          axisLine={{ stroke: "#e4e4e7" }}
+                        />
+                        <Tooltip
+                          formatter={(value) => formatIDR(Number(value ?? 0))}
+                          contentStyle={{
+                            fontSize: "11px",
+                            borderRadius: "4px",
+                            border: "1px solid #e4e4e7",
+                          }}
+                        />
+                        <Legend
+                          wrapperStyle={{ fontSize: "10px", fontWeight: 700 }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="masuk"
+                          name="Uang Masuk"
+                          stroke="#059669"
+                          fill="url(#colorMasuk)"
+                          strokeWidth={2}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="keluar"
+                          name="Uang Keluar"
+                          stroke="#e11d48"
+                          fill="url(#colorKeluar)"
+                          strokeWidth={2}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
       </div>
     </div>
