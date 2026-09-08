@@ -10,6 +10,11 @@ import {
   AlertCircle,
   Factory,
   Loader2,
+  GraduationCap,
+  Briefcase,
+  Sigma,
+  ArrowDownCircle,
+  Clock,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -67,6 +72,17 @@ const DUMMY_CASHFLOW: CashflowBulanan[] = [
 const DUMMY_TOTAL_PRODUKSI_TAHUNAN = 1284 // contoh: jumlah peserta/unit produksi tahun berjalan
 const DUMMY_TOTAL_UTANG_OUTSTANDING = 214500000 // contoh: sisa piutang/utang belum tertagih
 
+// TODO: ganti dengan hasil query asli (mis. SUM nilai invoice per kategori tahun berjalan)
+const DUMMY_PELATIHAN = 10 // contoh: total nilai invoice kategori Pelatihan
+const DUMMY_KONSULTAN = 4 // contoh: total nilai invoice kategori Konsultan
+
+// TODO: ganti dengan hasil query asli (mis. SUM nominal Rupiah invoice per kategori tahun berjalan)
+const DUMMY_NILAI_PELATIHAN = 420000000 // contoh: total nominal invoice kategori Pelatihan
+const DUMMY_NILAI_KONSULTAN = 168000000 // contoh: total nominal invoice kategori Konsultan
+
+// TODO: ganti dengan hasil query asli (mis. SUM pembayaran yang sudah diterima tahun berjalan)
+const DUMMY_UANG_MASUK = 350000000 // contoh: total uang yang sudah masuk/dibayarkan dari invoice
+
 export default function Page() {
   const { data: session } = useSession()
   const [isBlurred, setIsBlurred] = useState(false)
@@ -82,6 +98,20 @@ export default function Page() {
   const [totalUtangOutstanding, setTotalUtangOutstanding] = useState(
     DUMMY_TOTAL_UTANG_OUTSTANDING
   )
+  const [invoicePelatihan, setInvoicePelatihan] = useState(DUMMY_PELATIHAN)
+  const [invoiceKonsultan, setInvoiceKonsultan] = useState(DUMMY_KONSULTAN)
+  const [nilaiInvoicePelatihan, setNilaiInvoicePelatihan] = useState(
+    DUMMY_NILAI_PELATIHAN
+  )
+  const [nilaiInvoiceKonsultan, setNilaiInvoiceKonsultan] = useState(
+    DUMMY_NILAI_KONSULTAN
+  )
+  const [uangMasuk, setUangMasuk] = useState(DUMMY_UANG_MASUK)
+
+  // Dihitung otomatis, tidak perlu state terpisah
+  const totalInvoice = invoicePelatihan + invoiceKonsultan
+  const totalNilaiInvoice = nilaiInvoicePelatihan + nilaiInvoiceKonsultan
+  const sisaTagihan = totalNilaiInvoice - uangMasuk
 
   useEffect(() => {
     // 1. Mencegah Klik Kanan
@@ -142,6 +172,9 @@ export default function Page() {
   //       setCashflowBulanan(res.data.cashflowBulanan)
   //       setTotalProduksiTahunan(res.data.totalProduksiTahunan)
   //       setTotalUtangOutstanding(res.data.totalUtangOutstanding)
+  //       setInvoicePelatihan(res.data.invoicePelatihan)
+  //       setInvoiceKonsultan(res.data.invoiceKonsultan)
+  //       setUangMasuk(res.data.uangMasuk)
   //     }
   //     setLoadingRingkasan(false)
   //   }
@@ -252,54 +285,199 @@ export default function Page() {
             </div>
           </div>
 
-          {/* RINGKASAN: TOTAL PRODUKSI TAHUNAN & TOTAL UTANG OUTSTANDING */}
+          {/* RINGKASAN: 2 CARD BESAR BERDAMPINGAN DALAM 1 BARIS */}
           <div className="px-4 lg:px-6">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {/* CARD KIRI: Invoice Pelatihan & Konsultan + Total */}
               <Card className="rounded-sm border border-zinc-200/80 bg-white shadow-sm">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardHeader className="pb-2">
                   <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase italic">
-                    Total Produksi Tahunan
+                    Invoice Pelatihan & Konsultan
                   </CardTitle>
-                  <div className="rounded-sm bg-blue-50 p-1.5">
-                    <Factory className="h-4 w-4 text-blue-600" />
-                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="font-mono text-[18px] font-black text-zinc-900">
-                    {loadingRingkasan ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-zinc-300" />
-                    ) : (
-                      new Intl.NumberFormat("id-ID").format(
-                        totalProduksiTahunan
-                      )
-                    )}
+
+                <CardContent className="space-y-3">
+                  {/* Pelatihan */}
+                  <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-sm bg-amber-50 p-1.5">
+                        <GraduationCap className="h-4 w-4 text-amber-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black tracking-wider text-zinc-500 uppercase italic">
+                          Invoice Pelatihan
+                        </p>
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase">
+                          Total kategori pelatihan
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="font-mono text-[18px] font-black text-zinc-900">
+                        {loadingRingkasan ? (
+                          <Loader2 className="ml-auto h-5 w-5 animate-spin text-zinc-300" />
+                        ) : (
+                          invoicePelatihan
+                        )}
+                      </div>
+                      {!loadingRingkasan && (
+                        <p className="mt-0.5 font-mono text-[10px] font-bold text-zinc-400">
+                          {formatIDR(nilaiInvoicePelatihan)}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-1 text-[9px] font-bold text-zinc-400 uppercase">
-                    Akumulasi produksi tahun berjalan
-                  </p>
+
+                  {/* Konsultan */}
+                  <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-sm bg-sky-50 p-1.5">
+                        <Briefcase className="h-4 w-4 text-sky-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black tracking-wider text-zinc-500 uppercase italic">
+                          Invoice Konsultan
+                        </p>
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase">
+                          Total kategori konsultan
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="font-mono text-[18px] font-black text-zinc-900">
+                        {loadingRingkasan ? (
+                          <Loader2 className="ml-auto h-5 w-5 animate-spin text-zinc-300" />
+                        ) : (
+                          invoiceKonsultan
+                        )}
+                      </div>
+                      {!loadingRingkasan && (
+                        <p className="mt-0.5 font-mono text-[10px] font-bold text-zinc-400">
+                          {formatIDR(nilaiInvoiceKonsultan)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Total */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-sm bg-emerald-100 p-1.5">
+                        <Sigma className="h-4 w-4 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black tracking-wider text-emerald-600 uppercase italic">
+                          Total
+                        </p>
+                        <p className="text-[9px] font-bold text-emerald-500 uppercase">
+                          Pelatihan + Konsultan
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="font-mono text-[18px] font-black text-emerald-600">
+                        {loadingRingkasan ? (
+                          <Loader2 className="ml-auto h-5 w-5 animate-spin text-zinc-300" />
+                        ) : (
+                          totalInvoice
+                        )}
+                      </div>
+                      {!loadingRingkasan && (
+                        <p className="mt-0.5 font-mono text-[10px] font-bold text-emerald-500/70">
+                          {formatIDR(totalNilaiInvoice)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
-              <Card className="rounded-sm border border-rose-200 bg-rose-50/10 shadow-sm">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-[10px] font-black tracking-wider text-rose-600 uppercase italic">
-                    Total Utang (Outstanding)
+              {/* CARD KANAN: Uang Masuk + Sisa Tagihan + Total Invoice */}
+              <Card className="rounded-sm border border-zinc-200/80 bg-white shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[10px] font-black tracking-wider text-zinc-400 uppercase italic">
+                    Ringkasan Pembayaran
                   </CardTitle>
-                  <div className="rounded-sm bg-rose-100 p-1.5">
-                    <AlertCircle className="h-4 w-4 text-rose-600" />
-                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="font-mono text-[18px] font-black text-rose-600">
-                    {loadingRingkasan ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-zinc-300" />
-                    ) : (
-                      formatIDR(totalUtangOutstanding)
-                    )}
+
+                <CardContent className="space-y-3">
+                  {/* Uang Masuk */}
+                  <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-sm bg-emerald-100 p-1.5">
+                        <ArrowDownCircle className="h-4 w-4 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black tracking-wider text-emerald-600 uppercase italic">
+                          Uang Masuk
+                        </p>
+                        <p className="text-[9px] font-bold text-emerald-500 uppercase">
+                          Total pembayaran yang sudah diterima
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="font-mono text-[18px] font-black text-emerald-600">
+                      {loadingRingkasan ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-zinc-300" />
+                      ) : (
+                        formatIDR(uangMasuk)
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-1 text-[9px] font-bold text-rose-500 uppercase">
-                    Sisa outstanding yang belum tertagih/terbayar
-                  </p>
+
+                  {/* Sisa Tagihan */}
+                  <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-sm bg-rose-100 p-1.5">
+                        <Clock className="h-4 w-4 text-rose-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black tracking-wider text-rose-600 uppercase italic">
+                          Sisa Tagihan
+                        </p>
+                        <p className="text-[9px] font-bold text-rose-500 uppercase">
+                          Total invoice dikurangi uang masuk
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="font-mono text-[18px] font-black text-rose-600">
+                      {loadingRingkasan ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-zinc-300" />
+                      ) : (
+                        formatIDR(sisaTagihan)
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Total Invoice */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-sm bg-zinc-100 p-1.5">
+                        <Sigma className="h-4 w-4 text-zinc-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black tracking-wider text-zinc-400 uppercase italic">
+                          Total Invoice
+                        </p>
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase">
+                          Uang masuk + sisa tagihan
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="font-mono text-[18px] font-black text-zinc-900">
+                      {loadingRingkasan ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-zinc-300" />
+                      ) : (
+                        formatIDR(totalNilaiInvoice)
+                      )}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </div>

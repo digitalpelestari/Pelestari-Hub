@@ -123,7 +123,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               title: "Rekonsiliasi Bank",
               url: "/dashboard/finance/rekonsiliasi-bank",
             },
-            
           ],
         },
 
@@ -160,6 +159,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               title: "Cash Flow",
               url: "/dashboard/finance/laporan/cash-flow",
             },
+            {
+              title: "Rekonsiliasi",
+              url: "/dashboard/finance/laporan/rekonsiliasi-bank",
+            },
           ],
         },
 
@@ -180,7 +183,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             },
           ],
         },
-        
       ],
     },
     // GA DROPDOWN
@@ -188,7 +190,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "GA",
       url: "#",
       icon: <History />,
-      roles: ["ADMIN", "GA","HR"],
+      roles: ["ADMIN", "GA", "HR"],
       items: [
         {
           title: "Facility Management",
@@ -212,10 +214,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         { title: "Data Karyawan", url: "/dashboard/hr/data-karyawan" },
         { title: "Absensi", url: "/dashboard/hr/absensi" },
         { title: "Status Kehadiran", url: "/dashboard/hr/status-kehadiran" },
-      ]
+      ],
     },
 
-     {
+    {
       title: "Pelatihan",
       url: "#",
       icon: <Users />,
@@ -223,8 +225,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       items: [
         { title: "Matrix", url: "/dashboard/pelatihan/matrix" },
         { title: "Batch", url: "/dashboard/pelatihan/batch" },
-       
-      ]
+      ],
     },
   ]
 
