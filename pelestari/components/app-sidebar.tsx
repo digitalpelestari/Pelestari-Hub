@@ -119,10 +119,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               title: "Riwayat Transaksi",
               url: "/dashboard/finance/riwayat",
             },
-            {
-              title: "Rekonsiliasi Bank",
-              url: "/dashboard/finance/rekonsiliasi-bank",
-            },
           ],
         },
 
@@ -159,9 +155,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               title: "Cash Flow",
               url: "/dashboard/finance/laporan/cash-flow",
             },
+          ],
+        },
+        // Rekonsiliasi
+        {
+          title: "Rekonsiliasi",
+          url: "#",
+          icon: <FileSpreadsheet />,
+          roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+          items: [
             {
-              title: "Rekonsiliasi",
-              url: "/dashboard/finance/laporan/rekonsiliasi-bank",
+              title: "Bank Aktif",
+              url: "/dashboard/finance/rekonsiliasi-bank/bank-aktif",
+            },
+            {
+              title: "Bank Pasif",
+              url: "/dashboard/finance/rekonsiliasi-bank/bank-pasif",
             },
           ],
         },
