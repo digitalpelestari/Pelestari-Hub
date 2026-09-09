@@ -88,20 +88,22 @@ export async function getDataRekonsiliasiHarian(
 ) {
   const { mulai, akhir } = rangeTanggal(tanggal);
 
-  const [bankRows] = await db.execute<BankTransaksiRow[]>(
-    `SELECT
-        bt.id,
-        bt.tanggal,
-        bt.keterangan,
-        bt.nominal,
-        bt.tipe,
-        r.jurnal_item_id
-     FROM tb_bank_transaksi bt
-     LEFT JOIN tb_rekonsiliasi r ON r.bank_transaksi_id = bt.id
-     WHERE bt.tanggal BETWEEN ? AND ?
-     ORDER BY bt.id ASC`,
-    [mulai, akhir]
-  );
+ const [bankRows] = await db.execute<BankTransaksiRow[]>(
+  `SELECT
+      bt.id,
+      bt.tanggal,
+      bt.keterangan,
+      bt.nominal,
+      bt.tipe,
+      r.jurnal_item_id
+   FROM tb_bank_transaksi bt
+   JOIN tb_akun a ON a.id = bt.akun_id
+   LEFT JOIN tb_rekonsiliasi r ON r.bank_transaksi_id = bt.id
+   WHERE a.no_akun = ?
+     AND bt.tanggal BETWEEN ? AND ?
+   ORDER BY bt.id ASC`,
+  [noAkunBank, mulai, akhir]
+);
 
   const [glRows] = await db.execute<JurnalDetailRow[]>(
     `SELECT
@@ -291,6 +293,69 @@ interface HasilParsingBank {
   tipe: TipeTransaksi;
 }
 
+export async function tutupBukuHarian(
+  tanggal: string,
+  noAkunBank: string
+) {
+  const { mulai, akhir } = rangeTanggal(tanggal)
+
+  try {
+    // Cek transaksi bank yang belum terhubung
+    const [bankBelum] = await db.execute<RowDataPacket[]>(
+      `
+        SELECT COUNT(*) AS jumlah
+        FROM tb_bank_transaksi bt
+        JOIN tb_akun a ON a.id = bt.akun_id
+        LEFT JOIN tb_rekonsiliasi r
+          ON r.bank_transaksi_id = bt.id
+        WHERE a.no_akun = ?
+          AND bt.tanggal BETWEEN ? AND ?
+          AND r.id IS NULL
+      `,
+      [noAkunBank, mulai, akhir]
+    )
+
+    // Cek jurnal GL yang belum terhubung
+    const [glBelum] = await db.execute<RowDataPacket[]>(
+      `
+        SELECT COUNT(*) AS jumlah
+        FROM tb_jurnal_item jd
+        JOIN tb_jurnal j
+          ON j.id = jd.jurnal_id
+        LEFT JOIN tb_rekonsiliasi r
+          ON r.jurnal_item_id = jd.id
+        WHERE jd.no_akun = ?
+          AND j.tanggal BETWEEN ? AND ?
+          AND r.id IS NULL
+      `,
+      [noAkunBank, mulai, akhir]
+    )
+
+    const jumlahBankBelum = Number(bankBelum[0]?.jumlah ?? 0)
+    const jumlahGlBelum = Number(glBelum[0]?.jumlah ?? 0)
+
+    if (jumlahBankBelum > 0 || jumlahGlBelum > 0) {
+      return {
+        success: false,
+        message:
+          "Rekonsiliasi belum selesai. Masih ada transaksi yang belum terhubung.",
+      }
+    }
+
+    return {
+      success: true,
+      message: `Rekonsiliasi Bank ${noAkunBank} tanggal ${tanggal} berhasil diselesaikan.`,
+    }
+  } catch (error) {
+    console.error("Gagal menutup buku harian:", error)
+
+    return {
+      success: false,
+      message: "Gagal menyelesaikan rekonsiliasi harian.",
+    }
+  }
+}
+
 export async function simpanHasilImportBank(
   tanggal: string,
   daftarTransaksi: HasilParsingBank[]
@@ -322,26 +387,52 @@ export async function tambahTransaksiBank(data: {
   tipe: "KREDIT" | "DEBIT"
   noAkunBank: string
 }) {
-
-   if (data.noAkunBank !== "11200") {
-    return {
-      success: false,
-      message: "Transaksi hanya dapat ditambahkan untuk Bank Aktif.",
-    }
+  if (
+  data.noAkunBank !== "11200" &&
+  data.noAkunBank !== "11300"
+) {
+  return {
+    success: false,
+    message: "Akun bank tidak valid.",
   }
+}
 
   const connection = await db.getConnection()
 
   try {
     await connection.beginTransaction()
 
+    // Cari ID akun berdasarkan nomor akun
+    const [akunRows] = await connection.execute<RowDataPacket[]>(
+      `
+        SELECT id
+        FROM tb_akun
+        WHERE no_akun = ?
+        AND is_aktif = 1
+        LIMIT 1
+      `,
+      [data.noAkunBank]
+    )
+
+    if (akunRows.length === 0) {
+      await connection.rollback()
+
+      return {
+        success: false,
+        message: "Akun bank tidak ditemukan.",
+      }
+    }
+
+    const akunId = akunRows[0].id
+
     await connection.execute(
       `
         INSERT INTO tb_bank_transaksi
-        (tanggal, keterangan, nominal, tipe)
-        VALUES (?, ?, ?, ?)
+        (akun_id, tanggal, keterangan, nominal, tipe)
+        VALUES (?, ?, ?, ?, ?)
       `,
       [
+        akunId,
         data.tanggal,
         data.keterangan,
         data.nominal,

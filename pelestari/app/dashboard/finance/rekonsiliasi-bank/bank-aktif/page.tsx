@@ -30,43 +30,322 @@ import {
   tambahTransaksiBank,
   editTransaksiBank,
   hapusTransaksiBank,
+  tutupBukuHarian,
   type TransaksiRekonDTO,
 } from "@/app/actions/rekonsiliasi"
+import { swal } from "@/lib/sweetalert"
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
+
+const formatIDR = (amount: number) =>
+  new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 0,
+  }).format(amount)
+
+const getTanggalHariIni = () => {
+  const sekarang = new Date()
+  const tahun = sekarang.getFullYear()
+  const bulan = String(sekarang.getMonth() + 1).padStart(2, "0")
+  const hari = String(sekarang.getDate()).padStart(2, "0")
+  return `${tahun}-${bulan}-${hari}`
+}
+
+type FormTransaksi = {
+  tanggal: string
+  keterangan: string
+  nominal: string
+  tipe: "KREDIT" | "DEBIT"
+}
+
+const formTransaksiKosong = (): FormTransaksi => ({
+  tanggal: getTanggalHariIni(),
+  keterangan: "",
+  nominal: "",
+  tipe: "KREDIT",
+})
+
+/* ------------------------------------------------------------------ */
+/* Presentational subcomponents                                       */
+/* ------------------------------------------------------------------ */
+
+function StatusBadge({
+  status,
+  onBatalkan,
+  disabled,
+}: {
+  status: TransaksiRekonDTO["status"]
+  onBatalkan?: () => void
+  disabled?: boolean
+}) {
+  const terhubung = status === "TERHUBUNG"
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className={`inline-flex items-center gap-1 rounded-sm px-2.5 py-1 text-[9px] font-black tracking-wider uppercase ${
+          terhubung ? "bg-emerald-500 text-white" : "bg-amber-400 text-black"
+        }`}
+      >
+        {terhubung ? (
+          <>
+            <CheckCircle2 className="h-3 w-3" /> Terhubung
+          </>
+        ) : (
+          "Belum Match"
+        )}
+      </span>
+
+      {terhubung && onBatalkan && (
+        <button
+          onClick={onBatalkan}
+          disabled={disabled}
+          title="Batalkan pencocokan"
+          className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-500 uppercase hover:underline disabled:opacity-50"
+        >
+          <XCircle className="h-3 w-3" /> Batalkan
+        </button>
+      )}
+    </div>
+  )
+}
+
+function TipeLabel({ tipe }: { tipe: "KREDIT" | "DEBIT" }) {
+  return (
+    <span
+      className={`text-[10px] font-black tracking-wide uppercase ${
+        tipe === "KREDIT" ? "text-emerald-600" : "text-rose-600"
+      }`}
+    >
+      {tipe}
+    </span>
+  )
+}
+
+function RingkasanCard({
+  label,
+  sublabel,
+  value,
+  icon,
+  tone = "netral",
+}: {
+  label: string
+  sublabel: string
+  value: string
+  icon: React.ReactNode
+  tone?: "netral" | "positif" | "peringatan"
+}) {
+  const toneClasses = {
+    netral: {
+      border: "border-zinc-200/80",
+      bg: "bg-white",
+      label: "text-zinc-400",
+      iconBg: "bg-zinc-100",
+      value: "text-zinc-900",
+      sublabel: "text-zinc-400",
+    },
+    positif: {
+      border: "border-emerald-200",
+      bg: "bg-emerald-50/10",
+      label: "text-emerald-600",
+      iconBg: "bg-emerald-100",
+      value: "text-emerald-700",
+      sublabel: "text-emerald-600/80",
+    },
+    peringatan: {
+      border: "border-amber-200",
+      bg: "bg-amber-50/10",
+      label: "text-amber-600",
+      iconBg: "bg-amber-100",
+      value: "text-amber-600",
+      sublabel: "text-amber-600/80",
+    },
+  }[tone]
+
+  return (
+    <div
+      className={`rounded-sm border ${toneClasses.border} ${toneClasses.bg} p-4 shadow-sm`}
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <span
+          className={`text-[10px] font-black tracking-wider uppercase italic ${toneClasses.label}`}
+        >
+          {label}
+        </span>
+        <div className={`rounded-sm p-1.5 ${toneClasses.iconBg}`}>{icon}</div>
+      </div>
+      <div className={`font-mono text-[16px] font-black ${toneClasses.value}`}>
+        {value}
+      </div>
+      <p
+        className={`mt-1 text-[9px] font-bold uppercase ${toneClasses.sublabel}`}
+      >
+        {sublabel}
+      </p>
+    </div>
+  )
+}
+
+function PanelTransaksi({
+  judul,
+  tanggal,
+  tagLabel,
+  tagClassName,
+  kolomTerakhir,
+  data,
+  isLoading,
+  pilihanId,
+  onPilih,
+  namaRadio,
+  rowHighlight,
+  emptyMessage,
+  renderAksi,
+  getIdBatal,
+  onBatalkanClick,
+  sedangSibuk,
+}: {
+  judul: string
+  tanggal: string
+  tagLabel: string
+  tagClassName: string
+  kolomTerakhir: string
+  data: TransaksiRekonDTO[]
+  isLoading: boolean
+  pilihanId: number | null
+  onPilih: (id: number) => void
+  namaRadio: string
+  rowHighlight: string
+  emptyMessage: string
+  renderAksi?: (item: TransaksiRekonDTO) => React.ReactNode
+  getIdBatal: (item: TransaksiRekonDTO) => number | null | undefined
+  onBatalkanClick: (id: number) => void
+  sedangSibuk: boolean
+}) {
+  return (
+    <div className="overflow-hidden rounded-sm border border-zinc-200 bg-white shadow-md">
+      <div className="flex items-center justify-between border-b bg-zinc-50/50 p-4">
+        <div>
+          <h2 className="text-sm font-bold text-zinc-900">{judul}</h2>
+          <span className="text-[10px] font-semibold tracking-tight text-zinc-400 uppercase">
+            Tanggal: {tanggal}
+          </span>
+        </div>
+        <span
+          className={`rounded-sm px-2.5 py-1 text-[10px] font-black tracking-wide uppercase ${tagClassName}`}
+        >
+          {tagLabel}
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-[13px]">
+          <thead className="border-b bg-zinc-100/80 text-xs tracking-wider text-zinc-700 uppercase">
+            <tr>
+              <th className="border-r p-3 font-bold">Pilih</th>
+              <th className="border-r p-3 font-bold">{kolomTerakhir}</th>
+              <th className="border-r p-3 font-bold">Nominal</th>
+              <th className="border-r p-3 font-bold">Tipe</th>
+              <th
+                className={
+                  renderAksi ? "border-r p-3 font-bold" : "p-3 font-bold"
+                }
+              >
+                Status
+              </th>
+              {renderAksi && <th className="p-3 font-bold">Aksi</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {isLoading ? (
+              <tr>
+                <td colSpan={6} className="p-8 text-center text-zinc-400">
+                  <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                </td>
+              </tr>
+            ) : data.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="p-8 text-center text-zinc-400 italic"
+                >
+                  {emptyMessage}
+                </td>
+              </tr>
+            ) : (
+              data.map((item) => {
+                const terhubung = item.status === "TERHUBUNG"
+                const idUntukBatal = getIdBatal(item)
+
+                return (
+                  <tr
+                    key={item.id}
+                    className={`transition-colors ${
+                      terhubung
+                        ? "bg-emerald-50/30 opacity-60"
+                        : pilihanId === item.id
+                          ? rowHighlight
+                          : "hover:bg-zinc-50/80"
+                    }`}
+                  >
+                    <td className="border-r p-3">
+                      {!terhubung && (
+                        <input
+                          type="radio"
+                          name={namaRadio}
+                          disabled={sedangSibuk}
+                          checked={pilihanId === item.id}
+                          onChange={() => onPilih(item.id)}
+                        />
+                      )}
+                    </td>
+                    <td className="border-r p-3 font-medium text-zinc-700">
+                      {item.keterangan}
+                    </td>
+                    <td className="border-r p-3 font-mono text-[12px] font-black text-zinc-900">
+                      {formatIDR(item.nominal)}
+                    </td>
+                    <td className="border-r p-3">
+                      <TipeLabel tipe={item.tipe} />
+                    </td>
+                    <td className={renderAksi ? "border-r p-3" : "p-3"}>
+                      <StatusBadge
+                        status={item.status}
+                        disabled={sedangSibuk}
+                        onBatalkan={
+                          typeof idUntukBatal === "number"
+                            ? () => onBatalkanClick(idUntukBatal)
+                            : undefined
+                        }
+                      />
+                    </td>
+                    {renderAksi && <td className="p-3">{renderAksi(item)}</td>}
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Komponen utama                                                      */
+/* ------------------------------------------------------------------ */
 
 export default function RekonsiliasiBankHarian() {
-  // State Tanggal Aktif
   const [modePeriode, setModePeriode] = useState<"HARIAN" | "BULANAN">("HARIAN")
   const [showFormTransaksi, setShowFormTransaksi] = useState(false)
   const [transaksiYangDiedit, setTransaksiYangDiedit] = useState<number | null>(
     null
   )
-
-  const getTanggalHariIni = () => {
-    const sekarang = new Date()
-
-    const tahun = sekarang.getFullYear()
-    const bulan = String(sekarang.getMonth() + 1).padStart(2, "0")
-    const hari = String(sekarang.getDate()).padStart(2, "0")
-
-    return `${tahun}-${bulan}-${hari}`
-  }
-  const normalisasiTanggal = (tanggal: string | Date) => {
-    if (tanggal instanceof Date) {
-      const tahun = tanggal.getFullYear()
-      const bulan = String(tanggal.getMonth() + 1).padStart(2, "0")
-      const hari = String(tanggal.getDate()).padStart(2, "0")
-
-      return `${tahun}-${bulan}-${hari}`
-    }
-
-    return String(tanggal).substring(0, 10)
-  }
-  const [formTransaksi, setFormTransaksi] = useState({
-    tanggal: getTanggalHariIni(),
-    keterangan: "",
-    nominal: "",
-    tipe: "KREDIT" as "KREDIT" | "DEBIT",
-  })
+  const [formTransaksi, setFormTransaksi] = useState<FormTransaksi>(
+    formTransaksiKosong()
+  )
   const [tanggalAktif, setTanggalAktif] = useState<string>(getTanggalHariIni())
 
   const [dataBank, setDataBank] = useState<TransaksiRekonDTO[]>([])
@@ -79,13 +358,15 @@ export default function RekonsiliasiBankHarian() {
   const [isMemproses, startMemprosesTransition] = useTransition()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const inputPdfRef = useRef<HTMLInputElement>(null)
-
   const [hasilPdf, setHasilPdf] = useState("")
+
+  const sedangSibuk = isLoading || isMemproses
+
   // Ambil data terbaru dari server untuk tanggal tertentu
   const muatData = useCallback(async (tanggal: string) => {
     setErrorMsg(null)
     try {
-      const [hasil] = await Promise.all([getDataRekonsiliasiHarian(tanggal)])
+      const hasil = await getDataRekonsiliasiHarian(tanggal, "11200")
       setDataBank(hasil.bank)
       setDataGL(hasil.gl)
     } catch (err) {
@@ -103,24 +384,25 @@ export default function RekonsiliasiBankHarian() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tanggalAktif])
 
-  // Navigasi Tanggal (Tambah / Kurang Hari)
-  const ubahTanggal = (jumlahHari: number) => {
-    const tgl = new Date(tanggalAktif)
-    tgl.setDate(tgl.getDate() + jumlahHari)
-    setTanggalAktif(tgl.toISOString().split("T")[0])
+  const resetPilihan = () => {
     setPilihanBankId(null)
     setPilihanGlId(null)
   }
 
-  // Eksekusi Pencocokan Manual -> panggil server action, lalu refresh data
+  const ubahTanggal = (jumlahHari: number) => {
+    const tgl = new Date(tanggalAktif)
+    tgl.setDate(tgl.getDate() + jumlahHari)
+    setTanggalAktif(tgl.toISOString().split("T")[0])
+    resetPilihan()
+  }
+
   const jalankanPencocokan = () => {
     if (!pilihanBankId || !pilihanGlId) return
 
     startMemprosesTransition(async () => {
       try {
         await cocokkanTransaksi(pilihanBankId, pilihanGlId)
-        setPilihanBankId(null)
-        setPilihanGlId(null)
+        resetPilihan()
         await muatData(tanggalAktif)
       } catch (err) {
         setErrorMsg(
@@ -130,8 +412,7 @@ export default function RekonsiliasiBankHarian() {
     })
   }
 
-  // Batalkan pencocokan satu pasang transaksi (butuh bank_transaksi_id,
-  // karena itu kolom UNIQUE di tb_rekonsiliasi)
+  // Butuh bank_transaksi_id, karena itu kolom UNIQUE di tb_rekonsiliasi
   const batalkanSatuPencocokan = (bankTransaksiId: number) => {
     startMemprosesTransition(async () => {
       try {
@@ -145,24 +426,20 @@ export default function RekonsiliasiBankHarian() {
     })
   }
 
-  const hapusSatuTransaksi = (id: number) => {
-    const konfirmasi = window.confirm(
+  const hapusSatuTransaksi = async (id: number) => {
+    const konfirmasi = await swal.confirm(
       "Apakah Anda yakin ingin menghapus transaksi bank ini?"
     )
-
     if (!konfirmasi) return
 
     startMemprosesTransition(async () => {
       try {
         const hasil = await hapusTransaksiBank(id)
-
         if (!hasil.success) {
           setErrorMsg(hasil.message)
           return
         }
-
         setPilihanBankId(null)
-
         await muatData(tanggalAktif)
       } catch (err) {
         setErrorMsg(
@@ -172,11 +449,41 @@ export default function RekonsiliasiBankHarian() {
     })
   }
 
-  // Cocokkan Otomatis untuk seluruh transaksi belum terhubung pada tanggal aktif
+  const jalankanTutupBukuHarian = () => {
+    startMemprosesTransition(async () => {
+      try {
+        const hasil = await tutupBukuHarian(tanggalAktif, "11200")
+        if (!hasil.success) {
+          setErrorMsg(hasil.message)
+          return
+        }
+
+        setErrorMsg(null)
+        await swal.success(hasil.message)
+
+        const tanggalBerikutnya = new Date(tanggalAktif)
+        tanggalBerikutnya.setDate(tanggalBerikutnya.getDate() + 1)
+        const tanggalBaru = tanggalBerikutnya.toISOString().split("T")[0]
+
+        resetPilihan()
+        setTanggalAktif(tanggalBaru)
+      } catch (err) {
+        setErrorMsg(
+          err instanceof Error
+            ? err.message
+            : "Gagal menyelesaikan rekonsiliasi harian."
+        )
+      }
+    })
+  }
+
   const jalankanCocokkanOtomatis = () => {
     startMemprosesTransition(async () => {
       try {
-        const { jumlahCocok } = await cocokkanOtomatisHarian(tanggalAktif)
+        const { jumlahCocok } = await cocokkanOtomatisHarian(
+          tanggalAktif,
+          "11200"
+        )
         await muatData(tanggalAktif)
         if (jumlahCocok === 0) {
           setErrorMsg(
@@ -193,14 +500,80 @@ export default function RekonsiliasiBankHarian() {
     })
   }
 
-  // Kalkulasi Ringkasan Harian (data sudah difilter tanggal di server)
-  const formatIDR = (amount: number) =>
-    new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(amount)
+  const bukaFormTambah = () => {
+    setTransaksiYangDiedit(null)
+    setFormTransaksi(formTransaksiKosong())
+    setShowFormTransaksi(true)
+  }
 
+  const bukaFormEdit = (item: TransaksiRekonDTO) => {
+    setTransaksiYangDiedit(item.id)
+    setFormTransaksi({
+      tanggal: item.tanggal,
+      keterangan: item.keterangan,
+      nominal: String(item.nominal),
+      tipe: item.tipe,
+    })
+    setShowFormTransaksi(true)
+  }
+
+  const simpanFormTransaksi = () => {
+    startMemprosesTransition(async () => {
+      const hasil = transaksiYangDiedit
+        ? await editTransaksiBank({
+            id: transaksiYangDiedit,
+            tanggal: formTransaksi.tanggal,
+            keterangan: formTransaksi.keterangan,
+            nominal: Number(formTransaksi.nominal),
+            tipe: formTransaksi.tipe,
+          })
+        : await tambahTransaksiBank({
+            tanggal: formTransaksi.tanggal,
+            keterangan: formTransaksi.keterangan,
+            nominal: Number(formTransaksi.nominal),
+            tipe: formTransaksi.tipe,
+            noAkunBank: "11200",
+          })
+
+      if (!hasil.success) {
+        setErrorMsg(hasil.message)
+        return
+      }
+
+      setShowFormTransaksi(false)
+      setTransaksiYangDiedit(null)
+      await muatData(formTransaksi.tanggal)
+      setFormTransaksi(formTransaksiKosong())
+    })
+  }
+
+  const handleUploadPdf = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    startMemprosesTransition(async () => {
+      try {
+        const hasil = await bacaPdfRekeningKoran(file)
+        setDataBank(
+          hasil.transaksi.map((item, index) => ({
+            id: -(index + 1),
+            tanggal: item.tanggal,
+            keterangan: item.keterangan,
+            nominal: item.nominal,
+            tipe: item.tipe,
+            status: "BELUM_TERHUBUNG",
+            pasanganId: null,
+          }))
+        )
+      } catch (err) {
+        setErrorMsg(
+          err instanceof Error ? err.message : "Gagal membaca rekening koran."
+        )
+      }
+    })
+  }
+
+  // Kalkulasi ringkasan harian (data sudah difilter tanggal di server)
   const totalBankBelumTerhubung = dataBank
     .filter((i) => i.status === "BELUM_TERHUBUNG")
     .reduce((acc, curr) => acc + curr.nominal, 0)
@@ -210,574 +583,262 @@ export default function RekonsiliasiBankHarian() {
     .reduce((acc, curr) => acc + curr.nominal, 0)
 
   const selisihHarian = totalBankBelumTerhubung - totalGlBelumTerhubung
-
-  const sedangSibuk = isLoading || isMemproses
+  const sudahBalance = selisihHarian === 0
 
   return (
-    <div className="flex min-h-screen flex-col justify-between bg-zinc-50 p-6 font-sans">
-      {/* 1. HEADER BAR UTAMA */}
-      <div className="mb-6 flex w-full flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-zinc-900 p-2 text-white">
-              <Landmark className="h-5 w-5" />
+    <div className="flex min-h-screen flex-col bg-zinc-50 p-6 font-sans">
+      <div className="mx-auto w-full max-w-7xl">
+        {/* 1. HEADER */}
+        <header className="mb-6 flex w-full flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5">
+              <div className="rounded-lg bg-zinc-900 p-2 text-white">
+                <Landmark className="h-5 w-5" />
+              </div>
+              <h1 className="text-xl font-bold tracking-tight text-zinc-900">
+                Rekonsiliasi Bank Aktif
+              </h1>
             </div>
-            <h1 className="text-xl font-bold tracking-tight text-zinc-900">
-              Rekonsiliasi Bank Aktif
-            </h1>
+            <p className="pl-9 text-xs text-zinc-500">
+              Pencocokan transaksi mutasi bank dan jurnal untuk satu hari
+              kerja.
+            </p>
           </div>
-          <p className="pl-9 text-xs text-zinc-500">
-            Pencocokan transaksi mutasi bank dan buku besar untuk satu hari
-            kerja.
-          </p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* MODE PERIODE */}
-          <div className="flex items-center rounded-sm border border-zinc-200 bg-zinc-100 p-1">
-            <button
-              type="button"
-              onClick={() => setModePeriode("HARIAN")}
-              disabled={sedangSibuk}
-              className={`h-8 rounded-sm px-4 text-[11px] font-bold uppercase transition ${
-                modePeriode === "HARIAN"
-                  ? "bg-white text-zinc-900 shadow-sm"
-                  : "text-zinc-500 hover:text-zinc-700"
-              }`}
-            >
-              Harian
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setModePeriode("BULANAN")}
-              disabled={sedangSibuk}
-              className={`h-8 rounded-sm px-4 text-[11px] font-bold uppercase transition ${
-                modePeriode === "BULANAN"
-                  ? "bg-white text-zinc-900 shadow-sm"
-                  : "text-zinc-500 hover:text-zinc-700"
-              }`}
-            >
-              Bulanan
-            </button>
-          </div>
-          {/* NAVIGASI TANGGAL HARIAN */}
-          {modePeriode === "HARIAN" && (
-            <div className="flex items-center gap-2 rounded-sm border border-zinc-200 bg-white p-1.5 shadow-sm">
-              <button
-                onClick={() => ubahTanggal(-1)}
-                disabled={sedangSibuk}
-                className="h-8 rounded-sm border border-zinc-200 px-3 text-[11px] font-bold tracking-wide text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                &larr; Sebelumnya
-              </button>
-
-              <input
-                type="date"
-                value={tanggalAktif}
-                disabled={sedangSibuk}
-                onChange={(e) => {
-                  setTanggalAktif(e.target.value)
-                  setPilihanBankId(null)
-                  setPilihanGlId(null)
-                }}
-                className="h-8 rounded-sm border border-zinc-200 bg-white px-2 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
-              />
-
-              <button
-                onClick={() => ubahTanggal(1)}
-                disabled={sedangSibuk}
-                className="h-8 rounded-sm border border-zinc-200 px-3 text-[11px] font-bold tracking-wide text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Berikutnya &rarr;
-              </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center rounded-sm border border-zinc-200 bg-zinc-100 p-1">
+              {(["HARIAN", "BULANAN"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setModePeriode(mode)}
+                  disabled={sedangSibuk}
+                  className={`h-8 rounded-sm px-4 text-[11px] font-bold uppercase transition ${
+                    modePeriode === mode
+                      ? "bg-white text-zinc-900 shadow-sm"
+                      : "text-zinc-500 hover:text-zinc-700"
+                  }`}
+                >
+                  {mode === "HARIAN" ? "Harian" : "Bulanan"}
+                </button>
+              ))}
             </div>
-          )}
 
-          {/* TODO: hubungkan ke flow upload + parsing PDF, lalu panggil
-              simpanHasilImportBank(tanggal, hasilParsing) dari actions */}
-          {modePeriode === "BULANAN" && (
-            <>
-              <input
-                ref={inputPdfRef}
-                type="file"
-                accept="application/pdf,.pdf"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
+            {modePeriode === "HARIAN" && (
+              <div className="flex items-center gap-2 rounded-sm border border-zinc-200 bg-white p-1.5 shadow-sm">
+                <button
+                  onClick={() => ubahTanggal(-1)}
+                  disabled={sedangSibuk}
+                  className="h-8 rounded-sm border border-zinc-200 px-3 text-[11px] font-bold tracking-wide text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  &larr; Sebelumnya
+                </button>
 
-                  if (!file) return
+                <input
+                  type="date"
+                  value={tanggalAktif}
+                  disabled={sedangSibuk}
+                  onChange={(e) => {
+                    setTanggalAktif(e.target.value)
+                    resetPilihan()
+                  }}
+                  className="h-8 rounded-sm border border-zinc-200 bg-white px-2 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
+                />
 
-                  startMemprosesTransition(async () => {
-                    try {
-                      const hasil = await bacaPdfRekeningKoran(file)
-
-                      console.log("Jumlah halaman:", hasil.jumlahHalaman)
-                      console.log("Transaksi:", hasil.transaksi)
-
-                      setDataBank(
-                        hasil.transaksi.map((item, index) => ({
-                          id: -(index + 1),
-                          tanggal: item.tanggal,
-                          keterangan: item.keterangan,
-                          nominal: item.nominal,
-                          tipe: item.tipe,
-                          status: "BELUM_TERHUBUNG",
-                          pasanganId: null,
-                        }))
-                      )
-                    } catch (err) {
-                      setErrorMsg(
-                        err instanceof Error
-                          ? err.message
-                          : "Gagal membaca rekening koran."
-                      )
-                    }
-                  })
-                }}
-              />
-
-              <button
-                type="button"
-                onClick={() => inputPdfRef.current?.click()}
-                disabled={sedangSibuk}
-                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-semibold text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Impor Rekening Koran
-              </button>
-            </>
-          )}
-          {modePeriode === "HARIAN" && (
-            <button
-              type="button"
-              disabled={sedangSibuk}
-              onClick={() => {
-                setFormTransaksi({
-                  tanggal: getTanggalHariIni(),
-                  keterangan: "",
-                  nominal: "",
-                  tipe: "KREDIT",
-                })
-                setShowFormTransaksi(true)
-              }}
-              className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-semibold text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Tambah Transaksi
-            </button>
-          )}
-          <button
-            onClick={jalankanCocokkanOtomatis}
-            disabled={sedangSibuk}
-            className="flex h-10 items-center gap-2 rounded-lg bg-zinc-900 px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isMemproses && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Cocokkan Otomatis
-          </button>
-        </div>
-      </div>
-
-      {/* PESAN ERROR */}
-      {errorMsg && (
-        <div className="mb-6 flex items-center gap-2 rounded-sm border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          {errorMsg}
-        </div>
-      )}
-
-      {/* 2. RESUME CARD PANEL (METRIK RINGKASAN HARIAN) */}
-      <div className="mb-6 grid grid-cols-1 gap-4 font-sans md:grid-cols-4">
-        <div className="rounded-sm border border-zinc-200/80 bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[10px] font-black tracking-wider text-zinc-400 uppercase italic">
-              Bank Belum Terhubung
-            </span>
-            <div className="rounded-sm bg-zinc-100 p-1.5">
-              <Landmark className="h-4 w-4 text-zinc-600" />
-            </div>
-          </div>
-          <div className="font-mono text-[16px] font-black text-zinc-900">
-            {formatIDR(totalBankBelumTerhubung)}
-          </div>
-          <p className="mt-1 text-[9px] font-bold text-zinc-400 uppercase">
-            Mutasi rekening koran ({tanggalAktif})
-          </p>
-        </div>
-
-        <div className="rounded-sm border border-zinc-200/80 bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[10px] font-black tracking-wider text-zinc-400 uppercase italic">
-              Buku Besar Belum Terhubung
-            </span>
-            <div className="rounded-sm bg-zinc-100 p-1.5">
-              <BookOpen className="h-4 w-4 text-zinc-600" />
-            </div>
-          </div>
-          <div className="font-mono text-[16px] font-black text-zinc-900">
-            {formatIDR(totalGlBelumTerhubung)}
-          </div>
-          <p className="mt-1 text-[9px] font-bold text-zinc-400 uppercase">
-            Jurnal GL 100-01 ({tanggalAktif})
-          </p>
-        </div>
-
-        <div
-          className={`rounded-sm border p-4 shadow-sm ${
-            selisihHarian === 0
-              ? "border-emerald-200 bg-emerald-50/10"
-              : "border-amber-200 bg-amber-50/10"
-          }`}
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <span
-              className={`text-[10px] font-black tracking-wider uppercase italic ${
-                selisihHarian === 0 ? "text-emerald-600" : "text-amber-600"
-              }`}
-            >
-              Selisih Harian
-            </span>
-            <div
-              className={`rounded-sm p-1.5 ${
-                selisihHarian === 0 ? "bg-emerald-100" : "bg-amber-100"
-              }`}
-            >
-              <Scale
-                className={`h-4 w-4 ${
-                  selisihHarian === 0 ? "text-emerald-600" : "text-amber-600"
-                }`}
-              />
-            </div>
-          </div>
-          <div
-            className={`font-mono text-[16px] font-black ${
-              selisihHarian === 0 ? "text-emerald-700" : "text-amber-600"
-            }`}
-          >
-            {formatIDR(selisihHarian)}
-          </div>
-          <p
-            className={`mt-1 text-[9px] font-bold uppercase ${
-              selisihHarian === 0 ? "text-emerald-600/80" : "text-amber-600/80"
-            }`}
-          >
-            {selisihHarian === 0 ? "Sudah balance" : "Belum balance"}
-          </p>
-        </div>
-
-        <div className="flex items-center justify-center rounded-sm border border-zinc-200/80 bg-white p-4 shadow-sm">
-          <button
-            onClick={jalankanPencocokan}
-            disabled={!pilihanBankId || !pilihanGlId || sedangSibuk}
-            className={`flex h-10 w-full items-center justify-center gap-2 rounded-sm text-xs font-black tracking-wide uppercase italic transition ${
-              pilihanBankId && pilihanGlId && !sedangSibuk
-                ? "cursor-pointer bg-emerald-600 text-white hover:bg-emerald-700"
-                : "cursor-not-allowed bg-zinc-100 text-zinc-400"
-            }`}
-          >
-            {isMemproses ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Link2 className="h-3.5 w-3.5" />
-            )}
-            Hubungkan Data Terpilih
-          </button>
-        </div>
-      </div>
-
-      {/* 3. AREA UTAMA DUAL-PANEL */}
-      <div className="mb-24 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* PANEL KIRI: REKENING KORAN */}
-        <div className="overflow-hidden rounded-sm border border-zinc-200 bg-white shadow-md">
-          <div className="flex items-center justify-between border-b bg-zinc-50/50 p-4">
-            <div>
-              <h2 className="text-sm font-bold text-zinc-900">
-                Rekening Koran (Bank)
-              </h2>
-              <span className="text-[10px] font-semibold tracking-tight text-zinc-400 uppercase">
-                Tanggal: {tanggalAktif}
-              </span>
-            </div>
-            <span className="rounded-sm bg-blue-50 px-2.5 py-1 text-[10px] font-black tracking-wide text-blue-700 uppercase">
-              Bank BCA
-            </span>
-          </div>
-
-          <div className="overflow-x-auto">
-            {hasilPdf && (
-              <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-                <div className="mb-2 text-xs font-semibold text-zinc-700">
-                  Hasil Pembacaan Rekening Koran
-                </div>
-
-                <pre className="max-h-[500px] overflow-auto text-xs whitespace-pre-wrap text-zinc-600">
-                  {hasilPdf}
-                </pre>
+                <button
+                  onClick={() => ubahTanggal(1)}
+                  disabled={sedangSibuk}
+                  className="h-8 rounded-sm border border-zinc-200 px-3 text-[11px] font-bold tracking-wide text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Berikutnya &rarr;
+                </button>
               </div>
             )}
-            <table className="w-full text-left text-[13px]">
-              <thead className="border-b bg-zinc-100/80 text-xs tracking-wider text-zinc-700 uppercase">
-                <tr>
-                  <th className="border-r p-3 font-bold">Pilih</th>
-                  <th className="border-r p-3 font-bold">
-                    Deskripsi Transaksi
-                  </th>
-                  <th className="border-r p-3 font-bold">Nominal</th>
-                  <th className="border-r p-3 font-bold">Tipe</th>
-                  <th className="p-3 font-bold">Status</th>
-                  <th className="p-3 font-bold">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-zinc-400">
-                      <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-                    </td>
-                  </tr>
-                ) : dataBank.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="p-8 text-center text-zinc-400 italic"
-                    >
-                      Tidak ada transaksi bank pada tanggal ini.
-                    </td>
-                  </tr>
-                ) : (
-                  dataBank.map((item) => (
-                    <tr
-                      key={item.id}
-                      className={`transition-colors ${
-                        item.status === "TERHUBUNG"
-                          ? "bg-emerald-50/30 opacity-60"
-                          : pilihanBankId === item.id
-                            ? "bg-blue-50/60"
-                            : "hover:bg-zinc-50/80"
-                      }`}
-                    >
-                      <td className="border-r p-3">
-                        {item.status === "BELUM_TERHUBUNG" && (
-                          <input
-                            type="radio"
-                            name="pilih_bank"
-                            disabled={sedangSibuk}
-                            checked={pilihanBankId === item.id}
-                            onChange={() => setPilihanBankId(item.id)}
-                          />
-                        )}
-                      </td>
-                      <td className="border-r p-3 font-medium text-zinc-700">
-                        {item.keterangan}
-                      </td>
-                      <td className="border-r p-3 font-mono text-[12px] font-black text-zinc-900">
-                        {formatIDR(item.nominal)}
-                      </td>
-                      <td className="border-r p-3 text-[10px] font-black tracking-wide uppercase">
-                        <span
-                          className={
-                            item.tipe === "KREDIT"
-                              ? "text-emerald-600"
-                              : "text-rose-600"
-                          }
-                        >
-                          {item.tipe}
-                        </span>
-                      </td>
-                      <td className="border-r p-3">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-sm px-2.5 py-1 text-[9px] font-black tracking-wider uppercase ${
-                            item.status === "TERHUBUNG"
-                              ? "bg-emerald-500 text-white"
-                              : "bg-amber-400 text-black"
-                          }`}
-                        >
-                          {item.status === "TERHUBUNG" ? (
-                            <>
-                              <CheckCircle2 className="h-3 w-3" /> Terhubung
-                            </>
-                          ) : (
-                            "Belum Match"
-                          )}
-                        </span>
 
-                        {item.status === "TERHUBUNG" && (
-                          <button
-                            onClick={() => batalkanSatuPencocokan(item.id)}
-                            disabled={sedangSibuk}
-                            title="Batalkan pencocokan"
-                            className="ml-2 inline-flex items-center gap-1 text-[9px] font-bold text-rose-500 uppercase hover:underline disabled:opacity-50"
-                          >
-                            <XCircle className="h-3 w-3" /> Batalkan
-                          </button>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        {item.status === "BELUM_TERHUBUNG" && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTransaksiYangDiedit(item.id)
+            {modePeriode === "BULANAN" && (
+              <>
+                <input
+                  ref={inputPdfRef}
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="hidden"
+                  onChange={handleUploadPdf}
+                />
+                <button
+                  type="button"
+                  onClick={() => inputPdfRef.current?.click()}
+                  disabled={sedangSibuk}
+                  className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-semibold text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Impor Rekening Koran
+                </button>
+              </>
+            )}
 
-                                setFormTransaksi({
-                                  tanggal: item.tanggal,
-                                  keterangan: item.keterangan,
-                                  nominal: String(item.nominal),
-                                  tipe: item.tipe,
-                                })
+            {modePeriode === "HARIAN" && (
+              <button
+                type="button"
+                disabled={sedangSibuk}
+                onClick={bukaFormTambah}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-semibold text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Tambah Transaksi
+              </button>
+            )}
 
-                                setShowFormTransaksi(true)
-                              }}
-                              disabled={sedangSibuk}
-                              title="Edit transaksi"
-                              className="inline-flex items-center gap-1 text-[9px] font-bold text-blue-600 uppercase hover:underline disabled:opacity-50"
-                            >
-                              <Pencil className="h-3 w-3" />
-                              Edit
-                            </button>
+            <button
+              onClick={jalankanCocokkanOtomatis}
+              disabled={sedangSibuk}
+              className="flex h-10 items-center gap-2 rounded-lg bg-zinc-900 px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isMemproses && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Cocokkan Otomatis
+            </button>
+          </div>
+        </header>
 
-                            <button
-                              type="button"
-                              onClick={() => hapusSatuTransaksi(item.id)}
-                              disabled={sedangSibuk}
-                              title="Hapus transaksi"
-                              className="ml-3 inline-flex items-center gap-1 text-[9px] font-bold text-rose-600 uppercase hover:underline disabled:opacity-50"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              Hapus
-                            </button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        {/* PESAN ERROR */}
+        {errorMsg && (
+          <div className="mb-6 flex items-center gap-2 rounded-sm border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {errorMsg}
+          </div>
+        )}
+
+        {hasilPdf && (
+          <div className="mb-6 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+            <div className="mb-2 text-xs font-semibold text-zinc-700">
+              Hasil Pembacaan Rekening Koran
+            </div>
+            <pre className="max-h-[500px] overflow-auto text-xs whitespace-pre-wrap text-zinc-600">
+              {hasilPdf}
+            </pre>
+          </div>
+        )}
+
+        {/* 2. RINGKASAN HARIAN */}
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <RingkasanCard
+            label="Bank Belum Terhubung"
+            sublabel={`Mutasi rekening koran (${tanggalAktif})`}
+            value={formatIDR(totalBankBelumTerhubung)}
+            icon={<Landmark className="h-4 w-4 text-zinc-600" />}
+          />
+
+          <RingkasanCard
+            label="jurnal Belum Terhubung"
+            sublabel={`Jurnal GL 100-01 (${tanggalAktif})`}
+            value={formatIDR(totalGlBelumTerhubung)}
+            icon={<BookOpen className="h-4 w-4 text-zinc-600" />}
+          />
+
+          <RingkasanCard
+            label="Selisih Harian"
+            sublabel={sudahBalance ? "Sudah balance" : "Belum balance"}
+            value={formatIDR(selisihHarian)}
+            icon={
+              <Scale
+                className={`h-4 w-4 ${
+                  sudahBalance ? "text-emerald-600" : "text-amber-600"
+                }`}
+              />
+            }
+            tone={sudahBalance ? "positif" : "peringatan"}
+          />
+
+          <div className="flex items-center justify-center rounded-sm border border-zinc-200/80 bg-white p-4 shadow-sm">
+            <button
+              onClick={jalankanPencocokan}
+              disabled={!pilihanBankId || !pilihanGlId || sedangSibuk}
+              className={`flex h-10 w-full items-center justify-center gap-2 rounded-sm text-xs font-black tracking-wide uppercase italic transition ${
+                pilihanBankId && pilihanGlId && !sedangSibuk
+                  ? "cursor-pointer bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "cursor-not-allowed bg-zinc-100 text-zinc-400"
+              }`}
+            >
+              {isMemproses ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Link2 className="h-3.5 w-3.5" />
+              )}
+              Hubungkan Data Terpilih
+            </button>
           </div>
         </div>
 
-        {/* PANEL KANAN: COA / BUKU BESAR */}
-        <div className="overflow-hidden rounded-sm border border-zinc-200 bg-white shadow-md">
-          <div className="flex items-center justify-between border-b bg-zinc-50/50 p-4">
-            <div>
-              <h2 className="text-sm font-bold text-zinc-900">
-                Buku Besar (General Ledger)
-              </h2>
-              <span className="text-[10px] font-semibold tracking-tight text-zinc-400 uppercase">
-                Tanggal: {tanggalAktif}
-              </span>
-            </div>
-            <span className="rounded-sm bg-purple-50 px-2.5 py-1 text-[10px] font-black tracking-wide text-purple-700 uppercase">
-              GL 100-01
-            </span>
-          </div>
+        {/* 3. DUAL PANEL: BANK vs GL */}
+        <div className="mb-28 grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <PanelTransaksi
+            judul="Rekening Koran (Bank)"
+            tanggal={tanggalAktif}
+            tagLabel="Bank BCA"
+            tagClassName="bg-blue-50 text-blue-700"
+            kolomTerakhir="Deskripsi Transaksi"
+            data={dataBank}
+            isLoading={isLoading}
+            pilihanId={pilihanBankId}
+            onPilih={setPilihanBankId}
+            namaRadio="pilih_bank"
+            rowHighlight="bg-blue-50/60"
+            emptyMessage="Tidak ada transaksi bank pada tanggal ini."
+            sedangSibuk={sedangSibuk}
+            getIdBatal={(item) =>
+              item.status === "TERHUBUNG" ? item.id : null
+            }
+            onBatalkanClick={batalkanSatuPencocokan}
+            renderAksi={(item) =>
+              item.status === "BELUM_TERHUBUNG" && (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => bukaFormEdit(item)}
+                    disabled={sedangSibuk}
+                    title="Edit transaksi"
+                    className="inline-flex items-center gap-1 text-[9px] font-bold text-blue-600 uppercase hover:underline disabled:opacity-50"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => hapusSatuTransaksi(item.id)}
+                    disabled={sedangSibuk}
+                    title="Hapus transaksi"
+                    className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-600 uppercase hover:underline disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Hapus
+                  </button>
+                </div>
+              )
+            }
+          />
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-[13px]">
-              <thead className="border-b bg-zinc-100/80 text-xs tracking-wider text-zinc-700 uppercase">
-                <tr>
-                  <th className="border-r p-3 font-bold">Pilih</th>
-                  <th className="border-r p-3 font-bold">Keterangan Jurnal</th>
-                  <th className="border-r p-3 font-bold">Nominal</th>
-                  <th className="border-r p-3 font-bold">Tipe</th>
-                  <th className="p-3 font-bold">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-zinc-400">
-                      <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-                    </td>
-                  </tr>
-                ) : dataGL.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="p-8 text-center text-zinc-400 italic"
-                    >
-                      Tidak ada transaksi buku besar pada tanggal ini.
-                    </td>
-                  </tr>
-                ) : (
-                  dataGL.map((item) => (
-                    <tr
-                      key={item.id}
-                      className={`transition-colors ${
-                        item.status === "TERHUBUNG"
-                          ? "bg-emerald-50/30 opacity-60"
-                          : pilihanGlId === item.id
-                            ? "bg-purple-50/60"
-                            : "hover:bg-zinc-50/80"
-                      }`}
-                    >
-                      <td className="border-r p-3">
-                        {item.status === "BELUM_TERHUBUNG" && (
-                          <input
-                            type="radio"
-                            name="pilih_gl"
-                            disabled={sedangSibuk}
-                            checked={pilihanGlId === item.id}
-                            onChange={() => setPilihanGlId(item.id)}
-                          />
-                        )}
-                      </td>
-                      <td className="border-r p-3 font-medium text-zinc-700">
-                        {item.keterangan}
-                      </td>
-                      <td className="border-r p-3 font-mono text-[12px] font-black text-zinc-900">
-                        {formatIDR(item.nominal)}
-                      </td>
-                      <td className="border-r p-3 text-[10px] font-black tracking-wide uppercase">
-                        <span
-                          className={
-                            item.tipe === "KREDIT"
-                              ? "text-emerald-600"
-                              : "text-rose-600"
-                          }
-                        >
-                          {item.tipe}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-sm px-2.5 py-1 text-[9px] font-black tracking-wider uppercase ${
-                            item.status === "TERHUBUNG"
-                              ? "bg-emerald-500 text-white"
-                              : "bg-amber-400 text-black"
-                          }`}
-                        >
-                          {item.status === "TERHUBUNG" ? (
-                            <>
-                              <CheckCircle2 className="h-3 w-3" /> Terhubung
-                            </>
-                          ) : (
-                            "Belum Match"
-                          )}
-                        </span>
-                        {item.status === "TERHUBUNG" && item.pasanganId && (
-                          <button
-                            onClick={() =>
-                              batalkanSatuPencocokan(item.pasanganId as number)
-                            }
-                            disabled={sedangSibuk}
-                            title="Batalkan pencocokan"
-                            className="ml-2 inline-flex items-center gap-1 text-[9px] font-bold text-rose-500 uppercase hover:underline disabled:opacity-50"
-                          >
-                            <XCircle className="h-3 w-3" /> Batalkan
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <PanelTransaksi
+            judul="Jurnal"
+            tanggal={tanggalAktif}
+            tagLabel="GL 100-01"
+            tagClassName="bg-purple-50 text-purple-700"
+            kolomTerakhir="Keterangan Jurnal"
+            data={dataGL}
+            isLoading={isLoading}
+            pilihanId={pilihanGlId}
+            onPilih={setPilihanGlId}
+            namaRadio="pilih_gl"
+            rowHighlight="bg-purple-50/60"
+            emptyMessage="Tidak ada transaksi jurnal pada tanggal ini."
+            sedangSibuk={sedangSibuk}
+            getIdBatal={(item) =>
+              item.status === "TERHUBUNG"
+                ? (item.pasanganId as number | null)
+                : null
+            }
+            onBatalkanClick={batalkanSatuPencocokan}
+          />
         </div>
       </div>
 
-      {/* 4. PANEL STATUS BAWAH (STICKY FOOTER HARIAN) */}
+      {/* 4. STICKY FOOTER */}
       <div className="fixed right-0 bottom-0 left-0 z-30 border-t border-zinc-800 bg-zinc-900 p-4 text-white shadow-lg lg:left-64">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 text-sm">
           <div className="flex flex-wrap gap-8">
@@ -799,24 +860,26 @@ export default function RekonsiliasiBankHarian() {
             </div>
           </div>
 
-          {/* TODO: belum ada action untuk "tutup buku harian" — sengaja
-              dinonaktifkan selama selisih harian belum 0 */}
           <button
-            disabled={selisihHarian !== 0 || sedangSibuk}
+            onClick={jalankanTutupBukuHarian}
+            disabled={!sudahBalance || sedangSibuk}
             className="h-9 rounded-sm bg-emerald-600 px-5 text-[11px] font-black tracking-wide text-white uppercase italic shadow-none transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Simpan & Tutup Buku Harian
+            {isMemproses ? "Memproses..." : "Simpan & Tutup Buku Harian"}
           </button>
         </div>
       </div>
+
+      {/* MODAL TAMBAH / EDIT TRANSAKSI */}
       {showFormTransaksi && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
-            {/* Header */}
             <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4">
               <div>
                 <h2 className="text-sm font-bold text-zinc-900">
-                  Tambah Transaksi Bank
+                  {transaksiYangDiedit
+                    ? "Edit Transaksi Bank"
+                    : "Tambah Transaksi Bank"}
                 </h2>
                 <p className="mt-1 text-xs text-zinc-500">
                   Masukkan transaksi bank secara manual.
@@ -832,14 +895,11 @@ export default function RekonsiliasiBankHarian() {
               </button>
             </div>
 
-            {/* Form */}
             <div className="space-y-4 px-6 py-5">
-              {/* Tanggal */}
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-zinc-700">
                   Tanggal
                 </label>
-
                 <input
                   type="date"
                   value={formTransaksi.tanggal}
@@ -853,12 +913,10 @@ export default function RekonsiliasiBankHarian() {
                 />
               </div>
 
-              {/* Keterangan */}
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-zinc-700">
                   Keterangan
                 </label>
-
                 <input
                   type="text"
                   value={formTransaksi.keterangan}
@@ -873,12 +931,10 @@ export default function RekonsiliasiBankHarian() {
                 />
               </div>
 
-              {/* Nominal */}
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-zinc-700">
                   Nominal
                 </label>
-
                 <input
                   type="number"
                   min="0"
@@ -894,12 +950,10 @@ export default function RekonsiliasiBankHarian() {
                 />
               </div>
 
-              {/* Tipe */}
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-zinc-700">
                   Tipe Transaksi
                 </label>
-
                 <select
                   value={formTransaksi.tipe}
                   onChange={(e) =>
@@ -916,7 +970,6 @@ export default function RekonsiliasiBankHarian() {
               </div>
             </div>
 
-            {/* Footer */}
             <div className="flex justify-end gap-2 border-t border-zinc-200 px-6 py-4">
               <button
                 type="button"
@@ -929,41 +982,7 @@ export default function RekonsiliasiBankHarian() {
               <button
                 type="button"
                 disabled={sedangSibuk}
-                onClick={() => {
-                  startMemprosesTransition(async () => {
-                    const hasil = transaksiYangDiedit
-                      ? await editTransaksiBank({
-                          id: transaksiYangDiedit,
-                          tanggal: formTransaksi.tanggal,
-                          keterangan: formTransaksi.keterangan,
-                          nominal: Number(formTransaksi.nominal),
-                          tipe: formTransaksi.tipe,
-                        })
-                      : await tambahTransaksiBank({
-                          tanggal: formTransaksi.tanggal,
-                          keterangan: formTransaksi.keterangan,
-                          nominal: Number(formTransaksi.nominal),
-                          tipe: formTransaksi.tipe,
-                          noAkunBank: "11200",
-                        })
-
-                    if (!hasil.success) {
-                      setErrorMsg(hasil.message)
-                      return
-                    }
-
-                    setShowFormTransaksi(false)
-                    setTransaksiYangDiedit(null)
-                    await muatData(formTransaksi.tanggal)
-
-                    setFormTransaksi({
-                      tanggal: formTransaksi.tanggal,
-                      keterangan: "",
-                      nominal: "",
-                      tipe: "KREDIT",
-                    })
-                  })
-                }}
+                onClick={simpanFormTransaksi}
                 className="h-10 rounded-lg bg-zinc-900 px-5 text-xs font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isMemproses ? "Menyimpan..." : "Simpan Transaksi"}
