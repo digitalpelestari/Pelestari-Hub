@@ -172,6 +172,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               title: "Bank Pasif",
               url: "/dashboard/finance/rekonsiliasi-bank/bank-pasif",
             },
+            {
+              title: "Petty Cash",
+              url: "/dashboard/finance/rekonsiliasi-bank/petty-cash",
+            },
           ],
         },
 

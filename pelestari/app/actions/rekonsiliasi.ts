@@ -12,6 +12,7 @@ import { revalidatePath } from "next/cache";
 const KODE_AKUN_BANK = {
   AKTIF: "11200",
   PASIF: "11300",
+  PETTY_CASH: "11100",
 } as const
 
 // ============================================================================
@@ -620,7 +621,8 @@ export async function simpanHasilImportBank(
 
   if (
     noAkunBank !== KODE_AKUN_BANK.AKTIF &&
-    noAkunBank !== KODE_AKUN_BANK.PASIF
+    noAkunBank !== KODE_AKUN_BANK.PASIF &&
+    noAkunBank !== KODE_AKUN_BANK.PETTY_CASH
   ) {
     return {
       success: false,
@@ -687,7 +689,8 @@ export async function tambahTransaksiBank(data: {
 }) {
   if (
     data.noAkunBank !== KODE_AKUN_BANK.AKTIF &&
-    data.noAkunBank !== KODE_AKUN_BANK.PASIF
+    data.noAkunBank !== KODE_AKUN_BANK.PASIF && 
+    data.noAkunBank !== KODE_AKUN_BANK.PETTY_CASH
   ) {
     return {
       success: false,
