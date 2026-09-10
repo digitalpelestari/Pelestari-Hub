@@ -51,11 +51,33 @@ interface JurnalDetailRow extends RowDataPacket {
 }
 
 /**
- * Range tanggal aman untuk kolom DATE maupun DATETIME/TIMESTAMP
- * (lihat catatan di versi sebelumnya soal kenapa "=" langsung tidak dipakai).
+ * Range tanggal aman untuk kolom DATE maupun DATETIME/TIMESTAMP.
+ * Menerima satu tanggal (dipakai sebagai mulai=akhir) atau dua tanggal (range).
  */
-function rangeTanggal(tanggal: string) {
-  return { mulai: `${tanggal} 00:00:00`, akhir: `${tanggal} 23:59:59.999999` };
+function rangeTanggal(tanggalMulai: string, tanggalSampai: string = tanggalMulai) {
+  return {
+    mulai: `${tanggalMulai} 00:00:00`,
+    akhir: `${tanggalSampai} 23:59:59.999999`,
+  }
+}
+
+/**
+ * Format tanggal ke YYYY-MM-DD menggunakan waktu LOKAL server, BUKAN UTC.
+ * Sengaja tidak pakai `.toISOString()` di sini karena itu selalu mengonversi
+ * ke UTC dan bisa menggeser tanggal +/-1 hari tergantung timezone server
+ * (mis. server di UTC sementara data dientry dalam WIB/UTC+7).
+ * Semua perbandingan tanggal di file ini WAJIB lewat fungsi ini supaya konsisten.
+ */
+function formatTanggal(rowTanggal: string | Date) {
+  if (rowTanggal instanceof Date) {
+    const tahun = rowTanggal.getFullYear()
+    const bulan = String(rowTanggal.getMonth() + 1).padStart(2, "0")
+    const hari = String(rowTanggal.getDate()).padStart(2, "0")
+
+    return `${tahun}-${bulan}-${hari}`
+  }
+
+  return String(rowTanggal).slice(0, 10)
 }
 
 /** debit > 0 -> DEBIT, selain itu KREDIT. Nominal diambil dari kolom yang > 0. */
@@ -71,56 +93,54 @@ function tipeDanNominalDariJurnalDetail(debit: string, kredit: string) {
 // ============================================================================
 // 1. AMBIL DATA HARIAN (BANK + GL) LENGKAP DENGAN STATUS
 // ============================================================================
-function formatTanggal(rowTanggal: string | Date) {
-  if (rowTanggal instanceof Date) {
-    const tahun = rowTanggal.getFullYear()
-    const bulan = String(rowTanggal.getMonth() + 1).padStart(2, "0")
-    const hari = String(rowTanggal.getDate()).padStart(2, "0")
 
-    return `${tahun}-${bulan}-${hari}`
-  }
-
-  return String(rowTanggal).slice(0, 10)
-}
 export async function getDataRekonsiliasiHarian(
-  tanggal: string,
+  tanggalMulai: string,
+  tanggalSampai: string,
   noAkunBank: string = KODE_AKUN_BANK.AKTIF
 ) {
-  const { mulai, akhir } = rangeTanggal(tanggal);
+  const { mulai, akhir } = rangeTanggal(tanggalMulai, tanggalSampai)
 
- const [bankRows] = await db.execute<BankTransaksiRow[]>(
-  `SELECT
-      bt.id,
-      bt.tanggal,
-      bt.keterangan,
-      bt.nominal,
-      bt.tipe,
-      r.jurnal_item_id
-   FROM tb_bank_transaksi bt
-   JOIN tb_akun a ON a.id = bt.akun_id
-   LEFT JOIN tb_rekonsiliasi r ON r.bank_transaksi_id = bt.id
-   WHERE a.no_akun = ?
-     AND bt.tanggal BETWEEN ? AND ?
-   ORDER BY bt.id ASC`,
-  [noAkunBank, mulai, akhir]
-);
+  const [bankRows] = await db.execute<BankTransaksiRow[]>(
+    `SELECT
+        bt.id,
+        bt.tanggal,
+        bt.keterangan,
+        bt.nominal,
+        bt.tipe,
+        r.jurnal_item_id
+     FROM tb_bank_transaksi bt
+     JOIN tb_akun a
+       ON a.id = bt.akun_id
+     LEFT JOIN tb_rekonsiliasi r
+       ON r.bank_transaksi_id = bt.id
+     WHERE a.no_akun = ?
+       AND bt.tanggal BETWEEN ? AND ?
+     ORDER BY bt.id ASC`,
+    [noAkunBank, mulai, akhir]
+  )
 
   const [glRows] = await db.execute<JurnalDetailRow[]>(
     `SELECT
-        jd.id,
+        jd_lawan.id,
         j.tanggal,
-        COALESCE(jd.keterangan, j.keterangan) AS keterangan,
-        jd.debit,
-        jd.kredit,
+        COALESCE(jd_lawan.keterangan, j.keterangan) AS keterangan,
+        jd_lawan.debit,
+        jd_lawan.kredit,
         r.bank_transaksi_id
-     FROM tb_jurnal_item jd
-     JOIN tb_jurnal j ON j.id = jd.jurnal_id
-     LEFT JOIN tb_rekonsiliasi r ON r.jurnal_item_id = jd.id
-     WHERE jd.no_akun = ?
+     FROM tb_jurnal_item jd_bank
+     JOIN tb_jurnal j
+       ON j.id = jd_bank.jurnal_id
+     JOIN tb_jurnal_item jd_lawan
+       ON jd_lawan.jurnal_id = jd_bank.jurnal_id
+      AND jd_lawan.id <> jd_bank.id
+     LEFT JOIN tb_rekonsiliasi r
+       ON r.jurnal_item_id = jd_lawan.id
+     WHERE jd_bank.no_akun = ?
        AND j.tanggal BETWEEN ? AND ?
-     ORDER BY jd.id ASC`,
+     ORDER BY jd_lawan.id ASC`,
     [noAkunBank, mulai, akhir]
-  );
+  )
 
   const bank: TransaksiRekonDTO[] = bankRows.map((row) => ({
     id: row.id,
@@ -128,65 +148,195 @@ export async function getDataRekonsiliasiHarian(
     keterangan: row.keterangan,
     nominal: Number(row.nominal),
     tipe: row.tipe,
-    status: row.jurnal_item_id ? "TERHUBUNG" : "BELUM_TERHUBUNG",
+    status: row.jurnal_item_id
+      ? "TERHUBUNG"
+      : "BELUM_TERHUBUNG",
     pasanganId: row.jurnal_item_id,
-  }));
+  }))
 
   const gl: TransaksiRekonDTO[] = glRows.map((row) => {
-    const { tipe, nominal } = tipeDanNominalDariJurnalDetail(row.debit, row.kredit);
+    const { tipe, nominal } =
+      tipeDanNominalDariJurnalDetail(
+        row.debit,
+        row.kredit
+      )
+
     return {
       id: row.id,
       tanggal: formatTanggal(row.tanggal),
       keterangan: row.keterangan ?? "-",
       nominal,
       tipe,
-      status: row.bank_transaksi_id ? "TERHUBUNG" : "BELUM_TERHUBUNG",
+      status: row.bank_transaksi_id
+        ? "TERHUBUNG"
+        : "BELUM_TERHUBUNG",
       pasanganId: row.bank_transaksi_id,
-    };
-  });
+    }
+  })
 
-  return { bank, gl };
+  return { bank, gl }
 }
-
 
 // ============================================================================
 // 2. COCOKKAN MANUAL (1 TRANSAKSI BANK <-> 1 BARIS JURNAL DETAIL)
 // ============================================================================
 
-export async function cocokkanTransaksi(bankTransaksiId: number, jurnalDetailId: number) {
-  const connection: PoolConnection = await db.getConnection();
+export async function cocokkanTransaksi(
+  bankTransaksiId: number,
+  jurnalDetailId: number
+) {
+  const connection: PoolConnection = await db.getConnection()
 
   try {
-    await connection.beginTransaction();
+    await connection.beginTransaction()
 
-    const [existing] = await connection.execute<RowDataPacket[]>(
-      `SELECT id FROM tb_rekonsiliasi
-       WHERE bank_transaksi_id = ? OR jurnal_item_id = ?
-       FOR UPDATE`,
-      [bankTransaksiId, jurnalDetailId]
-    );
+    // ================================================================
+    // 1. Ambil transaksi bank
+    // ================================================================
+    const [bankRows] = await connection.execute<RowDataPacket[]>(
+      `
+        SELECT
+          bt.id,
+          bt.tanggal,
+          bt.nominal,
+          bt.tipe,
+          a.no_akun
+        FROM tb_bank_transaksi bt
+        JOIN tb_akun a
+          ON a.id = bt.akun_id
+        WHERE bt.id = ?
+        LIMIT 1
+      `,
+      [bankTransaksiId]
+    )
 
-    if (existing.length > 0) {
-      await connection.rollback();
-      throw new Error(
-        "Salah satu transaksi sudah direkonsiliasi sebelumnya. Batalkan dulu jika ingin mengganti pasangan."
-      );
+    if (bankRows.length === 0) {
+      await connection.rollback()
+      throw new Error("Transaksi bank tidak ditemukan.")
     }
 
-    await connection.execute<ResultSetHeader>(
-      `INSERT INTO tb_rekonsiliasi (bank_transaksi_id, jurnal_item_id) VALUES (?, ?)`,
-      [bankTransaksiId, jurnalDetailId]
-    );
+    const bank = bankRows[0]
 
-    await connection.commit();
+    // ================================================================
+    // 2. Ambil transaksi jurnal
+    //    Baris jurnal yang dipilih harus berasal dari jurnal yang punya
+    //    baris lawan dengan no_akun = akun bank yang sama.
+    // ================================================================
+    const [glRows] = await connection.execute<RowDataPacket[]>(
+      `
+        SELECT
+          jd.id,
+          j.tanggal,
+          jd.debit,
+          jd.kredit
+        FROM tb_jurnal_item jd
+        JOIN tb_jurnal j
+          ON j.id = jd.jurnal_id
+        WHERE jd.id = ?
+          AND jd.no_akun <> ?
+          AND EXISTS (
+            SELECT 1
+            FROM tb_jurnal_item jd_bank
+            WHERE jd_bank.jurnal_id = jd.jurnal_id
+              AND jd_bank.no_akun = ?
+          )
+        LIMIT 1
+      `,
+      [jurnalDetailId, bank.no_akun, bank.no_akun]
+    )
+
+    if (glRows.length === 0) {
+      await connection.rollback()
+      throw new Error(
+        "Transaksi jurnal tidak ditemukan atau bukan lawan transaksi dari akun bank ini."
+      )
+    }
+
+    const gl = glRows[0]
+
+    // ================================================================
+    // 3. Pastikan keduanya belum pernah direkonsiliasi
+    // ================================================================
+    const [existing] = await connection.execute<RowDataPacket[]>(
+      `
+        SELECT id
+        FROM tb_rekonsiliasi
+        WHERE bank_transaksi_id = ?
+           OR jurnal_item_id = ?
+        FOR UPDATE
+      `,
+      [bankTransaksiId, jurnalDetailId]
+    )
+
+    if (existing.length > 0) {
+      await connection.rollback()
+      throw new Error(
+        "Salah satu transaksi sudah direkonsiliasi sebelumnya. Batalkan dulu jika ingin mengganti pasangan."
+      )
+    }
+
+    // ================================================================
+    // 4. Tentukan tipe dan nominal jurnal
+    // ================================================================
+    const { tipe: tipeGL, nominal: nominalGL } =
+      tipeDanNominalDariJurnalDetail(String(gl.debit), String(gl.kredit))
+
+    const nominalBank = Number(bank.nominal)
+
+    // ================================================================
+    // 5. Validasi tanggal
+    // ================================================================
+    const tanggalBank = formatTanggal(bank.tanggal)
+    const tanggalGL = formatTanggal(gl.tanggal)
+
+    if (tanggalBank !== tanggalGL) {
+      await connection.rollback()
+      throw new Error(
+        `Transaksi tidak dapat dicocokkan karena tanggal berbeda (bank: ${tanggalBank}, jurnal: ${tanggalGL}).`
+      )
+    }
+
+    // ================================================================
+    // 6. Validasi tipe
+    // ================================================================
+    if (tipeGL !== bank.tipe) {
+      await connection.rollback()
+      throw new Error(
+        `Tipe transaksi tidak sesuai. Koran ${bank.tipe}, jurnal ${tipeGL}.`
+      )
+    }
+
+    // ================================================================
+    // 7. Validasi nominal
+    // ================================================================
+    if (nominalBank !== nominalGL) {
+      await connection.rollback()
+      throw new Error(
+        `Transaksi tidak dapat dicocokkan karena nominal berbeda (bank: ${nominalBank}, jurnal: ${nominalGL}).`
+      )
+    }
+
+    // ================================================================
+    // 8. Semua valid → simpan pasangan
+    // ================================================================
+    await connection.execute<ResultSetHeader>(
+      `
+        INSERT INTO tb_rekonsiliasi
+        (bank_transaksi_id, jurnal_item_id)
+        VALUES (?, ?)
+      `,
+      [bankTransaksiId, jurnalDetailId]
+    )
+
+    await connection.commit()
   } catch (err) {
-    await connection.rollback();
-    throw err;
+    await connection.rollback()
+    throw err
   } finally {
-    connection.release();
+    connection.release()
   }
 
-  revalidatePath("/rekonsiliasi-bank");
+  revalidatePath("/rekonsiliasi-bank")
 }
 
 // ============================================================================
@@ -207,105 +357,179 @@ export async function batalkanPencocokan(bankTransaksiId: number) {
 }
 
 // ============================================================================
-// 4. COCOKKAN OTOMATIS (1 HARI PENUH)
+// 4. COCOKKAN OTOMATIS (RENTANG TANGGAL)
+//    PERBAIKAN:
+//    - Sekarang menerima tanggalMulai & tanggalSampai (bukan satu tanggal),
+//      supaya SELALU sinkron dengan rentang yang sedang ditampilkan di layar.
+//    - Perbandingan tanggal antara transaksi bank & jurnal memakai
+//      formatTanggal() (waktu lokal), bukan .toISOString() (UTC), supaya
+//      tidak geser hari akibat timezone server.
 // ============================================================================
 
 export async function cocokkanOtomatisHarian(
-  tanggal: string,
+  tanggalMulai: string,
+  tanggalSampai: string = tanggalMulai,
   noAkunBank: string = KODE_AKUN_BANK.AKTIF
 ) {
-  const { mulai, akhir } = rangeTanggal(tanggal);
-  const connection: PoolConnection = await db.getConnection();
+  const { mulai, akhir } = rangeTanggal(tanggalMulai, tanggalSampai)
+  const connection: PoolConnection = await db.getConnection()
 
   try {
-    await connection.beginTransaction();
+    await connection.beginTransaction()
 
-    const [bankBelum] = await connection.execute<BankTransaksiRow[]>(
-      `SELECT bt.id, bt.nominal, bt.tipe
-       FROM tb_bank_transaksi bt
-       LEFT JOIN tb_rekonsiliasi r ON r.bank_transaksi_id = bt.id
-       WHERE bt.tanggal BETWEEN ? AND ? AND r.id IS NULL
-       ORDER BY bt.id ASC
-       FOR UPDATE`,
-      [mulai, akhir]
-    );
-
-    const [glBelum] = await connection.execute<JurnalDetailRow[]>(
-      `SELECT jd.id, jd.debit, jd.kredit
-       FROM tb_jurnal_item jd
-       JOIN tb_jurnal j ON j.id = jd.jurnal_id
-       LEFT JOIN tb_rekonsiliasi r ON r.jurnal_item_id = jd.id
-       WHERE jd.no_akun = ?
-         AND j.tanggal BETWEEN ? AND ?
-         AND r.id IS NULL
-       ORDER BY jd.id ASC
-       FOR UPDATE`,
+    // ================================================================
+    // 1. Ambil transaksi bank yang belum direkonsiliasi
+    // ================================================================
+    const [bankBelum] = await connection.execute<RowDataPacket[]>(
+      `
+        SELECT
+          bt.id,
+          bt.nominal,
+          bt.tipe,
+          bt.tanggal
+        FROM tb_bank_transaksi bt
+        JOIN tb_akun a
+          ON a.id = bt.akun_id
+        LEFT JOIN tb_rekonsiliasi r
+          ON r.bank_transaksi_id = bt.id
+        WHERE a.no_akun = ?
+          AND bt.tanggal BETWEEN ? AND ?
+          AND r.id IS NULL
+        ORDER BY bt.id ASC
+        FOR UPDATE
+      `,
       [noAkunBank, mulai, akhir]
-    );
+    )
+
+    // ================================================================
+    // 2. Ambil jurnal item lawan yang belum direkonsiliasi
+    // ================================================================
+    const [glBelum] = await connection.execute<RowDataPacket[]>(
+      `
+        SELECT
+          jd_lawan.id,
+          j.tanggal,
+          jd_lawan.debit,
+          jd_lawan.kredit
+        FROM tb_jurnal_item jd_bank
+        JOIN tb_jurnal j
+          ON j.id = jd_bank.jurnal_id
+        JOIN tb_jurnal_item jd_lawan
+          ON jd_lawan.jurnal_id = jd_bank.jurnal_id
+         AND jd_lawan.id <> jd_bank.id
+        LEFT JOIN tb_rekonsiliasi r
+          ON r.jurnal_item_id = jd_lawan.id
+        WHERE jd_bank.no_akun = ?
+          AND j.tanggal BETWEEN ? AND ?
+          AND r.id IS NULL
+        ORDER BY jd_lawan.id ASC
+        FOR UPDATE
+      `,
+      [noAkunBank, mulai, akhir]
+    )
 
     const glTersedia = glBelum.map((row) => ({
-      id: row.id,
-      ...tipeDanNominalDariJurnalDetail(row.debit, row.kredit),
-    }));
+      id: Number(row.id),
+      tanggal: formatTanggal(row.tanggal), // sudah dinormalisasi di sini
+      ...tipeDanNominalDariJurnalDetail(String(row.debit), String(row.kredit)),
+    }))
 
-    const pasangan: { bankTransaksiId: number; jurnalDetailId: number }[] = [];
+    // ================================================================
+    // 3. Cari pasangan (tanggal, tipe, nominal harus sama persis)
+    // ================================================================
+    const pasangan: {
+      bankTransaksiId: number
+      jurnalDetailId: number
+    }[] = []
 
-    for (const b of bankBelum) {
+    for (const bank of bankBelum) {
+      const tanggalBank = formatTanggal(bank.tanggal)
+
       const idx = glTersedia.findIndex(
-        (g) => g.tipe === b.tipe && g.nominal === Number(b.nominal)
-      );
+        (gl) =>
+          gl.tipe === bank.tipe &&
+          gl.nominal === Number(bank.nominal) &&
+          gl.tanggal === tanggalBank
+      )
+
       if (idx !== -1) {
-        pasangan.push({ bankTransaksiId: b.id, jurnalDetailId: glTersedia[idx].id });
-        glTersedia.splice(idx, 1);
+        pasangan.push({
+          bankTransaksiId: Number(bank.id),
+          jurnalDetailId: glTersedia[idx].id,
+        })
+
+        // Jangan sampai satu jurnal dipakai untuk dua transaksi bank
+        glTersedia.splice(idx, 1)
       }
     }
 
+    // ================================================================
+    // 4. Simpan hasil pencocokan
+    // ================================================================
     if (pasangan.length > 0) {
-      const values = pasangan.map((p) => [p.bankTransaksiId, p.jurnalDetailId]);
+      const values = pasangan.map((p) => [p.bankTransaksiId, p.jurnalDetailId])
+
       await connection.query(
-        `INSERT INTO tb_rekonsiliasi (bank_transaksi_id, jurnal_item_id) VALUES ?`,
+        `
+          INSERT INTO tb_rekonsiliasi
+          (bank_transaksi_id, jurnal_item_id)
+          VALUES ?
+        `,
         [values]
-      );
+      )
     }
 
-    await connection.commit();
+    await connection.commit()
 
     if (pasangan.length > 0) {
-      revalidatePath("/rekonsiliasi-bank");
+      revalidatePath("/rekonsiliasi-bank")
     }
 
-    return { jumlahCocok: pasangan.length };
+    return {
+      jumlahCocok: pasangan.length,
+    }
   } catch (err) {
-    await connection.rollback();
-    throw err;
+    await connection.rollback()
+    throw err
   } finally {
-    connection.release();
+    connection.release()
   }
 }
 
 // ============================================================================
-// 5. SIMPAN HASIL PARSING PDF REKENING KORAN
+// 5. TUTUP BUKU (RENTANG TANGGAL)
+//    PERBAIKAN: menerima tanggalMulai & tanggalSampai supaya sinkron dengan
+//    rentang yang ditampilkan, bukan tanggal aktif yang bisa berbeda.
 // ============================================================================
 
-interface HasilParsingBank {
-  keterangan: string;
-  nominal: number;
-  tipe: TipeTransaksi;
-}
-
 export async function tutupBukuHarian(
-  tanggal: string,
-  noAkunBank: string
+  tanggalMulai: string,
+  tanggalSampai: string = tanggalMulai,
+  noAkunBank: string = KODE_AKUN_BANK.AKTIF
 ) {
-  const { mulai, akhir } = rangeTanggal(tanggal)
+  const { mulai, akhir } = rangeTanggal(tanggalMulai, tanggalSampai)
 
   try {
-    // Cek transaksi bank yang belum terhubung
+    // ================================================================
+    // 1. Cek transaksi bank yang belum terhubung
+    // ================================================================
+    const [akunRows] = await db.execute<RowDataPacket[]>(
+    `
+        SELECT nama_akun
+        FROM tb_akun
+        WHERE no_akun = ?
+          AND is_aktif = 1
+        LIMIT 1
+      `,
+      [noAkunBank]
+    )
+
     const [bankBelum] = await db.execute<RowDataPacket[]>(
       `
         SELECT COUNT(*) AS jumlah
         FROM tb_bank_transaksi bt
-        JOIN tb_akun a ON a.id = bt.akun_id
+        JOIN tb_akun a
+          ON a.id = bt.akun_id
         LEFT JOIN tb_rekonsiliasi r
           ON r.bank_transaksi_id = bt.id
         WHERE a.no_akun = ?
@@ -315,16 +539,23 @@ export async function tutupBukuHarian(
       [noAkunBank, mulai, akhir]
     )
 
-    // Cek jurnal GL yang belum terhubung
+    const namaAkunBank = akunRows[0]?.nama_akun ?? "Bank"
+
+    // ================================================================
+    // 2. Cek jurnal lawan yang belum terhubung
+    // ================================================================
     const [glBelum] = await db.execute<RowDataPacket[]>(
       `
         SELECT COUNT(*) AS jumlah
-        FROM tb_jurnal_item jd
+        FROM tb_jurnal_item jd_bank
         JOIN tb_jurnal j
-          ON j.id = jd.jurnal_id
+          ON j.id = jd_bank.jurnal_id
+        JOIN tb_jurnal_item jd_lawan
+          ON jd_lawan.jurnal_id = jd_bank.jurnal_id
+         AND jd_lawan.id <> jd_bank.id
         LEFT JOIN tb_rekonsiliasi r
-          ON r.jurnal_item_id = jd.id
-        WHERE jd.no_akun = ?
+          ON r.jurnal_item_id = jd_lawan.id
+        WHERE jd_bank.no_akun = ?
           AND j.tanggal BETWEEN ? AND ?
           AND r.id IS NULL
       `,
@@ -334,51 +565,118 @@ export async function tutupBukuHarian(
     const jumlahBankBelum = Number(bankBelum[0]?.jumlah ?? 0)
     const jumlahGlBelum = Number(glBelum[0]?.jumlah ?? 0)
 
+    // ================================================================
+    // 3. Tidak boleh tutup jika masih ada yang belum match
+    // ================================================================
     if (jumlahBankBelum > 0 || jumlahGlBelum > 0) {
       return {
         success: false,
         message:
-          "Rekonsiliasi belum selesai. Masih ada transaksi yang belum terhubung.",
+          `Rekonsiliasi belum selesai. ` +
+          `Bank belum terhubung: ${jumlahBankBelum}, ` +
+          `Jurnal belum terhubung: ${jumlahGlBelum}.`,
       }
     }
 
     return {
       success: true,
-      message: `Rekonsiliasi Bank ${noAkunBank} tanggal ${tanggal} berhasil diselesaikan.`,
+      message:
+        tanggalMulai === tanggalSampai
+          ? `Rekonsiliasi Bank ${namaAkunBank} tanggal ${tanggalMulai} berhasil diselesaikan.`
+          : `Rekonsiliasi Bank ${namaAkunBank} periode ${tanggalMulai} s/d ${tanggalSampai} berhasil diselesaikan.`,
     }
   } catch (error) {
-    console.error("Gagal menutup buku harian:", error)
+    console.error("Gagal menutup buku:", error)
 
     return {
       success: false,
-      message: "Gagal menyelesaikan rekonsiliasi harian.",
+      message: "Gagal menyelesaikan rekonsiliasi.",
     }
   }
+}
+
+// ============================================================================
+// 6. SIMPAN HASIL PARSING PDF REKENING KORAN
+// ============================================================================
+
+interface HasilParsingBank {
+  keterangan: string;
+  nominal: number;
+  tipe: TipeTransaksi;
 }
 
 export async function simpanHasilImportBank(
   tanggal: string,
-  daftarTransaksi: HasilParsingBank[]
+  daftarTransaksi: HasilParsingBank[],
+  noAkunBank: string
 ) {
   if (daftarTransaksi.length === 0) {
-    return { jumlahDisimpan: 0 };
+    return {
+      success: true,
+      message: "Tidak ada transaksi untuk disimpan.",
+      jumlahDisimpan: 0,
+    }
   }
 
+  if (
+    noAkunBank !== KODE_AKUN_BANK.AKTIF &&
+    noAkunBank !== KODE_AKUN_BANK.PASIF
+  ) {
+    return {
+      success: false,
+      message: "Akun bank tidak valid.",
+    }
+  }
+
+  const [akunRows] = await db.execute<RowDataPacket[]>(
+    `
+      SELECT id
+      FROM tb_akun
+      WHERE no_akun = ?
+        AND is_aktif = 1
+      LIMIT 1
+    `,
+    [noAkunBank]
+  )
+
+  if (akunRows.length === 0) {
+    return {
+      success: false,
+      message: "Akun bank tidak ditemukan.",
+    }
+  }
+
+  const akunId = akunRows[0].id
+
   const values = daftarTransaksi.map((t) => [
+    akunId,
     tanggal,
     t.keterangan,
     t.nominal,
     t.tipe,
-  ]);
+  ])
 
   await db.query(
-    `INSERT INTO tb_bank_transaksi (tanggal, keterangan, nominal, tipe) VALUES ?`,
+    `
+      INSERT INTO tb_bank_transaksi
+      (akun_id, tanggal, keterangan, nominal, tipe)
+      VALUES ?
+    `,
     [values]
-  );
+  )
 
-  revalidatePath("/rekonsiliasi-bank");
-  return { jumlahDisimpan: daftarTransaksi.length };
+  revalidatePath("/rekonsiliasi-bank")
+
+  return {
+    success: true,
+    message: `${daftarTransaksi.length} transaksi bank telah disimpan.`,
+    jumlahDisimpan: daftarTransaksi.length,
+  }
 }
+
+// ============================================================================
+// 7. CRUD TRANSAKSI BANK MANUAL
+// ============================================================================
 
 export async function tambahTransaksiBank(data: {
   tanggal: string
@@ -388,21 +686,20 @@ export async function tambahTransaksiBank(data: {
   noAkunBank: string
 }) {
   if (
-  data.noAkunBank !== "11200" &&
-  data.noAkunBank !== "11300"
-) {
-  return {
-    success: false,
-    message: "Akun bank tidak valid.",
+    data.noAkunBank !== KODE_AKUN_BANK.AKTIF &&
+    data.noAkunBank !== KODE_AKUN_BANK.PASIF
+  ) {
+    return {
+      success: false,
+      message: "Akun bank tidak valid.",
+    }
   }
-}
 
   const connection = await db.getConnection()
 
   try {
     await connection.beginTransaction()
 
-    // Cari ID akun berdasarkan nomor akun
     const [akunRows] = await connection.execute<RowDataPacket[]>(
       `
         SELECT id
@@ -416,7 +713,6 @@ export async function tambahTransaksiBank(data: {
 
     if (akunRows.length === 0) {
       await connection.rollback()
-
       return {
         success: false,
         message: "Akun bank tidak ditemukan.",
@@ -431,16 +727,12 @@ export async function tambahTransaksiBank(data: {
         (akun_id, tanggal, keterangan, nominal, tipe)
         VALUES (?, ?, ?, ?, ?)
       `,
-      [
-        akunId,
-        data.tanggal,
-        data.keterangan,
-        data.nominal,
-        data.tipe,
-      ]
+      [akunId, data.tanggal, data.keterangan, data.nominal, data.tipe]
     )
 
     await connection.commit()
+
+    revalidatePath("/rekonsiliasi-bank")
 
     return {
       success: true,
@@ -448,9 +740,7 @@ export async function tambahTransaksiBank(data: {
     }
   } catch (error) {
     await connection.rollback()
-
     console.error("Gagal menambahkan transaksi bank:", error)
-
     return {
       success: false,
       message: "Gagal menambahkan transaksi bank.",
@@ -472,8 +762,7 @@ export async function editTransaksiBank(data: {
   try {
     await connection.beginTransaction()
 
-    // Cek apakah transaksi ada
-    const [transaksiRows] = await connection.execute(
+    const [transaksiRows] = await connection.execute<RowDataPacket[]>(
       `
         SELECT id
         FROM tb_bank_transaksi
@@ -483,23 +772,15 @@ export async function editTransaksiBank(data: {
       [data.id]
     )
 
-    const transaksi = (
-      transaksiRows as {
-        id: number
-      }[]
-    )[0]
-
-    if (!transaksi) {
+    if (transaksiRows.length === 0) {
       await connection.rollback()
-
       return {
         success: false,
         message: "Transaksi bank tidak ditemukan.",
       }
     }
 
-    // Jangan izinkan edit jika sudah direkonsiliasi
-    const [rekonRows] = await connection.execute(
+    const [rekonRows] = await connection.execute<RowDataPacket[]>(
       `
         SELECT id
         FROM tb_rekonsiliasi
@@ -509,9 +790,8 @@ export async function editTransaksiBank(data: {
       [data.id]
     )
 
-    if ((rekonRows as { id: number }[]).length > 0) {
+    if (rekonRows.length > 0) {
       await connection.rollback()
-
       return {
         success: false,
         message:
@@ -519,7 +799,6 @@ export async function editTransaksiBank(data: {
       }
     }
 
-    // Update transaksi bank
     await connection.execute(
       `
         UPDATE tb_bank_transaksi
@@ -530,13 +809,7 @@ export async function editTransaksiBank(data: {
           tipe = ?
         WHERE id = ?
       `,
-      [
-        data.tanggal,
-        data.keterangan,
-        data.nominal,
-        data.tipe,
-        data.id,
-      ]
+      [data.tanggal, data.keterangan, data.nominal, data.tipe, data.id]
     )
 
     await connection.commit()
@@ -549,9 +822,7 @@ export async function editTransaksiBank(data: {
     }
   } catch (error) {
     await connection.rollback()
-
     console.error("Gagal mengedit transaksi bank:", error)
-
     return {
       success: false,
       message: "Gagal mengedit transaksi bank.",
@@ -567,8 +838,7 @@ export async function hapusTransaksiBank(id: number) {
   try {
     await connection.beginTransaction()
 
-    // Cek apakah transaksi ada
-    const [transaksiRows] = await connection.execute(
+    const [transaksiRows] = await connection.execute<RowDataPacket[]>(
       `
         SELECT id
         FROM tb_bank_transaksi
@@ -578,23 +848,15 @@ export async function hapusTransaksiBank(id: number) {
       [id]
     )
 
-    const transaksi = (
-      transaksiRows as {
-        id: number
-      }[]
-    )[0]
-
-    if (!transaksi) {
+    if (transaksiRows.length === 0) {
       await connection.rollback()
-
       return {
         success: false,
         message: "Transaksi bank tidak ditemukan.",
       }
     }
 
-    // Jangan boleh hapus transaksi yang sudah direkonsiliasi
-    const [rekonRows] = await connection.execute(
+    const [rekonRows] = await connection.execute<RowDataPacket[]>(
       `
         SELECT id
         FROM tb_rekonsiliasi
@@ -604,9 +866,8 @@ export async function hapusTransaksiBank(id: number) {
       [id]
     )
 
-    if ((rekonRows as { id: number }[]).length > 0) {
+    if (rekonRows.length > 0) {
       await connection.rollback()
-
       return {
         success: false,
         message:
@@ -614,7 +875,6 @@ export async function hapusTransaksiBank(id: number) {
       }
     }
 
-    // Hapus transaksi bank
     await connection.execute(
       `
         DELETE FROM tb_bank_transaksi
@@ -633,9 +893,7 @@ export async function hapusTransaksiBank(id: number) {
     }
   } catch (error) {
     await connection.rollback()
-
     console.error("Gagal menghapus transaksi bank:", error)
-
     return {
       success: false,
       message: "Gagal menghapus transaksi bank.",

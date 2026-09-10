@@ -198,8 +198,7 @@ function RingkasanCard({
 function PanelTransaksi({
   judul,
   tanggal,
-  tagLabel,
-  tagClassName,
+  headerRight,
   kolomTerakhir,
   data,
   isLoading,
@@ -215,8 +214,7 @@ function PanelTransaksi({
 }: {
   judul: string
   tanggal: string
-  tagLabel: string
-  tagClassName: string
+  headerRight?: React.ReactNode
   kolomTerakhir: string
   data: TransaksiRekonDTO[]
   isLoading: boolean
@@ -239,11 +237,7 @@ function PanelTransaksi({
             Tanggal: {tanggal}
           </span>
         </div>
-        <span
-          className={`rounded-sm px-2.5 py-1 text-[10px] font-black tracking-wide uppercase ${tagClassName}`}
-        >
-          {tagLabel}
-        </span>
+        {headerRight}
       </div>
 
       <div className="overflow-x-auto">
@@ -251,6 +245,7 @@ function PanelTransaksi({
           <thead className="border-b bg-zinc-100/80 text-xs tracking-wider text-zinc-700 uppercase">
             <tr>
               <th className="border-r p-3 font-bold">Pilih</th>
+              <th className="border-r p-3 font-bold">Tanggal</th>
               <th className="border-r p-3 font-bold">{kolomTerakhir}</th>
               <th className="border-r p-3 font-bold">Nominal</th>
               <th className="border-r p-3 font-bold">Tipe</th>
@@ -307,6 +302,9 @@ function PanelTransaksi({
                         />
                       )}
                     </td>
+                    <td className="border-r p-3 font-mono text-[11px] font-bold text-zinc-600">
+                      {item.tanggal}
+                    </td>
                     <td className="border-r p-3 font-medium text-zinc-700">
                       {item.keterangan}
                     </td>
@@ -352,7 +350,9 @@ export default function RekonsiliasiBankHarian() {
   const [formTransaksi, setFormTransaksi] = useState<FormTransaksi>(
     formTransaksiKosong()
   )
-  const [tanggalAktif, setTanggalAktif] = useState<string>(getTanggalHariIni())
+  const [tanggalMulai, setTanggalMulai] = useState<string>(getTanggalHariIni())
+  const [tanggalSampai, setTanggalSampai] =
+    useState<string>(getTanggalHariIni())
 
   const [dataBank, setDataBank] = useState<TransaksiRekonDTO[]>([])
   const [dataGL, setDataGL] = useState<TransaksiRekonDTO[]>([])
@@ -369,37 +369,40 @@ export default function RekonsiliasiBankHarian() {
   const sedangSibuk = isLoading || isMemproses
 
   // Ambil data terbaru dari server untuk tanggal tertentu
-  const muatData = useCallback(async (tanggal: string) => {
-    setErrorMsg(null)
-    try {
-      const hasil = await getDataRekonsiliasiHarian(tanggal, NO_AKUN_BANK)
-      setDataBank(hasil.bank)
-      setDataGL(hasil.gl)
-    } catch (err) {
-      setErrorMsg(
-        err instanceof Error ? err.message : "Gagal memuat data rekonsiliasi."
-      )
-    }
-  }, [])
+  const muatData = useCallback(
+    async (mulai: string = tanggalMulai, sampai: string = tanggalSampai) => {
+      try {
+        if (mulai > sampai) {
+          await swal.warning(
+            "Tanggal mulai tidak boleh lebih besar dari tanggal sampai."
+          )
+          return
+        }
 
-  // Muat ulang tiap kali tanggal aktif berubah
+        const hasil = await getDataRekonsiliasiHarian(
+          mulai,
+          sampai,
+          NO_AKUN_BANK
+        )
+
+        setDataBank(hasil.bank)
+        setDataGL(hasil.gl)
+      } catch (err) {
+        await swal.error(
+          err instanceof Error ? err.message : "Gagal memuat data rekonsiliasi."
+        )
+      }
+    },
+    [tanggalMulai, tanggalSampai]
+  )
   useEffect(() => {
     startLoadingTransition(() => {
-      muatData(tanggalAktif)
+      muatData(tanggalMulai, tanggalSampai)
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tanggalAktif])
-
+  }, [tanggalMulai, tanggalSampai, muatData])
   const resetPilihan = () => {
     setPilihanBankId(null)
     setPilihanGlId(null)
-  }
-
-  const ubahTanggal = (jumlahHari: number) => {
-    const tgl = new Date(tanggalAktif)
-    tgl.setDate(tgl.getDate() + jumlahHari)
-    setTanggalAktif(tgl.toISOString().split("T")[0])
-    resetPilihan()
   }
 
   const jalankanPencocokan = () => {
@@ -408,10 +411,13 @@ export default function RekonsiliasiBankHarian() {
     startMemprosesTransition(async () => {
       try {
         await cocokkanTransaksi(pilihanBankId, pilihanGlId)
+
         resetPilihan()
-        await muatData(tanggalAktif)
+        await muatData(tanggalMulai, tanggalSampai)
+
+        await swal.success("Transaksi berhasil dicocokkan.")
       } catch (err) {
-        setErrorMsg(
+        await swal.error(
           err instanceof Error ? err.message : "Gagal mencocokkan transaksi."
         )
       }
@@ -423,7 +429,7 @@ export default function RekonsiliasiBankHarian() {
     startMemprosesTransition(async () => {
       try {
         await batalkanPencocokan(bankTransaksiId)
-        await muatData(tanggalAktif)
+        await muatData(tanggalMulai, tanggalSampai)
       } catch (err) {
         setErrorMsg(
           err instanceof Error ? err.message : "Gagal membatalkan pencocokan."
@@ -436,19 +442,25 @@ export default function RekonsiliasiBankHarian() {
     const konfirmasi = await swal.confirm(
       "Apakah Anda yakin ingin menghapus transaksi bank ini?"
     )
+
     if (!konfirmasi) return
 
     startMemprosesTransition(async () => {
       try {
         const hasil = await hapusTransaksiBank(id)
+
         if (!hasil.success) {
-          setErrorMsg(hasil.message)
+          await swal.error(hasil.message)
           return
         }
+
         setPilihanBankId(null)
-        await muatData(tanggalAktif)
+
+        await muatData(tanggalMulai, tanggalSampai)
+
+        await swal.success("Transaksi bank berhasil dihapus.")
       } catch (err) {
-        setErrorMsg(
+        await swal.error(
           err instanceof Error ? err.message : "Gagal menghapus transaksi bank."
         )
       }
@@ -458,28 +470,26 @@ export default function RekonsiliasiBankHarian() {
   const jalankanTutupBukuHarian = () => {
     startMemprosesTransition(async () => {
       try {
-        const hasil = await tutupBukuHarian(tanggalAktif, NO_AKUN_BANK)
+        const hasil = await tutupBukuHarian(
+          tanggalMulai,
+          tanggalSampai,
+          NO_AKUN_BANK
+        )
+
         if (!hasil.success) {
-          setErrorMsg(hasil.message)
+          await swal.warning(hasil.message)
           return
         }
 
-setErrorMsg(null)
-
-        // Tampilkan notif menggunakan SweetAlert
         await swal.success(hasil.message)
 
-        const tanggalBerikutnya = new Date(tanggalAktif)
-        tanggalBerikutnya.setDate(tanggalBerikutnya.getDate() + 1)
-        const tanggalBaru = tanggalBerikutnya.toISOString().split("T")[0]
-
         resetPilihan()
-        setTanggalAktif(tanggalBaru)
+        await muatData(tanggalMulai, tanggalSampai)
       } catch (err) {
-        setErrorMsg(
+        await swal.error(
           err instanceof Error
             ? err.message
-            : "Gagal menyelesaikan rekonsiliasi harian."
+            : "Gagal menyelesaikan rekonsiliasi."
         )
       }
     })
@@ -489,17 +499,25 @@ setErrorMsg(null)
     startMemprosesTransition(async () => {
       try {
         const { jumlahCocok } = await cocokkanOtomatisHarian(
-          tanggalAktif,
+          tanggalMulai,
+          tanggalSampai,
           NO_AKUN_BANK
         )
-        await muatData(tanggalAktif)
+
+        await muatData(tanggalMulai, tanggalSampai)
+
         if (jumlahCocok === 0) {
-          setErrorMsg(
-            "Tidak ada transaksi yang cocok otomatis (tanggal, tipe, dan nominal harus sama persis)."
+          await swal.warning(
+            "Tidak ada transaksi yang cocok otomatis. Tanggal, tipe, dan nominal harus sama persis."
           )
+          return
         }
+
+        await swal.success(
+          `${jumlahCocok} transaksi berhasil dicocokkan secara otomatis.`
+        )
       } catch (err) {
-        setErrorMsg(
+        await swal.error(
           err instanceof Error
             ? err.message
             : "Gagal menjalankan pencocokan otomatis."
@@ -527,31 +545,45 @@ setErrorMsg(null)
 
   const simpanFormTransaksi = () => {
     startMemprosesTransition(async () => {
-      const hasil = transaksiYangDiedit
-        ? await editTransaksiBank({
-            id: transaksiYangDiedit,
-            tanggal: formTransaksi.tanggal,
-            keterangan: formTransaksi.keterangan,
-            nominal: Number(formTransaksi.nominal),
-            tipe: formTransaksi.tipe,
-          })
-        : await tambahTransaksiBank({
-            tanggal: formTransaksi.tanggal,
-            keterangan: formTransaksi.keterangan,
-            nominal: Number(formTransaksi.nominal),
-            tipe: formTransaksi.tipe,
-            noAkunBank: NO_AKUN_BANK,
-          })
+      try {
+        const hasil = transaksiYangDiedit
+          ? await editTransaksiBank({
+              id: transaksiYangDiedit,
+              tanggal: formTransaksi.tanggal,
+              keterangan: formTransaksi.keterangan,
+              nominal: Number(formTransaksi.nominal),
+              tipe: formTransaksi.tipe,
+            })
+          : await tambahTransaksiBank({
+              tanggal: formTransaksi.tanggal,
+              keterangan: formTransaksi.keterangan,
+              nominal: Number(formTransaksi.nominal),
+              tipe: formTransaksi.tipe,
+              noAkunBank: NO_AKUN_BANK,
+            })
 
-      if (!hasil.success) {
-        setErrorMsg(hasil.message)
-        return
+        if (!hasil.success) {
+          await swal.error(hasil.message)
+          return
+        }
+
+        setShowFormTransaksi(false)
+        setTransaksiYangDiedit(null)
+
+        await muatData(tanggalMulai, tanggalSampai)
+
+        setFormTransaksi(formTransaksiKosong())
+
+        await swal.success(
+          transaksiYangDiedit
+            ? "Transaksi bank berhasil diperbarui."
+            : "Transaksi bank berhasil ditambahkan."
+        )
+      } catch (err) {
+        await swal.error(
+          err instanceof Error ? err.message : "Gagal menyimpan transaksi bank."
+        )
       }
-
-      setShowFormTransaksi(false)
-      setTransaksiYangDiedit(null)
-      await muatData(formTransaksi.tanggal)
-      setFormTransaksi(formTransaksiKosong())
     })
   }
 
@@ -608,8 +640,7 @@ setErrorMsg(null)
               </h1>
             </div>
             <p className="pl-9 text-xs text-zinc-500">
-              Pencocokan transaksi mutasi bank dan jurnal untuk satu hari
-              kerja.
+              Pencocokan transaksi mutasi bank dan jurnal.
             </p>
           </div>
 
@@ -632,66 +663,122 @@ setErrorMsg(null)
               ))}
             </div>
 
-            {modePeriode === "HARIAN" && (
-              <div className="flex items-center gap-2 rounded-sm border border-zinc-200 bg-white p-1.5 shadow-sm">
-                <button
-                  onClick={() => ubahTanggal(-1)}
-                  disabled={sedangSibuk}
-                  className="h-8 rounded-sm border border-zinc-200 px-3 text-[11px] font-bold tracking-wide text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  &larr; Sebelumnya
-                </button>
+            {modePeriode === "HARIAN" ? (
+              <div className="flex items-end gap-4">
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold text-zinc-500 uppercase">
+                    Tanggal Mulai
+                  </label>
+                  <input
+                    type="date"
+                    value={tanggalMulai}
+                    disabled={sedangSibuk}
+                    onChange={(e) => {
+                      const v = e.target.value
 
-                <input
-                  type="date"
-                  value={tanggalAktif}
-                  disabled={sedangSibuk}
-                  onChange={(e) => {
-                    setTanggalAktif(e.target.value)
-                    resetPilihan()
-                  }}
-                  className="h-8 rounded-sm border border-zinc-200 bg-white px-2 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
-                />
+                      setTanggalMulai(v)
+                      resetPilihan()
 
-                <button
-                  onClick={() => ubahTanggal(1)}
-                  disabled={sedangSibuk}
-                  className="h-8 rounded-sm border border-zinc-200 px-3 text-[11px] font-bold tracking-wide text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Berikutnya &rarr;
-                </button>
+                      startLoadingTransition(() => {
+                        muatData(v, tanggalSampai)
+                      })
+                    }}
+                    className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold text-zinc-500 uppercase">
+                    Tanggal Sampai
+                  </label>
+                  <input
+                    type="date"
+                    value={tanggalSampai}
+                    disabled={sedangSibuk}
+                    onChange={(e) => {
+                      const v = e.target.value
+
+                      setTanggalSampai(v)
+                      resetPilihan()
+
+                      startLoadingTransition(() => {
+                        muatData(tanggalMulai, v)
+                      })
+                    }}
+                    className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
+                  />
+                </div>
               </div>
-            )}
+            ) : (
+              <div className="flex items-end gap-4">
+                {/* TANGGAL MULAI */}
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold text-zinc-500 uppercase">
+                    Tanggal Mulai
+                  </label>
+                  <input
+                    type="date"
+                    value={tanggalMulai}
+                    disabled={sedangSibuk}
+                    onChange={(e) => {
+                      const v = e.target.value
 
-            {modePeriode === "BULANAN" && (
-              <>
-                <input
-                  ref={inputPdfRef}
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  className="hidden"
-                  onChange={handleUploadPdf}
-                />
-                <button
-                  type="button"
-                  onClick={() => inputPdfRef.current?.click()}
-                  disabled={sedangSibuk}
-                  className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-semibold text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Impor Rekening Koran
-                </button>
-              </>
-            )}
+                      setTanggalMulai(v)
+                      resetPilihan()
 
-            {modePeriode === "HARIAN" && (
-              <button
-                type="button"
-                disabled={sedangSibuk}
-                onClick={bukaFormTambah}
-                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-semibold text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Tambah Transaksi
-              </button>
+                      startLoadingTransition(() => {
+                        muatData(v, tanggalSampai)
+                      })
+                    }}
+                    className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
+                  />
+                </div>
+
+                {/* TANGGAL SAMPAI */}
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold text-zinc-500 uppercase">
+                    Tanggal Sampai
+                  </label>
+                  <input
+                    type="date"
+                    value={tanggalSampai}
+                    disabled={sedangSibuk}
+                    onChange={(e) => {
+                      const v = e.target.value
+
+                      setTanggalSampai(v)
+                      resetPilihan()
+
+                      startLoadingTransition(() => {
+                        muatData(tanggalMulai, v)
+                      })
+                    }}
+                    className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
+                  />
+                </div>
+
+                {/* IMPORT REKENING KORAN - BULANAN */}
+                {modePeriode === "BULANAN" && (
+                  <>
+                    <input
+                      ref={inputPdfRef}
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      className="hidden"
+                      onChange={handleUploadPdf}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => inputPdfRef.current?.click()}
+                      disabled={sedangSibuk}
+                      className="h-10 rounded-lg border border-zinc-200 px-5 text-sm font-semibold text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Impor Rekening Koran
+                    </button>
+                  </>
+                )}
+              </div>
             )}
 
             <button
@@ -728,14 +815,22 @@ setErrorMsg(null)
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <RingkasanCard
             label="Bank Belum Terhubung"
-            sublabel={`Mutasi rekening koran (${tanggalAktif})`}
+            sublabel={
+              tanggalMulai === tanggalSampai
+                ? `Mutasi rekening koran (${tanggalMulai})`
+                : `Mutasi rekening koran (${tanggalMulai} s/d ${tanggalSampai})`
+            }
             value={formatIDR(totalBankBelumTerhubung)}
             icon={<Landmark className="h-4 w-4 text-zinc-600" />}
           />
 
           <RingkasanCard
             label="jurnal Belum Terhubung"
-            sublabel={`Jurnal GL 100-01 (${tanggalAktif})`}
+            sublabel={
+              tanggalMulai === tanggalSampai
+                ? `Mutasi rekening koran (${tanggalMulai})`
+                : `Mutasi rekening koran (${tanggalMulai} s/d ${tanggalSampai})`
+            }
             value={formatIDR(totalGlBelumTerhubung)}
             icon={<BookOpen className="h-4 w-4 text-zinc-600" />}
           />
@@ -778,9 +873,27 @@ setErrorMsg(null)
         <div className="mb-28 grid grid-cols-1 gap-6 lg:grid-cols-2">
           <PanelTransaksi
             judul="Rekening Koran (Bank)"
-            tanggal={tanggalAktif}
-            tagLabel="Bank BCA"
-            tagClassName="bg-blue-50 text-blue-700"
+            tanggal={
+              tanggalMulai === tanggalSampai
+                ? tanggalMulai
+                : `${tanggalMulai} s/d ${tanggalSampai}`
+            }
+            headerRight={
+              modePeriode === "HARIAN" ? (
+                <button
+                  type="button"
+                  disabled={sedangSibuk}
+                  onClick={bukaFormTambah}
+                  className="h-8 rounded-sm border border-zinc-200 bg-white px-3 text-[11px] font-bold text-zinc-700 uppercase shadow-sm transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Tambah Transaksi
+                </button>
+              ) : (
+                <span className="rounded-sm bg-blue-50 px-2.5 py-1 text-[10px] font-black tracking-wide text-blue-700 uppercase">
+                  Bank BCA
+                </span>
+              )
+            }
             kolomTerakhir="Deskripsi Transaksi"
             data={dataBank}
             isLoading={isLoading}
@@ -807,6 +920,7 @@ setErrorMsg(null)
                     <Pencil className="h-3 w-3" />
                     Edit
                   </button>
+
                   <button
                     type="button"
                     onClick={() => hapusSatuTransaksi(item.id)}
@@ -824,9 +938,12 @@ setErrorMsg(null)
 
           <PanelTransaksi
             judul="Jurnal"
-            tanggal={tanggalAktif}
-            tagLabel="GL 100-01"
-            tagClassName="bg-purple-50 text-purple-700"
+            tanggal={
+              tanggalMulai === tanggalSampai
+                ? tanggalMulai
+                : `${tanggalMulai} s/d ${tanggalSampai}`
+            }
+            headerRight={null}
             kolomTerakhir="Keterangan Jurnal"
             data={dataGL}
             isLoading={isLoading}
@@ -852,7 +969,7 @@ setErrorMsg(null)
           <div className="flex flex-wrap gap-8">
             <div>
               <span className="block text-[9px] font-black tracking-wider text-zinc-400 uppercase">
-                + Belum Terhubung di GL
+                + Belum Terhubung di Jurnal
               </span>
               <span className="font-mono text-[13px] font-black text-amber-400">
                 {formatIDR(totalGlBelumTerhubung)}
