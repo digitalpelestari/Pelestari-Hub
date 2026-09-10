@@ -13,7 +13,15 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Save, X, FileText, ArrowLeft, Search } from "lucide-react"
+import {
+  Plus,
+  Save,
+  X,
+  FileText,
+  ArrowLeft,
+  Search,
+  Loader2,
+} from "lucide-react"
 import {
   createJurnalDenganReferensiInvoiceOnly,
   generateNoRegistrasiOtomatis,
@@ -67,11 +75,16 @@ function makeEmptyItems(): JournalItem[] {
 
 export default function KasirJurnalPage() {
   const [akunList, setAkunList] = useState<any[]>([])
+
   const [penerimaList, setPenerimaList] = useState<
     { id: number; nama_penerima: string }[]
   >([])
-  const [loadingPenerima, setLoadingPenerima] = useState(false)
+  const [searchPenerima, setSearchPenerima] = useState("")
+  const [showPenerimaDropdown, setShowPenerimaDropdown] = useState(false)
+  const [loadingSearchPenerima, setLoadingSearchPenerima] = useState(false)
+
   const [loading, setLoading] = useState(false)
+
   const [form, setForm] = useState<JournalForm>({
     tanggal: new Date().toISOString().split("T")[0],
     noRegistrasi: "",
@@ -88,28 +101,48 @@ export default function KasirJurnalPage() {
   const [isLooking, setIsLooking] = useState(false)
   const lastQueriedRef = useRef<string>("")
 
+  // Ref untuk dropdown penerima
+  const penerimaRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     async function loadAkun() {
       const data = await getAkunList()
       setAkunList(data)
     }
+
     loadAkun()
   }, [])
 
   useEffect(() => {
-    async function loadPenerima() {
-      setLoadingPenerima(true)
+    const keyword = searchPenerima.trim()
+
+    if (!keyword) {
+      setPenerimaList([])
+      setLoadingSearchPenerima(false)
+      return
+    }
+
+    if (keyword.length < 2) {
+      setPenerimaList([])
+      setLoadingSearchPenerima(false)
+      return
+    }
+
+    setLoadingSearchPenerima(true)
+
+    const timer = setTimeout(async () => {
       try {
-        const data = await getPenerima()
+        const data = await getPenerima(keyword)
         setPenerimaList(Array.isArray(data) ? data : [])
       } catch (error) {
         setPenerimaList([])
       } finally {
-        setLoadingPenerima(false)
+        setLoadingSearchPenerima(false)
       }
-    }
-    loadPenerima()
-  }, [])
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchPenerima])
 
   const totalDebit = form.items.reduce(
     (sum, item) => sum + (Number(item.debit) || 0),
@@ -215,25 +248,26 @@ export default function KasirJurnalPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     // Validasi awal: jika referensi invoice/PO, pastikan akun target dan bank/kas diisi
     if (referensiMatch.found === "invoice" || referensiMatch.found === "po") {
       const keyword = referensiMatch.found === "invoice" ? "PIUTANG" : "UTANG"
-      const hasTarget = form.items.some(item => {
+      const hasTarget = form.items.some((item) => {
         const tipe = (item.accountType || "").toUpperCase()
         const nominal = (Number(item.debit) || 0) + (Number(item.kredit) || 0)
         return tipe.includes(keyword) && nominal > 0
       })
-      const hasBank = form.items.some(item => {
+      const hasBank = form.items.some((item) => {
         const tipe = (item.accountType || "").toUpperCase()
         const nominal = (Number(item.debit) || 0) + (Number(item.kredit) || 0)
         return tipe.includes("KAS/BANK") && nominal > 0
       })
-      
+
       if (!hasTarget || !hasBank) {
-        const pesan = referensiMatch.found === "invoice"
-          ? "Untuk pembayaran invoice, harap isi akun Piutang (Kredit) dan Bank/Kas (Debit)!"
-          : "Untuk pembayaran PO, harap isi akun Utang (Debit) dan Bank/Kas (Kredit)!"
+        const pesan =
+          referensiMatch.found === "invoice"
+            ? "Untuk pembayaran invoice, harap isi akun Piutang (Kredit) dan Bank/Kas (Debit)!"
+            : "Untuk pembayaran PO, harap isi akun Utang (Debit) dan Bank/Kas (Kredit)!"
         return swal.warning(pesan)
       }
     }
@@ -447,23 +481,92 @@ export default function KasirJurnalPage() {
               <label className="ml-1 flex items-center justify-between text-[10px] font-black text-zinc-500 uppercase italic">
                 Penerima
               </label>
-              <select
-                value={form.penerimaId ?? ""}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    penerimaId: e.target.value ? Number(e.target.value) : null,
-                  }))
-                }
-                className="h-10 w-full rounded-sm border border-zinc-300 bg-white px-3 font-bold text-zinc-700 focus:ring-2 focus:ring-zinc-400/20 focus:outline-none"
-              >
-                <option value="">Pilih Penerima</option>
-                {penerimaList.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nama_penerima}
-                  </option>
-                ))}
-              </select>
+
+              <div className="relative">
+                <div className="relative">
+                  <Input
+                    placeholder="Cari penerima..."
+                    value={searchPenerima}
+                    onChange={(e) => {
+                      const value = e.target.value
+
+                      setSearchPenerima(value)
+                      setShowPenerimaDropdown(true)
+
+                      // Kalau input dikosongkan, hapus penerima yang dipilih
+                      if (!value.trim()) {
+                        setForm((prev) => ({
+                          ...prev,
+                          penerimaId: null,
+                        }))
+                      }
+                    }}
+                    onFocus={() => {
+                      if (searchPenerima.trim().length >= 2) {
+                        setShowPenerimaDropdown(true)
+                      }
+                    }}
+                    className="h-10 rounded-sm border-zinc-300 bg-white pr-9 font-bold"
+                  />
+
+                  {loadingSearchPenerima ? (
+                    <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-zinc-400" />
+                  ) : searchPenerima ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchPenerima("")
+                        setPenerimaList([])
+                        setShowPenerimaDropdown(false)
+
+                        setForm((prev) => ({
+                          ...prev,
+                          penerimaId: null,
+                        }))
+                      }}
+                      className="absolute top-1/2 right-2 -translate-y-1/2 text-zinc-400 hover:text-red-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <Search className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                  )}
+                </div>
+
+                {/* HASIL PENCARIAN */}
+                {showPenerimaDropdown && searchPenerima.trim().length >= 2 && (
+                  <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-sm border border-zinc-200 bg-white shadow-lg">
+                    {loadingSearchPenerima ? (
+                      <div className="px-3 py-3 text-xs text-zinc-400">
+                        Mencari penerima...
+                      </div>
+                    ) : penerimaList.length > 0 ? (
+                      penerimaList.map((penerima) => (
+                        <button
+                          key={penerima.id}
+                          type="button"
+                          onClick={() => {
+                            setForm((prev) => ({
+                              ...prev,
+                              penerimaId: penerima.id,
+                            }))
+
+                            setSearchPenerima(penerima.nama_penerima)
+                            setShowPenerimaDropdown(false)
+                          }}
+                          className="block w-full px-3 py-2.5 text-left text-xs font-semibold text-zinc-700 transition-colors hover:bg-zinc-100"
+                        >
+                          {penerima.nama_penerima}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-3 text-xs text-zinc-400">
+                        Penerima tidak ditemukan.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* 5. KETERANGAN */}

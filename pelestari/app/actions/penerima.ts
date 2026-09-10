@@ -4,12 +4,32 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
 // READ ALL
-export async function getPenerima() {
+export async function getPenerima(search: string = "") {
   try {
-    const [rows]: any = await db.query("SELECT * FROM tb_penerima ORDER BY id DESC");
-    return rows;
+    const keyword = search.trim()
+
+    if (!keyword) {
+      const [rows]: any = await db.query(
+        "SELECT id, nama_penerima FROM tb_penerima ORDER BY id DESC LIMIT 20"
+      )
+
+      return rows
+    }
+
+    const [rows]: any = await db.query(
+      `
+        SELECT id, nama_penerima
+        FROM tb_penerima
+        WHERE nama_penerima LIKE ?
+        ORDER BY nama_penerima ASC
+        LIMIT 20
+      `,
+      [`%${keyword}%`]
+    )
+
+    return rows
   } catch (error) {
-    return [];
+    return []
   }
 }
 
