@@ -417,7 +417,7 @@ export default function KasirJurnalPage() {
                 </label>
 
                 <Input
-                  placeholder="BK/BD/KK"
+                  placeholder="BK/BD/KK/KD"
                   name="noRegistrasi"
                   value={form.noRegistrasi}
                   onChange={handleHeaderChange}
