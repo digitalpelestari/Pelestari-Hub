@@ -20,7 +20,7 @@ export async function getPenerima(search: string = "") {
       `
         SELECT id, nama_penerima
         FROM tb_penerima
-        WHERE nama_penerima LIKE ?
+        WHERE LOWER(nama_penerima) LIKE LOWER(?)
         ORDER BY nama_penerima ASC
         LIMIT 20
       `,

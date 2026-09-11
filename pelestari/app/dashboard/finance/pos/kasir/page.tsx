@@ -28,6 +28,7 @@ import {
 } from "@/app/actions/jurnal"
 import { getAkunList } from "@/app/actions/akun"
 import { getPenerima } from "@/app/actions/penerima"
+import { getPemohon } from "@/app/actions/pemohon"
 import { lookupReferensi, type ReferensiMatch } from "@/app/actions/referensi"
 import Link from "next/link"
 import { swal } from "@/lib/sweetalert"
@@ -48,6 +49,7 @@ interface JournalForm {
   invoiceId?: number | null
   poId?: number | null
   penerimaId: number | null
+  pemohonId: number | null
   keterangan: string
   items: JournalItem[]
 }
@@ -79,7 +81,13 @@ export default function KasirJurnalPage() {
   const [penerimaList, setPenerimaList] = useState<
     { id: number; nama_penerima: string }[]
   >([])
+  const [pemohonList, setPemohonList] = useState<
+    { id: number; nama_pemohon: string }[]
+  >([])
+  const [loadingSearchPemohon, setLoadingSearchPemohon] = useState(false)
   const [searchPenerima, setSearchPenerima] = useState("")
+  const [searchPemohon, setSearchPemohon] = useState("")
+  const [showPemohonDropdown, setShowPemohonDropdown] = useState(false)
   const [showPenerimaDropdown, setShowPenerimaDropdown] = useState(false)
   const [loadingSearchPenerima, setLoadingSearchPenerima] = useState(false)
 
@@ -90,6 +98,7 @@ export default function KasirJurnalPage() {
     noRegistrasi: "",
     noReferensi: "",
     penerimaId: null,
+    pemohonId: null,
     keterangan: "",
     items: makeEmptyItems(),
   })
@@ -143,6 +152,37 @@ export default function KasirJurnalPage() {
 
     return () => clearTimeout(timer)
   }, [searchPenerima])
+
+  useEffect(() => {
+    const keyword = searchPemohon.trim()
+
+    if (!keyword) {
+      setPemohonList([])
+      setLoadingSearchPemohon(false)
+      return
+    }
+
+    if (keyword.length < 2) {
+      setPemohonList([])
+      setLoadingSearchPemohon(false)
+      return
+    }
+
+    setLoadingSearchPemohon(true)
+
+    const timer = setTimeout(async () => {
+      try {
+        const data = await getPemohon(keyword)
+        setPemohonList(Array.isArray(data) ? data : [])
+      } catch (error) {
+        setPemohonList([])
+      } finally {
+        setLoadingSearchPemohon(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchPemohon])
 
   const totalDebit = form.items.reduce(
     (sum, item) => sum + (Number(item.debit) || 0),
@@ -307,6 +347,7 @@ export default function KasirJurnalPage() {
         invoiceId: null,
         poId: null,
         penerimaId: null,
+        pemohonId: null,
         keterangan: "",
         items: makeEmptyItems(),
       })
@@ -352,165 +393,169 @@ export default function KasirJurnalPage() {
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* HEADER TRANSAKSI (5 KOLOM RESPONSIF) */}
         <Card className="rounded-sm border bg-zinc-50/50 shadow-sm">
-          <CardContent className="grid grid-cols-1 gap-4 p-4 text-xs md:grid-cols-5">
-            {/* 1. TANGGAL */}
-            <div className="space-y-1.5">
-              <label className="ml-1 text-[10px] font-black text-zinc-500 uppercase italic">
-                Tanggal Transaksi *
-              </label>
-              <Input
-                type="date"
-                name="tanggal"
-                value={form.tanggal}
-                onChange={handleHeaderChange}
-                required
-                className="h-10 rounded-sm border-zinc-300 bg-white font-bold"
-              />
-            </div>
+          <CardContent className="p-3">
+            <div className="grid grid-cols-6 items-start gap-2 text-xs">
+              {/* 1. TANGGAL */}
+              <div className="space-y-1">
+                <label className="ml-0.5 text-[9px] font-black text-zinc-500 uppercase italic">
+                  Tanggal *
+                </label>
+                <Input
+                  type="date"
+                  name="tanggal"
+                  value={form.tanggal}
+                  onChange={handleHeaderChange}
+                  required
+                  className="h-8 rounded-sm border-zinc-300 bg-white px-2 text-[11px] font-bold"
+                />
+              </div>
 
-            {/* 2. NO. REGISTRASI + 3 BADGE (BK / BD / KK) */}
-            <div className="space-y-1.5">
-              <label className="ml-1 flex items-center justify-between text-[10px] font-black text-zinc-500 uppercase italic">
-                <span>No. Registrasi / Bukti</span>
-              </label>
-              <div className="relative">
+              {/* 2. NO. REGISTRASI + 3 BADGE (BK / BD / KK) */}
+              <div className="space-y-1">
+                <label className="ml-0.5 text-[9px] font-black text-zinc-500 uppercase italic">
+                  No. Registrasi
+                </label>
+
                 <Input
                   placeholder="BK/BD/KK"
                   name="noRegistrasi"
                   value={form.noRegistrasi}
                   onChange={handleHeaderChange}
-                  className="h-10 rounded-sm border-zinc-300 bg-white pr-24 font-mono font-bold text-zinc-700"
+                  className="h-8 rounded-sm border-zinc-300 bg-white px-2 font-mono text-[11px] font-bold text-zinc-700"
                 />
-                <div className="absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-1">
+
+                <div className="flex items-center gap-1 pt-0.5">
                   <Badge
                     onClick={() => handleGenerateManual("BK")}
-                    className="cursor-pointer rounded-[2px] border border-red-200 bg-red-50 px-1 py-0.5 text-[8px] font-bold text-red-700 hover:bg-red-100"
+                    className="cursor-pointer rounded-[2px] border border-red-200 bg-red-50 px-1.5 py-0 text-[7px] font-bold text-red-700 hover:bg-red-100"
                     title="Bank Keluar"
                   >
                     +BK
                   </Badge>
                   <Badge
                     onClick={() => handleGenerateManual("BD")}
-                    className="cursor-pointer rounded-[2px] border border-emerald-200 bg-emerald-50 px-1 py-0.5 text-[8px] font-bold text-emerald-700 hover:bg-emerald-100"
+                    className="cursor-pointer rounded-[2px] border border-emerald-200 bg-emerald-50 px-1.5 py-0 text-[7px] font-bold text-emerald-700 hover:bg-emerald-100"
                     title="Bank Masuk / Debet"
                   >
                     +BD
                   </Badge>
                   <Badge
                     onClick={() => handleGenerateManual("KK")}
-                    className="cursor-pointer rounded-[2px] border border-amber-200 bg-amber-50 px-1 py-0.5 text-[8px] font-bold text-amber-700 hover:bg-amber-100"
+                    className="cursor-pointer rounded-[2px] border border-amber-200 bg-amber-50 px-1.5 py-0 text-[7px] font-bold text-amber-700 hover:bg-amber-100"
                     title="Kas Keluar"
                   >
                     +KK
                   </Badge>
                 </div>
               </div>
-            </div>
 
-            {/* 3. NO. REFERENSI */}
-            <div className="space-y-1.5">
-              <label className="ml-1 flex items-center justify-between text-[10px] font-black text-zinc-500 uppercase italic">
-                <span>No. Referensi / Nota Asli</span>
-              </label>
-              <div className="relative">
-                <Input
-                  placeholder="Contoh: 001/INV/VIII/2026/G atau 001/PO-GA/..."
-                  name="noReferensi"
-                  value={form.noReferensi}
-                  onChange={handleHeaderChange}
-                  className="h-10 rounded-sm border-zinc-300 bg-white pr-10 font-bold"
-                />
-                <div className="absolute top-1/2 right-2 -translate-y-1/2">
-                  {isLooking ? (
-                    <Search className="h-4 w-4 animate-pulse text-zinc-400" />
-                  ) : referensiMatch.found ? (
-                    <Search className="h-4 w-4 text-emerald-500" />
-                  ) : (
-                    <Search className="h-4 w-4 text-zinc-300" />
-                  )}
+              {/* 3. NO. REFERENSI */}
+              <div className="space-y-1">
+                <label className="ml-0.5 text-[9px] font-black text-zinc-500 uppercase italic">
+                  No. Referensi
+                </label>
+                <div className="relative">
+                  <Input
+                    placeholder="001/INV/..."
+                    name="noReferensi"
+                    value={form.noReferensi}
+                    onChange={handleHeaderChange}
+                    className="h-8 rounded-sm border-zinc-300 bg-white px-2 pr-7 text-[11px] font-bold"
+                  />
+                  <div className="absolute top-1/2 right-1.5 -translate-y-1/2">
+                    {isLooking ? (
+                      <Search className="h-3.5 w-3.5 animate-pulse text-zinc-400" />
+                    ) : referensiMatch.found ? (
+                      <Search className="h-3.5 w-3.5 text-emerald-500" />
+                    ) : (
+                      <Search className="h-3.5 w-3.5 text-zinc-300" />
+                    )}
+                  </div>
                 </div>
-              </div>
-              {/* BADGE INFO SISA TAGIHAN -- untuk referensi kasir, TIDAK auto-fill apapun */}
-              <div className="flex min-h-[20px] flex-wrap items-center gap-1.5 pt-1">
-                {isLooking && (
-                  <Badge
-                    variant="outline"
-                    className="rounded-[2px] border-zinc-300 text-[9px] font-bold text-zinc-500"
-                  >
-                    <Search className="mr-1 h-3 w-3 animate-pulse" /> Mencari
-                    referensi...
-                  </Badge>
-                )}
-                {!isLooking && referensiMatch.found === "invoice" && (
-                  <Badge className="rounded-[2px] border border-emerald-300 bg-emerald-100 px-2 py-1 text-[9px] font-bold text-emerald-800 hover:bg-emerald-100">
-                    ✓ INVOICE: {referensiMatch.data.nomor} —{" "}
-                    {referensiMatch.data.perusahaan_tujuan}
-                    <span className="ml-1 font-mono">
-                      (Sisa Rp{" "}
-                      {referensiMatch.data.sisa_tagihan.toLocaleString("id-ID")}
-                      )
-                    </span>
-                  </Badge>
-                )}
-                {!isLooking && referensiMatch.found === "po" && (
-                  <Badge className="rounded-[2px] border border-amber-300 bg-amber-100 px-2 py-1 text-[9px] font-bold text-amber-800 hover:bg-amber-100">
-                    ✓ PO: {referensiMatch.data.nomor} —{" "}
-                    {referensiMatch.data.vendor_nama}
-                    <span className="ml-1 font-mono">
-                      (Sisa Rp{" "}
-                      {referensiMatch.data.sisa_tagihan.toLocaleString("id-ID")}
-                      )
-                    </span>
-                  </Badge>
-                )}
-                {!isLooking &&
-                  referensiMatch.found === null &&
-                  form.noReferensi.trim().length >= 3 && (
-                    <Badge
-                      variant="outline"
-                      className="rounded-[2px] border-zinc-300 text-[9px] font-bold text-zinc-500"
-                    >
-                      Referensi bebas — tidak terhubung ke invoice/PO
-                    </Badge>
-                  )}
-              </div>
-            </div>
 
-            {/* 4. PENERIMA / VENDOR */}
-            <div className="space-y-1.5">
-              <label className="ml-1 flex items-center justify-between text-[10px] font-black text-zinc-500 uppercase italic">
-                Penerima
-              </label>
+                {(isLooking ||
+                  referensiMatch.found ||
+                  form.noReferensi.trim().length >= 3) && (
+                  <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                    {isLooking && (
+                      <Badge
+                        variant="outline"
+                        className="rounded-[2px] border-zinc-300 px-1 py-0 text-[7px] font-bold text-zinc-500"
+                      >
+                        <Search className="mr-0.5 h-2.5 w-2.5 animate-pulse" />{" "}
+                        Mencari...
+                      </Badge>
+                    )}
+                    {!isLooking && referensiMatch.found === "invoice" && (
+                      <Badge
+                        className="max-w-full truncate rounded-[2px] border border-emerald-300 bg-emerald-100 px-1 py-0 text-[7px] font-bold text-emerald-800 hover:bg-emerald-100"
+                        title={`INVOICE: ${referensiMatch.data.nomor} — ${referensiMatch.data.perusahaan_tujuan} (Sisa Rp ${referensiMatch.data.sisa_tagihan.toLocaleString("id-ID")})`}
+                      >
+                        ✓ {referensiMatch.data.nomor}{" "}
+                        <span className="font-mono">
+                          (Rp{" "}
+                          {referensiMatch.data.sisa_tagihan.toLocaleString(
+                            "id-ID"
+                          )}
+                          )
+                        </span>
+                      </Badge>
+                    )}
+                    {!isLooking && referensiMatch.found === "po" && (
+                      <Badge
+                        className="max-w-full truncate rounded-[2px] border border-amber-300 bg-amber-100 px-1 py-0 text-[7px] font-bold text-amber-800 hover:bg-amber-100"
+                        title={`PO: ${referensiMatch.data.nomor} — ${referensiMatch.data.vendor_nama} (Sisa Rp ${referensiMatch.data.sisa_tagihan.toLocaleString("id-ID")})`}
+                      >
+                        ✓ {referensiMatch.data.nomor}{" "}
+                        <span className="font-mono">
+                          (Rp{" "}
+                          {referensiMatch.data.sisa_tagihan.toLocaleString(
+                            "id-ID"
+                          )}
+                          )
+                        </span>
+                      </Badge>
+                    )}
+                    {!isLooking &&
+                      referensiMatch.found === null &&
+                      form.noReferensi.trim().length >= 3 && (
+                        <Badge
+                          variant="outline"
+                          className="rounded-[2px] border-zinc-300 px-1 py-0 text-[7px] font-bold text-zinc-500"
+                        >
+                          Referensi bebas
+                        </Badge>
+                      )}
+                  </div>
+                )}
+              </div>
 
-              <div className="relative">
+              {/* 4. PENERIMA / VENDOR */}
+              <div className="space-y-1">
+                <label className="ml-0.5 text-[9px] font-black text-zinc-500 uppercase italic">
+                  Penerima
+                </label>
                 <div className="relative">
                   <Input
                     placeholder="Cari penerima..."
                     value={searchPenerima}
                     onChange={(e) => {
                       const value = e.target.value
-
                       setSearchPenerima(value)
                       setShowPenerimaDropdown(true)
-
-                      // Kalau input dikosongkan, hapus penerima yang dipilih
                       if (!value.trim()) {
-                        setForm((prev) => ({
-                          ...prev,
-                          penerimaId: null,
-                        }))
+                        setForm((prev) => ({ ...prev, penerimaId: null }))
                       }
                     }}
                     onFocus={() => {
-                      if (searchPenerima.trim().length >= 2) {
+                      if (searchPenerima.trim().length >= 2)
                         setShowPenerimaDropdown(true)
-                      }
                     }}
-                    className="h-10 rounded-sm border-zinc-300 bg-white pr-9 font-bold"
+                    className="h-8 rounded-sm border-zinc-300 bg-white px-2 pr-7 text-[11px] font-bold"
                   />
 
                   {loadingSearchPenerima ? (
-                    <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-zinc-400" />
+                    <Loader2 className="absolute top-1/2 right-2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-zinc-400" />
                   ) : searchPenerima ? (
                     <button
                       type="button"
@@ -518,73 +563,144 @@ export default function KasirJurnalPage() {
                         setSearchPenerima("")
                         setPenerimaList([])
                         setShowPenerimaDropdown(false)
-
-                        setForm((prev) => ({
-                          ...prev,
-                          penerimaId: null,
-                        }))
+                        setForm((prev) => ({ ...prev, penerimaId: null }))
                       }}
-                      className="absolute top-1/2 right-2 -translate-y-1/2 text-zinc-400 hover:text-red-600"
+                      className="absolute top-1/2 right-1.5 -translate-y-1/2 text-zinc-400 hover:text-red-600"
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-3.5 w-3.5" />
                     </button>
                   ) : (
-                    <Search className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                    <Search className="absolute top-1/2 right-2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
                   )}
-                </div>
 
-                {/* HASIL PENCARIAN */}
-                {showPenerimaDropdown && searchPenerima.trim().length >= 2 && (
-                  <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-sm border border-zinc-200 bg-white shadow-lg">
-                    {loadingSearchPenerima ? (
-                      <div className="px-3 py-3 text-xs text-zinc-400">
-                        Mencari penerima...
-                      </div>
-                    ) : penerimaList.length > 0 ? (
-                      penerimaList.map((penerima) => (
-                        <button
-                          key={penerima.id}
-                          type="button"
-                          onClick={() => {
-                            setForm((prev) => ({
-                              ...prev,
-                              penerimaId: penerima.id,
-                            }))
-
-                            setSearchPenerima(penerima.nama_penerima)
-                            setShowPenerimaDropdown(false)
-                          }}
-                          className="block w-full px-3 py-2.5 text-left text-xs font-semibold text-zinc-700 transition-colors hover:bg-zinc-100"
-                        >
-                          {penerima.nama_penerima}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-3 py-3 text-xs text-zinc-400">
-                        Penerima tidak ditemukan.
+                  {showPenerimaDropdown &&
+                    searchPenerima.trim().length >= 2 && (
+                      <div className="absolute z-50 mt-1 max-h-56 w-full min-w-[180px] overflow-y-auto rounded-sm border border-zinc-200 bg-white shadow-lg">
+                        {loadingSearchPenerima ? (
+                          <div className="px-2 py-2 text-[10px] text-zinc-400">
+                            Mencari penerima...
+                          </div>
+                        ) : penerimaList.length > 0 ? (
+                          penerimaList.map((penerima) => (
+                            <button
+                              key={penerima.id}
+                              type="button"
+                              onClick={() => {
+                                setForm((prev) => ({
+                                  ...prev,
+                                  penerimaId: penerima.id,
+                                }))
+                                setSearchPenerima(penerima.nama_penerima)
+                                setShowPenerimaDropdown(false)
+                              }}
+                              className="block w-full px-2 py-1.5 text-left text-[10px] font-semibold text-zinc-700 transition-colors hover:bg-zinc-100"
+                            >
+                              {penerima.nama_penerima}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-2 py-2 text-[10px] text-zinc-400">
+                            Tidak ditemukan.
+                          </div>
+                        )}
                       </div>
                     )}
-                  </div>
-                )}
+                </div>
               </div>
-            </div>
 
-            {/* 5. KETERANGAN */}
-            <div className="space-y-1.5">
-              <label className="ml-1 text-[10px] font-black text-zinc-500 uppercase italic">
-                Keterangan Umum
-              </label>
-              <Input
-                placeholder="Deskripsi ringkas transaksi..."
-                name="keterangan"
-                value={form.keterangan}
-                onChange={handleHeaderChange}
-                className="h-10 rounded-sm border-zinc-300 bg-white font-bold"
-              />
+              {/* 5. PEMOHON */}
+              <div className="space-y-1">
+                <label className="ml-0.5 text-[9px] font-black text-zinc-500 uppercase italic">
+                  Pemohon
+                </label>
+                <div className="relative">
+                  <Input
+                    placeholder="Cari pemohon..."
+                    value={searchPemohon}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setSearchPemohon(value)
+                      setShowPemohonDropdown(true)
+                      if (!value.trim()) {
+                        setForm((prev) => ({ ...prev, pemohonId: null }))
+                      }
+                    }}
+                    onFocus={() => {
+                      if (searchPemohon.trim().length >= 2)
+                        setShowPemohonDropdown(true)
+                    }}
+                    className="h-8 rounded-sm border-zinc-300 bg-white px-2 pr-7 text-[11px] font-bold"
+                  />
+
+                  {loadingSearchPemohon ? (
+                    <Loader2 className="absolute top-1/2 right-2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-zinc-400" />
+                  ) : searchPemohon ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchPemohon("")
+                        setPemohonList([])
+                        setShowPemohonDropdown(false)
+                        setForm((prev) => ({ ...prev, pemohonId: null }))
+                      }}
+                      className="absolute top-1/2 right-1.5 -translate-y-1/2 text-zinc-400 hover:text-red-600"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  ) : (
+                    <Search className="absolute top-1/2 right-2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+                  )}
+
+                  {showPemohonDropdown && searchPemohon.trim().length >= 2 && (
+                    <div className="absolute z-50 mt-1 max-h-56 w-full min-w-[180px] overflow-y-auto rounded-sm border border-zinc-200 bg-white shadow-lg">
+                      {loadingSearchPemohon ? (
+                        <div className="px-2 py-2 text-[10px] text-zinc-400">
+                          Mencari pemohon...
+                        </div>
+                      ) : pemohonList.length > 0 ? (
+                        pemohonList.map((pemohon) => (
+                          <button
+                            key={pemohon.id}
+                            type="button"
+                            onClick={() => {
+                              setForm((prev) => ({
+                                ...prev,
+                                pemohonId: pemohon.id,
+                              }))
+                              setSearchPemohon(pemohon.nama_pemohon)
+                              setShowPemohonDropdown(false)
+                            }}
+                            className="block w-full px-2 py-1.5 text-left text-[10px] font-semibold text-zinc-700 transition-colors hover:bg-zinc-100"
+                          >
+                            {pemohon.nama_pemohon}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-2 py-2 text-[10px] text-zinc-400">
+                          Tidak ditemukan.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 6. KETERANGAN */}
+              <div className="space-y-1">
+                <label className="ml-0.5 text-[9px] font-black text-zinc-500 uppercase italic">
+                  Keterangan
+                </label>
+                <Input
+                  placeholder="Deskripsi ringkas..."
+                  name="keterangan"
+                  value={form.keterangan}
+                  onChange={handleHeaderChange}
+                  className="h-8 rounded-sm border-zinc-300 bg-white px-2 text-[11px] font-bold"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
-
         {/* TABLE DATA ITEM */}
         <div className="overflow-hidden rounded-sm border border-zinc-300 bg-white shadow-sm">
           <Table>

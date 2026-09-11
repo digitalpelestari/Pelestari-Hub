@@ -19,6 +19,7 @@ interface JurnalPayload {
   invoiceId?: number | null;
   poId?: number | null;
   penerimaId?: number | null;
+  pemohonId?: number | null;
   keterangan: string;
   items: JurnalItemPayload[];
 }
@@ -405,6 +406,7 @@ export async function getJurnalList(
           OR LOWER(j.no_referensi) LIKE LOWER(?)
           OR LOWER(j.keterangan) LIKE LOWER(?)
           OR LOWER(p.nama_penerima) LIKE LOWER(?)
+          OR LOWER(pm.nama_pemohon) LIKE LOWER(?)
           OR EXISTS (
             SELECT 1
             FROM tb_jurnal_item si
@@ -423,12 +425,13 @@ export async function getJurnalList(
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     // 1. HITUNG TOTAL DATA
-    const countQuery = `
-      SELECT COUNT(*) AS total
-      FROM tb_jurnal j
-      LEFT JOIN tb_penerima p ON j.penerima_id = p.id
-      ${whereClause}
-    `;
+   const countQuery = `
+  SELECT COUNT(*) AS total
+  FROM tb_jurnal j
+  LEFT JOIN tb_penerima p ON j.penerima_id = p.id
+  LEFT JOIN tb_pemohon pm ON j.pemohon_id = pm.id
+  ${whereClause}
+`;
     const [countRows]: any = await db.query(countQuery, params);
     const total = Number(countRows[0]?.total || 0);
 
@@ -440,6 +443,7 @@ export async function getJurnalList(
       FROM tb_jurnal_item i
       INNER JOIN tb_jurnal j ON i.jurnal_id = j.id
       LEFT JOIN tb_penerima p ON j.penerima_id = p.id
+      LEFT JOIN tb_pemohon pm ON j.pemohon_id = pm.id
       ${whereClause}
     `;
 
@@ -470,19 +474,22 @@ export async function getJurnalList(
 
     // 2. AMBIL HEADER JURNAL
     let headerQuery = `
-      SELECT
-        j.id,
-        j.tanggal,
-        j.no_registrasi,
-        j.no_referensi,
-        p.nama_penerima AS penerima,
-        j.penerima_id,
-        j.keterangan
-      FROM tb_jurnal j
-      LEFT JOIN tb_penerima p ON j.penerima_id = p.id
-      ${whereClause}
-      ORDER BY j.tanggal DESC, j.id DESC
-    `;
+  SELECT
+    j.id,
+    DATE_FORMAT(j.tanggal, '%Y-%m-%d') AS tanggal,
+    j.no_registrasi,
+    j.no_referensi,
+    p.nama_penerima AS penerima,
+    j.penerima_id,
+    pm.nama_pemohon AS pemohon,
+    j.pemohon_id,
+    j.keterangan
+  FROM tb_jurnal j
+  LEFT JOIN tb_penerima p ON j.penerima_id = p.id
+  LEFT JOIN tb_pemohon pm ON j.pemohon_id = pm.id
+  ${whereClause}
+  ORDER BY j.tanggal DESC, j.id DESC
+`;
 
     const headerParams = [...params];
 
@@ -492,6 +499,7 @@ export async function getJurnalList(
     }
 
     const [headers]: any = await db.query(headerQuery, headerParams);
+
 
     if (!headers || headers.length === 0) {
       return {
@@ -552,6 +560,8 @@ export async function getJurnalList(
       no_referensi: jurnal.no_referensi,
       penerima: jurnal.penerima || "-",
       penerima_id: jurnal.penerima_id || null,
+      pemohon: jurnal.pemohon || "-",
+      pemohon_id: jurnal.pemohon_id || null,
       keterangan: jurnal.keterangan,
       items: itemsMap.get(Number(jurnal.id)) || [],
     }));
@@ -596,6 +606,7 @@ export async function updateJurnalItem(
     no_registrasi: string;
     no_referensi: string;
     penerimaId?: number | null;
+    pemohonId?: number | null;
     keterangan_umum: string;
     no_akun: string;
     debit: number;
@@ -614,6 +625,7 @@ export async function updateJurnalItem(
         no_registrasi = ?, 
         no_referensi = ?, 
         penerima_id = ?, 
+        pemohon_id = ?,
         keterangan = ? 
        WHERE id = ?`,
       [
@@ -621,6 +633,7 @@ export async function updateJurnalItem(
         payload.no_registrasi,
         payload.no_referensi,
         payload.penerimaId ?? null,
+        payload.pemohonId ?? null,
         payload.keterangan_umum,
         payload.jurnal_id,
       ]
@@ -909,8 +922,8 @@ export async function createJurnalUmum(payload: JurnalPayload) {
     await connection.beginTransaction();
 
     const headerQuery = `
-      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, invoice_id, po_id, penerima_id, keterangan)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, invoice_id, po_id, penerima_id, pemohon_id, keterangan)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const [headerResult]: any = await connection.query(headerQuery, [
       payload.tanggal,
@@ -919,6 +932,7 @@ export async function createJurnalUmum(payload: JurnalPayload) {
       payload.invoiceId ?? null,
       payload.poId ?? null,
       payload.penerimaId ?? null,
+      payload.pemohonId ?? null,
       payload.keterangan,
     ]);
 
@@ -1114,6 +1128,7 @@ export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayl
       lookup.found === "invoice" ? refId : null,
       lookup.found === "po" ? refId : null,
       payload.penerimaId ?? null,
+      payload.pemohonId ?? null, 
       payload.keterangan,
     ]);
     const jurnalId = headerResult.insertId;

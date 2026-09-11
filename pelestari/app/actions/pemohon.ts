@@ -3,13 +3,25 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
-// READ ALL
-export async function getPemohon() {
+// READ ALL / SEARCH
+export async function getPemohon(keyword?: string) {
   try {
-    const [rows]: any = await db.query("SELECT * FROM tb_pemohon ORDER BY id DESC");
-    return rows;
+    if (keyword && keyword.trim()) {
+      const [rows]: any = await db.query(
+        "SELECT id, nama_pemohon FROM tb_pemohon WHERE LOWER(nama_pemohon) LIKE LOWER(?) ORDER BY nama_pemohon ASC LIMIT 20",
+        [`%${keyword.trim()}%`]
+      )
+
+      return rows
+    }
+
+    const [rows]: any = await db.query(
+      "SELECT id, nama_pemohon FROM tb_pemohon ORDER BY id DESC"
+    )
+
+    return rows
   } catch (error) {
-    return [];
+    return []
   }
 }
 
