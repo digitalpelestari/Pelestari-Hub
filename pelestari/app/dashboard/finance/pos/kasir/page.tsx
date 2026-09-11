@@ -195,7 +195,7 @@ export default function KasirJurnalPage() {
   const isBalanced = totalDebit === totalKredit && totalDebit > 0
 
   // Generator manual saat tombol +BK / +BD / +KK diklik
-  const handleGenerateManual = async (tipe: "BK" | "BD" | "KK") => {
+  const handleGenerateManual = async (tipe: "BK" | "BD" | "KK"| "KD" ) => {
     const res = await generateNoRegistrasiOtomatis(tipe as any)
     if (res.success && res.code) {
       setForm((prev) => ({ ...prev, noRegistrasi: res.code }))
@@ -446,6 +446,14 @@ export default function KasirJurnalPage() {
                   >
                     +KK
                   </Badge>
+                  <Badge
+                    onClick={() => handleGenerateManual("KD")}
+                    className="cursor-pointer rounded-[2px] border border-amber-200 bg-amber-50 px-1.5 py-0 text-[7px] font-bold text-amber-700 hover:bg-amber-100"
+                    title="Kredit Bank"
+                  >
+                    +KD
+                  </Badge>
+                  
                 </div>
               </div>
 

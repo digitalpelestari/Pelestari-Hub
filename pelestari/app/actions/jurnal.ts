@@ -1261,40 +1261,60 @@ export async function getAkunByKelompok(
 /**
  * 🛠️ ACTION: GENERATE NO REGISTRASI OTOMATIS
  */
-export async function generateNoRegistrasiOtomatis(type: "BK" | "BD") {
+export async function generateNoRegistrasiOtomatis(
+  type: "BK" | "BD" | "KK" | "KD"
+) {
   try {
-    const sekarang = new Date();
-    const bulan = String(sekarang.getMonth() + 1).padStart(2, "0");
-    const tahunShort = String(sekarang.getFullYear()).slice(-2);
+    const sekarang = new Date()
 
-    const pattern = `${type}_%/${bulan}/${tahunShort}`;
+    const bulan = String(sekarang.getMonth() + 1).padStart(2, "0")
+    const tahunShort = String(sekarang.getFullYear()).slice(-2)
+
+    // Cari nomor terakhir berdasarkan TYPE + TAHUN
+    const pattern = `${type}_%/%/${tahunShort}`
 
     const query = `
-      SELECT no_registrasi 
-      FROM tb_jurnal 
-      WHERE no_registrasi LIKE ? 
-      ORDER BY id DESC 
+      SELECT no_registrasi
+      FROM tb_jurnal
+      WHERE no_registrasi LIKE ?
+      ORDER BY id DESC
       LIMIT 1
-    `;
+    `
 
-    const [rows]: any = await db.query(query, [pattern]);
+    const [rows]: any = await db.query(query, [pattern])
 
-    let nomorUrutBaru = 1;
+    let nomorUrutBaru = 1
 
     if (rows.length > 0) {
-      const noRegTerakhir = rows[0].no_registrasi;
-      const match = noRegTerakhir.match(new RegExp(`${type}_(\\d+)\\/`));
+      const noRegTerakhir = rows[0].no_registrasi
+
+      const match = noRegTerakhir.match(
+        new RegExp(`${type}_(\\d+)\\/`)
+      )
+
       if (match && match[1]) {
-        nomorUrutBaru = (parseInt(match[1], 10) || 0) + 1;
+        nomorUrutBaru = (parseInt(match[1], 10) || 0) + 1
       }
     }
 
-    const stringNomorUrut = String(nomorUrutBaru).padStart(3, "0");
-    const noRegistrasiOtomatis = `${type}_${stringNomorUrut}/${bulan}/${tahunShort}`;
+    const stringNomorUrut = String(nomorUrutBaru).padStart(3, "0")
 
-    return { success: true, code: noRegistrasiOtomatis };
+    const noRegistrasiOtomatis =
+      `${type}_${stringNomorUrut}/${bulan}/${tahunShort}`
+
+    return {
+      success: true,
+      code: noRegistrasiOtomatis,
+    }
   } catch (error: any) {
-    console.error("GENERATE_NO_REG_ERROR:", error.message);
-    return { success: false, code: "" };
+    console.error(
+      "GENERATE_NO_REG_ERROR:",
+      error.message
+    )
+
+    return {
+      success: false,
+      code: "",
+    }
   }
 }
