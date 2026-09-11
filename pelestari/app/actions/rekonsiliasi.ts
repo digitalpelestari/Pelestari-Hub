@@ -905,3 +905,97 @@ export async function hapusTransaksiBank(id: number) {
     connection.release()
   }
 }
+
+export async function importTransaksiBank(
+  transaksi: {
+    tanggal: string
+    keterangan: string
+    nominal: number
+    tipe: "KREDIT" | "DEBIT"
+  }[],
+  noAkunBank: string = KODE_AKUN_BANK.AKTIF
+) {
+  if (
+    noAkunBank !== KODE_AKUN_BANK.AKTIF &&
+    noAkunBank !== KODE_AKUN_BANK.PASIF &&
+    noAkunBank !== KODE_AKUN_BANK.PETTY_CASH
+  ) {
+    return {
+      success: false,
+      message: "Akun bank tidak valid.",
+    }
+  }
+
+  if (!transaksi.length) {
+    return {
+      success: false,
+      message: "Tidak ada transaksi untuk diimpor.",
+    }
+  }
+
+  const connection = await db.getConnection()
+
+  try {
+    await connection.beginTransaction()
+
+    const [akunRows] = await connection.execute<RowDataPacket[]>(
+      `
+        SELECT id
+        FROM tb_akun
+        WHERE no_akun = ?
+          AND is_aktif = 1
+        LIMIT 1
+      `,
+      [noAkunBank]
+    )
+
+    if (akunRows.length === 0) {
+      await connection.rollback()
+
+      return {
+        success: false,
+        message: "Akun bank tidak ditemukan.",
+      }
+    }
+
+    const akunId = Number(akunRows[0].id)
+
+    const values = transaksi.map((item) => [
+      akunId,
+      item.tanggal,
+      item.keterangan,
+      item.nominal,
+      item.tipe,
+    ])
+
+    await connection.query(
+      `
+        INSERT INTO tb_bank_transaksi
+        (akun_id, tanggal, keterangan, nominal, tipe)
+        VALUES ?
+      `,
+      [values]
+    )
+
+    await connection.commit()
+
+    revalidatePath("/rekonsiliasi-bank")
+
+    return {
+      success: true,
+      message: `${transaksi.length} transaksi berhasil diimpor.`,
+      jumlah: transaksi.length,
+    }
+  } catch (error) {
+    await connection.rollback()
+
+    console.error("Gagal mengimpor transaksi bank:", error)
+
+    return {
+      success: false,
+      message: "Gagal mengimpor transaksi bank.",
+    }
+  } finally {
+    connection.release()
+  }
+}

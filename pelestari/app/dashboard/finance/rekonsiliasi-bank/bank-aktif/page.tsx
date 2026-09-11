@@ -596,8 +596,23 @@ export default function RekonsiliasiBankHarian() {
       try {
         const hasil = await bacaPdfRekeningKoran(file)
 
+        if (!hasil.transaksi.length) {
+          await swal.warning(
+            "Tidak ada transaksi yang berhasil dibaca dari rekening koran."
+          )
+          return
+        }
+
+        if (!hasil.tanggalMulai || !hasil.tanggalSampai) {
+          await swal.warning(
+            "Tanggal transaksi dari rekening koran tidak berhasil dibaca."
+          )
+          return
+        }
+
+        // Simpan transaksi menggunakan tanggal hasil pembacaan PDF
         const hasilSimpan = await simpanHasilImportBank(
-          tanggalMulai,
+          hasil.tanggalMulai,
           hasil.transaksi,
           NO_AKUN_BANK_AKTIF
         )
@@ -607,13 +622,22 @@ export default function RekonsiliasiBankHarian() {
           return
         }
 
-        await muatData()
+        // Update tanggal pada frontend sesuai periode rekening koran
+        setTanggalMulai(hasil.tanggalMulai)
+        setTanggalSampai(hasil.tanggalSampai)
+
+        // Ambil ulang data berdasarkan periode PDF
+        await muatData(hasil.tanggalMulai, hasil.tanggalSampai)
 
         await swal.success("Rekening koran berhasil diimpor.")
       } catch (err) {
         await swal.error(
           err instanceof Error ? err.message : "Gagal mengimpor rekening koran."
         )
+      } finally {
+        if (inputPdfRef.current) {
+          inputPdfRef.current.value = ""
+        }
       }
     })
   }

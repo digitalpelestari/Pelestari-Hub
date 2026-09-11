@@ -1,6 +1,6 @@
 "use server"
 
-import { PDFParse } from "pdf-parse"
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs"
 
 type TransaksiBankParsed = {
   tanggal: string
@@ -20,27 +20,108 @@ export async function bacaPdfRekeningKoran(file: File) {
   }
 
   const arrayBuffer = await file.arrayBuffer()
-  const buffer = Buffer.from(arrayBuffer)
+  const data = new Uint8Array(arrayBuffer)
+  
 
-  const parser = new PDFParse({
-    data: buffer,
-  })
+const loadingTask = pdfjsLib.getDocument({
+  data,
+})
 
-  try {
-    const result = await parser.getText()
+  const pdf = await loadingTask.promise
 
-    const transaksi = parseTransaksiRekeningKoran(result.text)
+  const halaman: string[] = []
 
-    return {
-      text: result.text,
-      jumlahHalaman: result.total,
-      transaksi,
+for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+  const page = await pdf.getPage(pageNumber)
+  const content = await page.getTextContent()
+
+ const items = content.items.filter(
+  (item: any) => "str" in item && item.str.trim()
+)
+
+const lines: string[] = []
+let currentY: number | null = null
+let currentLine: string[] = []
+
+for (const item of items as any[]) {
+ const y = item.transform[5]
+
+  if (currentY !== null && Math.abs(y - currentY) > 2) {
+    if (currentLine.length > 0) {
+      lines.push(currentLine.join(" ").trim())
     }
-  } finally {
-    await parser.destroy()
+
+    currentLine = []
   }
+
+  currentLine.push(item.str)
+  currentY = y
 }
 
+if (currentLine.length > 0) {
+  lines.push(currentLine.join(" ").trim())
+}
+
+const firstTransactionIndex = lines.findIndex((line) => {
+  return /^\d{2}\/\d{2}\s+/.test(line)
+})
+
+const transactionLines =
+  firstTransactionIndex >= 0
+    ? lines.slice(firstTransactionIndex)
+    : []
+
+const filteredTransactionLines = transactionLines.filter((line) => {
+  const normalized = line
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+
+  return !normalized.includes("SALDO AWAL")
+})
+
+const summaryIndex = filteredTransactionLines.findIndex((line) => {  const normalized = line.toUpperCase().replace(/\s+/g, " ")
+
+  return (
+    normalized.includes("MUTASI CR") ||
+    normalized.includes("MUTASI DB") ||
+    normalized.includes("SALDO AKHIR")
+  )
+})
+
+const text = filteredTransactionLines.join("\n")
+
+console.log("========== HALAMAN", pageNumber, "==========")
+console.log(text)
+
+halaman.push(text)
+}
+  const text = halaman.join("\n")
+
+  const transaksi = parseTransaksiRekeningKoran(text)
+
+  const tanggalTransaksi = transaksi
+  .map((item) => item.tanggal)
+  .filter(Boolean)
+  .sort()
+
+const tanggalMulai =
+  tanggalTransaksi.length > 0
+    ? tanggalTransaksi[0]
+    : null
+
+const tanggalSampai =
+  tanggalTransaksi.length > 0
+    ? tanggalTransaksi[tanggalTransaksi.length - 1]
+    : null
+
+  return {
+    text,
+    jumlahHalaman: pdf.numPages,
+    transaksi,
+    tanggalMulai,
+    tanggalSampai,
+  }
+}
 function parseTransaksiRekeningKoran(
   text: string
 ): TransaksiBankParsed[] {
@@ -207,17 +288,6 @@ function parseTransaksiRekeningKoran(
 
       continue
     }
-function formatTanggal(rowTanggal: string | Date) {
-  if (rowTanggal instanceof Date) {
-    const tahun = rowTanggal.getFullYear()
-    const bulan = String(rowTanggal.getMonth() + 1).padStart(2, "0")
-    const hari = String(rowTanggal.getDate()).padStart(2, "0")
-
-    return `${tahun}-${bulan}-${hari}`
-  }
-
-  return String(rowTanggal).slice(0, 10)
-}
     // ------------------------------------------------------------
     // Cari angka nominal/saldo pada baris
     // ------------------------------------------------------------

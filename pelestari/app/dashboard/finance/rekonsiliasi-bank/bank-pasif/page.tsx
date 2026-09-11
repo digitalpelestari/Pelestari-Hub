@@ -31,6 +31,7 @@ import {
   editTransaksiBank,
   hapusTransaksiBank,
   tutupBukuHarian,
+  importTransaksiBank,
   type TransaksiRekonDTO,
 } from "@/app/actions/rekonsiliasi"
 import { swal } from "@/lib/sweetalert"
@@ -589,26 +590,64 @@ export default function RekonsiliasiBankHarian() {
 
   const handleUploadPdf = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+
     if (!file) return
 
     startMemprosesTransition(async () => {
       try {
         const hasil = await bacaPdfRekeningKoran(file)
-        setDataBank(
-          hasil.transaksi.map((item, index) => ({
-            id: -(index + 1),
-            tanggal: item.tanggal,
-            keterangan: item.keterangan,
-            nominal: item.nominal,
-            tipe: item.tipe,
-            status: "BELUM_TERHUBUNG",
-            pasanganId: null,
-          }))
+
+        if (!hasil.transaksi.length) {
+          await swal.warning(
+            "Tidak ada transaksi yang berhasil dibaca dari rekening koran."
+          )
+          return
+        }
+
+        if (!hasil.tanggalMulai || !hasil.tanggalSampai) {
+          await swal.warning(
+            "Tanggal transaksi dari rekening koran tidak berhasil dibaca."
+          )
+          return
+        }
+
+        // 1. Simpan semua transaksi hasil PDF ke database
+        const hasilSimpan = await importTransaksiBank(
+          hasil.transaksi,
+          NO_AKUN_BANK
+        )
+
+        if (!hasilSimpan.success) {
+          await swal.error(hasilSimpan.message)
+          return
+        }
+
+        setTanggalMulai(hasil.tanggalMulai)
+        setTanggalSampai(hasil.tanggalSampai)
+
+        // 3. Otomatis cocokkan dengan jurnal yang sudah ada
+        const hasilCocok = await cocokkanOtomatisHarian(
+          hasil.tanggalMulai,
+          hasil.tanggalSampai,
+          NO_AKUN_BANK
+        )
+
+        // 4. Ambil data FINAL dari database
+        await muatData(hasil.tanggalMulai, hasil.tanggalSampai)
+
+        await swal.success(
+          `Rekening koran berhasil diimpor.\n\n` +
+            `${hasilSimpan.jumlah ?? hasil.transaksi.length} transaksi disimpan ke database.\n` +
+            `${hasilCocok.jumlahCocok} transaksi otomatis terhubung dengan jurnal.`
         )
       } catch (err) {
-        setErrorMsg(
-          err instanceof Error ? err.message : "Gagal membaca rekening koran."
+        await swal.error(
+          err instanceof Error ? err.message : "Gagal mengimpor rekening koran."
         )
+      } finally {
+        if (inputPdfRef.current) {
+          inputPdfRef.current.value = ""
+        }
       }
     })
   }
