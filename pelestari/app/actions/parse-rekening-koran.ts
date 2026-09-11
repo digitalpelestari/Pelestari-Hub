@@ -1,5 +1,6 @@
 "use server"
 
+import "@/app/utils/pdf-polyfill"
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs"
 
 type TransaksiBankParsed = {

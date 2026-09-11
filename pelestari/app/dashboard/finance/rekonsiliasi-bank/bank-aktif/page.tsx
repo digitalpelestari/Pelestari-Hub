@@ -13,7 +13,13 @@ import {
   Trash2,
 } from "lucide-react"
 
-import React, { useCallback, useRef, useState, useTransition } from "react"
+import React, {
+  useCallback,
+  useRef,
+  useState,
+  useTransition,
+  useEffect,
+} from "react"
 
 // Sesuaikan path import berikut dengan lokasi file actions kamu.
 import {
@@ -408,7 +414,11 @@ export default function RekonsiliasiBankHarian() {
     },
     [tanggalMulai, tanggalSampai]
   )
-
+  useEffect(() => {
+    startLoadingTransition(() => {
+      muatData(tanggalMulai, tanggalSampai)
+    })
+  }, [tanggalMulai, tanggalSampai, muatData])
   const resetPilihan = () => {
     setPilihanBankId(null)
     setPilihanGlId(null)
@@ -626,10 +636,20 @@ export default function RekonsiliasiBankHarian() {
         setTanggalMulai(hasil.tanggalMulai)
         setTanggalSampai(hasil.tanggalSampai)
 
+        const hasilCocok = await cocokkanOtomatisHarian(
+          hasil.tanggalMulai,
+          hasil.tanggalSampai,
+          NO_AKUN_BANK_AKTIF
+        )
+
         // Ambil ulang data berdasarkan periode PDF
         await muatData(hasil.tanggalMulai, hasil.tanggalSampai)
 
-        await swal.success("Rekening koran berhasil diimpor.")
+        await swal.success(
+          `Rekening koran berhasil diimpor.\n\n` +
+            `${hasilSimpan.jumlahDisimpan} transaksi disimpan ke database.\n` +
+            `${hasilCocok.jumlahCocok} transaksi otomatis terhubung dengan jurnal.`
+        )
       } catch (err) {
         await swal.error(
           err instanceof Error ? err.message : "Gagal mengimpor rekening koran."
