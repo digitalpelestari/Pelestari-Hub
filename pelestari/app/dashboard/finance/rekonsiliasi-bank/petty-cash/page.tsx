@@ -1,5 +1,4 @@
 "use client"
-import { bacaPdfRekeningKoran } from "@/app/actions/parse-rekening-koran"
 import {
   Landmark,
   BookOpen,
@@ -587,32 +586,6 @@ export default function RekonsiliasiBankHarian() {
     })
   }
 
-  const handleUploadPdf = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    startMemprosesTransition(async () => {
-      try {
-        const hasil = await bacaPdfRekeningKoran(file)
-        setDataBank(
-          hasil.transaksi.map((item, index) => ({
-            id: -(index + 1),
-            tanggal: item.tanggal,
-            keterangan: item.keterangan,
-            nominal: item.nominal,
-            tipe: item.tipe,
-            status: "BELUM_TERHUBUNG",
-            pasanganId: null,
-          }))
-        )
-      } catch (err) {
-        setErrorMsg(
-          err instanceof Error ? err.message : "Gagal membaca rekening koran."
-        )
-      }
-    })
-  }
-
   // Kalkulasi ringkasan harian (data sudah difilter tanggal di server)
   const totalBankBelumTerhubung = dataBank
     .filter((i) => i.status === "BELUM_TERHUBUNG")
@@ -756,28 +729,6 @@ export default function RekonsiliasiBankHarian() {
                     className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
                   />
                 </div>
-
-                {/* IMPORT REKENING KORAN - BULANAN */}
-                {modePeriode === "BULANAN" && (
-                  <>
-                    <input
-                      ref={inputPdfRef}
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      className="hidden"
-                      onChange={handleUploadPdf}
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => inputPdfRef.current?.click()}
-                      disabled={sedangSibuk}
-                      className="h-10 rounded-lg border border-zinc-200 px-5 text-sm font-semibold text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Impor Rekening Koran
-                    </button>
-                  </>
-                )}
               </div>
             )}
 

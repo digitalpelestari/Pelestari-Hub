@@ -1,5 +1,4 @@
 "use client"
-import { bacaPdfRekeningKoran } from "@/app/actions/parse-rekening-koran"
 import {
   Landmark,
   BookOpen,
@@ -588,70 +587,6 @@ export default function RekonsiliasiBankHarian() {
     })
   }
 
-  const handleUploadPdf = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-
-    if (!file) return
-
-    startMemprosesTransition(async () => {
-      try {
-        const hasil = await bacaPdfRekeningKoran(file)
-
-        if (!hasil.transaksi.length) {
-          await swal.warning(
-            "Tidak ada transaksi yang berhasil dibaca dari rekening koran."
-          )
-          return
-        }
-
-        if (!hasil.tanggalMulai || !hasil.tanggalSampai) {
-          await swal.warning(
-            "Tanggal transaksi dari rekening koran tidak berhasil dibaca."
-          )
-          return
-        }
-
-        // 1. Simpan semua transaksi hasil PDF ke database
-        const hasilSimpan = await importTransaksiBank(
-          hasil.transaksi,
-          NO_AKUN_BANK
-        )
-
-        if (!hasilSimpan.success) {
-          await swal.error(hasilSimpan.message)
-          return
-        }
-
-        setTanggalMulai(hasil.tanggalMulai)
-        setTanggalSampai(hasil.tanggalSampai)
-
-        // 3. Otomatis cocokkan dengan jurnal yang sudah ada
-        const hasilCocok = await cocokkanOtomatisHarian(
-          hasil.tanggalMulai,
-          hasil.tanggalSampai,
-          NO_AKUN_BANK
-        )
-
-        // 4. Ambil data FINAL dari database
-        await muatData(hasil.tanggalMulai, hasil.tanggalSampai)
-
-        await swal.success(
-          `Rekening koran berhasil diimpor.\n\n` +
-            `${hasilSimpan.jumlah ?? hasil.transaksi.length} transaksi disimpan ke database.\n` +
-            `${hasilCocok.jumlahCocok} transaksi otomatis terhubung dengan jurnal.`
-        )
-      } catch (err) {
-        await swal.error(
-          err instanceof Error ? err.message : "Gagal mengimpor rekening koran."
-        )
-      } finally {
-        if (inputPdfRef.current) {
-          inputPdfRef.current.value = ""
-        }
-      }
-    })
-  }
-
   // Kalkulasi ringkasan harian (data sudah difilter tanggal di server)
   const totalBankBelumTerhubung = dataBank
     .filter((i) => i.status === "BELUM_TERHUBUNG")
@@ -795,28 +730,6 @@ export default function RekonsiliasiBankHarian() {
                     className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
                   />
                 </div>
-
-                {/* IMPORT REKENING KORAN - BULANAN */}
-                {modePeriode === "BULANAN" && (
-                  <>
-                    <input
-                      ref={inputPdfRef}
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      className="hidden"
-                      onChange={handleUploadPdf}
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => inputPdfRef.current?.click()}
-                      disabled={sedangSibuk}
-                      className="h-10 rounded-lg border border-zinc-200 px-5 text-sm font-semibold text-zinc-700 uppercase transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Impor Rekening Koran
-                    </button>
-                  </>
-                )}
               </div>
             )}
 
