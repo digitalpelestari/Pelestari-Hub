@@ -30,6 +30,7 @@ import {
   editTransaksiBank,
   hapusTransaksiBank,
   tutupBukuHarian,
+  importTransaksiBank,
   type TransaksiRekonDTO,
 } from "@/app/actions/rekonsiliasi"
 import { swal } from "@/lib/sweetalert"
@@ -341,7 +342,6 @@ function PanelTransaksi({
 /* ------------------------------------------------------------------ */
 
 export default function RekonsiliasiBankHarian() {
-  const [modePeriode, setModePeriode] = useState<"HARIAN" | "BULANAN">("HARIAN")
   const [showFormTransaksi, setShowFormTransaksi] = useState(false)
   const [transaksiYangDiedit, setTransaksiYangDiedit] = useState<number | null>(
     null
@@ -617,120 +617,50 @@ export default function RekonsiliasiBankHarian() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center rounded-sm border border-zinc-200 bg-zinc-100 p-1">
-              {(["HARIAN", "BULANAN"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setModePeriode(mode)}
-                  disabled={sedangSibuk}
-                  className={`h-8 rounded-sm px-4 text-[11px] font-bold uppercase transition ${
-                    modePeriode === mode
-                      ? "bg-white text-zinc-900 shadow-sm"
-                      : "text-zinc-500 hover:text-zinc-700"
-                  }`}
-                >
-                  {mode === "HARIAN" ? "Harian" : "Bulanan"}
-                </button>
-              ))}
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="mb-1 block text-[10px] font-bold text-zinc-500 uppercase">
+                Tanggal Mulai
+              </label>
+              <input
+                type="date"
+                value={tanggalMulai}
+                disabled={sedangSibuk}
+                onChange={(e) => {
+                  const v = e.target.value
+
+                  setTanggalMulai(v)
+                  resetPilihan()
+
+                  startLoadingTransition(() => {
+                    muatData(v, tanggalSampai)
+                  })
+                }}
+                className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
+              />
             </div>
 
-            {modePeriode === "HARIAN" ? (
-              <div className="flex items-end gap-4">
-                <div>
-                  <label className="mb-1 block text-[10px] font-bold text-zinc-500 uppercase">
-                    Tanggal Mulai
-                  </label>
-                  <input
-                    type="date"
-                    value={tanggalMulai}
-                    disabled={sedangSibuk}
-                    onChange={(e) => {
-                      const v = e.target.value
+            <div>
+              <label className="mb-1 block text-[10px] font-bold text-zinc-500 uppercase">
+                Tanggal Sampai
+              </label>
+              <input
+                type="date"
+                value={tanggalSampai}
+                disabled={sedangSibuk}
+                onChange={(e) => {
+                  const v = e.target.value
 
-                      setTanggalMulai(v)
-                      resetPilihan()
+                  setTanggalSampai(v)
+                  resetPilihan()
 
-                      startLoadingTransition(() => {
-                        muatData(v, tanggalSampai)
-                      })
-                    }}
-                    className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-[10px] font-bold text-zinc-500 uppercase">
-                    Tanggal Sampai
-                  </label>
-                  <input
-                    type="date"
-                    value={tanggalSampai}
-                    disabled={sedangSibuk}
-                    onChange={(e) => {
-                      const v = e.target.value
-
-                      setTanggalSampai(v)
-                      resetPilihan()
-
-                      startLoadingTransition(() => {
-                        muatData(tanggalMulai, v)
-                      })
-                    }}
-                    className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-end gap-4">
-                {/* TANGGAL MULAI */}
-                <div>
-                  <label className="mb-1 block text-[10px] font-bold text-zinc-500 uppercase">
-                    Tanggal Mulai
-                  </label>
-                  <input
-                    type="date"
-                    value={tanggalMulai}
-                    disabled={sedangSibuk}
-                    onChange={(e) => {
-                      const v = e.target.value
-
-                      setTanggalMulai(v)
-                      resetPilihan()
-
-                      startLoadingTransition(() => {
-                        muatData(v, tanggalSampai)
-                      })
-                    }}
-                    className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
-                  />
-                </div>
-
-                {/* TANGGAL SAMPAI */}
-                <div>
-                  <label className="mb-1 block text-[10px] font-bold text-zinc-500 uppercase">
-                    Tanggal Sampai
-                  </label>
-                  <input
-                    type="date"
-                    value={tanggalSampai}
-                    disabled={sedangSibuk}
-                    onChange={(e) => {
-                      const v = e.target.value
-
-                      setTanggalSampai(v)
-                      resetPilihan()
-
-                      startLoadingTransition(() => {
-                        muatData(tanggalMulai, v)
-                      })
-                    }}
-                    className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
-                  />
-                </div>
-              </div>
-            )}
+                  startLoadingTransition(() => {
+                    muatData(tanggalMulai, v)
+                  })
+                }}
+                className="h-10 rounded-sm border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800 focus:outline-none disabled:opacity-50"
+              />
+            </div>
 
             <button
               onClick={jalankanCocokkanOtomatis}
@@ -830,18 +760,14 @@ export default function RekonsiliasiBankHarian() {
                 : `${tanggalMulai} s/d ${tanggalSampai}`
             }
             headerRight={
-              modePeriode === "HARIAN" ? (
-                <button
-                  type="button"
-                  disabled={sedangSibuk}
-                  onClick={bukaFormTambah}
-                  className="h-8 rounded-sm border border-zinc-200 bg-white px-3 text-[11px] font-bold text-zinc-700 uppercase shadow-sm transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Tambah Transaksi
-                </button>
-              ) : (
-                <span className="rounded-sm bg-blue-50 px-2.5 py-1 text-[10px] font-black tracking-wide text-blue-700 uppercase"></span>
-              )
+              <button
+                type="button"
+                disabled={sedangSibuk}
+                onClick={bukaFormTambah}
+                className="h-8 rounded-sm border border-zinc-200 bg-white px-3 text-[11px] font-bold text-zinc-700 uppercase shadow-sm transition-all hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Tambah Transaksi
+              </button>
             }
             kolomTerakhir="Deskripsi Transaksi"
             data={dataBank}
