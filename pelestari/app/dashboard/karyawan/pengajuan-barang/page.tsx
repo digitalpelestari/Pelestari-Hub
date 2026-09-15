@@ -740,8 +740,11 @@ export default function PengajuanBarangPage() {
 
       {/* MODAL FORM TAMBAH/EDIT PENGAJUAN */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="w-full max-w-3xl rounded-sm border-none shadow-2xl">
-          <DialogHeader className="-mx-6 -mt-6 mb-4 flex items-center justify-between bg-zinc-900 px-6 py-3 text-white">
+        <DialogContent
+          showCloseButton={false}
+          className="w-full max-w-3xl rounded-sm border-none shadow-2xl"
+        >
+          <DialogHeader className="-mx-6 -mt-6 mb-4 flex-row items-center justify-between bg-zinc-900 px-6 py-3 text-white">
             <DialogTitle className="text-xs font-bold tracking-wider uppercase">
               {editMode
                 ? "Edit Pengajuan Barang"
@@ -755,7 +758,6 @@ export default function PengajuanBarangPage() {
               <X className="h-4 w-4" />
             </button>
           </DialogHeader>
-
           <form
             onSubmit={handleSubmit}
             className="max-h-[70vh] space-y-4 overflow-y-auto px-1"
@@ -827,11 +829,8 @@ export default function PengajuanBarangPage() {
 
               <div className="space-y-2">
                 {formData.items.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="grid grid-cols-12 items-end gap-2 rounded-sm border border-zinc-200 bg-white p-2"
-                  >
-                    <div className="col-span-12 space-y-1 md:col-span-4">
+                  <div className="grid grid-cols-12 items-end gap-2 rounded-sm border border-zinc-200 bg-white p-2">
+                    <div className="col-span-12 space-y-1 md:col-span-3">
                       <Label className="text-[10px] font-bold text-zinc-600">
                         Nama Barang
                       </Label>
@@ -845,31 +844,37 @@ export default function PengajuanBarangPage() {
                         placeholder="Nama barang"
                       />
                     </div>
-                    <div className="col-span-6 space-y-1 md:col-span-2">
+                    <div className="col-span-5 min-w-0 space-y-1 md:col-span-3">
                       <Label className="text-[10px] font-bold text-zinc-600">
                         Kategori
                       </Label>
-                      <Select
-                        value={item.kategori}
-                        onValueChange={(val) =>
-                          handleItemChange(idx, "kategori", val)
-                        }
-                      >
-                        <SelectTrigger className="h-8 rounded-sm border-zinc-300 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ATK">ATK</SelectItem>
-                          <SelectItem value="Elektronik">Elektronik</SelectItem>
-                          <SelectItem value="Peralatan Kebersihan">
-                            Kebersihan
-                          </SelectItem>
-                          <SelectItem value="Furnitur">Furnitur</SelectItem>
-                          <SelectItem value="Lainnya">Lainnya</SelectItem>
-                        </SelectContent>
-                      </Select>
+
+                      <div className="w-full">
+                        <Select
+                          value={item.kategori}
+                          onValueChange={(val) =>
+                            handleItemChange(idx, "kategori", val)
+                          }
+                        >
+                          <SelectTrigger className="!h-8 w-full rounded-sm border-zinc-300 px-2 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+
+                          <SelectContent>
+                            <SelectItem value="ATK">ATK</SelectItem>
+                            <SelectItem value="Elektronik">
+                              Elektronik
+                            </SelectItem>
+                            <SelectItem value="Peralatan Kebersihan">
+                              Kebersihan
+                            </SelectItem>
+                            <SelectItem value="Furnitur">Furnitur</SelectItem>
+                            <SelectItem value="Lainnya">Lainnya</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div className="col-span-3 space-y-1">
+                    <div className="col-span-3 space-y-1 md:col-span-2">
                       <Label className="text-[10px] font-bold text-zinc-600">
                         Qty
                       </Label>
@@ -884,7 +889,7 @@ export default function PengajuanBarangPage() {
                         className="h-8 rounded-sm border-zinc-300 text-center text-xs"
                       />
                     </div>
-                    <div className="col-span-3 space-y-1">
+                    <div className="col-span-3 space-y-1 md:col-span-3">
                       <Label className="text-[10px] font-bold text-zinc-600">
                         Estimasi (Rp)
                       </Label>
@@ -958,17 +963,12 @@ export default function PengajuanBarangPage() {
       {/* MODAL DETAIL PENGAJUAN */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <DialogContent className="w-full max-w-2xl rounded-sm border-none shadow-2xl">
-          <DialogHeader className="-mx-6 -mt-6 mb-4 flex items-center justify-between bg-zinc-900 px-6 py-3 text-white">
+          <DialogHeader className="-mx-6 -mt-6 mb-4 flex-row items-center justify-between bg-zinc-900 px-6 py-3 text-white">
             <DialogTitle className="text-xs font-bold tracking-wider uppercase">
-              Detail Pengajuan Barang
+              {editMode
+                ? "Edit Pengajuan Barang"
+                : "Form Pengajuan Barang Baru"}
             </DialogTitle>
-            <button
-              type="button"
-              onClick={() => setIsDetailOpen(false)}
-              className="text-zinc-400 hover:text-white"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </DialogHeader>
 
           {selectedPengajuan && (
