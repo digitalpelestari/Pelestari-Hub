@@ -22,7 +22,72 @@ function getBulanIndex(bulanNama: string): number {
   return listBulan[bulanNama] || 1;
 }
 
+async function syncAssetConditions(rows: any[]) {
+  const sekarang = new Date();
+  const bulanSekarang = sekarang.getMonth() + 1;
+  const tahunSekarang = sekarang.getFullYear();
 
+  for (const asset of rows) {
+    if (asset.jenis_asset !== "Aset Tetap") {
+      continue;
+    }
+
+    const masaKomersial =
+      Number(asset.kelompok_komersial) || 4;
+
+    const bulanPerolehan =
+      getBulanIndex(asset.bulan_perolehan);
+
+    const tahunPerolehan =
+      Number(asset.tahun_perolehan) || tahunSekarang;
+
+    let jumlahBulanBerjalan = 0;
+
+    if (tahunPerolehan < tahunSekarang) {
+      jumlahBulanBerjalan =
+        (tahunSekarang - tahunPerolehan) * 12 +
+        (bulanSekarang - bulanPerolehan);
+    } else if (tahunPerolehan === tahunSekarang) {
+      jumlahBulanBerjalan =
+        bulanSekarang - bulanPerolehan;
+    }
+
+    if (
+      tahunPerolehan > tahunSekarang ||
+      (
+        tahunPerolehan === tahunSekarang &&
+        bulanPerolehan > bulanSekarang
+      )
+    ) {
+      jumlahBulanBerjalan = 0;
+    }
+
+    jumlahBulanBerjalan = Math.max(
+      0,
+      jumlahBulanBerjalan
+    );
+
+    const maksimalBulan =
+      masaKomersial * 12;
+
+    if (
+      jumlahBulanBerjalan >= maksimalBulan &&
+      asset.kondisi !== "Tidak Layak Pakai"
+    ) {
+      await db.execute(
+        `UPDATE tb_asset
+         SET kondisi = ?
+         WHERE id_asset = ?`,
+        [
+          "Tidak Layak Pakai",
+          asset.id_asset,
+        ]
+      );
+
+      asset.kondisi = "Tidak Layak Pakai";
+    }
+  }
+}
 // =========================================================================
 // ACTION: AMBIL SEMUA LIST ASSET (DENGAN KALKULASI DEPRESIASI KOMERSIAL & FISKAL)
 // =========================================================================
@@ -35,7 +100,8 @@ export async function getAssetsAction(isFinanceView: boolean = false) {
     const [rows]: any = await db.execute(
       "SELECT * FROM tb_asset ORDER BY id_asset DESC"
     );
-
+    await syncAssetConditions(rows);
+    
     if (!isFinanceView) {
       return {
         success: true,
@@ -149,6 +215,14 @@ export async function getAssetsAction(isFinanceView: boolean = false) {
           jumlahBulanBerjalan,
           maksimalBulanKomersial
         );
+      const masaPenyusutanHabis =
+        isAsetTetap &&
+        jumlahBulanBerjalan >= maksimalBulanKomersial;
+
+      const kondisiAktual =
+        masaPenyusutanHabis
+          ? "Tidak Layak Pakai"
+          : asset.kondisi;
 
       const bulanFiskalBerjalan =
         Math.min(
@@ -187,7 +261,7 @@ export async function getAssetsAction(isFinanceView: boolean = false) {
 
       return {
         ...asset,
-
+        kondisi: kondisiAktual,
         // Nilai perolehan
         nilai_perolehan: nilaiPerolehan,
 
