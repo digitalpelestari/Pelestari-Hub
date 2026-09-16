@@ -108,7 +108,7 @@ export default function FinanceAssetTrackingPage() {
                   
                   {/* METODE GARIS LURUS: KOMERSIAL */}
                   <td className="p-2 text-center text-blue-700 font-bold border-r border-zinc-200 bg-blue-50/5">
-                    {asset.kelompok_komersial}
+                    {asset.kelompok}
                   </td>
                   <td className="p-2 text-center text-zinc-500 border-r border-zinc-200 bg-blue-50/5">
                     {asset.tarif_komersial_persen}
@@ -122,7 +122,7 @@ export default function FinanceAssetTrackingPage() {
                   
                   {/* METODE GARIS LURUS: FISKAL PAJAK */}
                   <td className="p-2 text-center text-purple-700 font-bold border-r border-zinc-200 bg-purple-50/5">
-                    {asset.kelompok_fiskal}
+                    {asset.kelompok}
                   </td>
                   <td className="p-2 text-center text-zinc-500 border-r border-zinc-200 bg-purple-50/5">
                     {asset.tarif_fiskal_persen}

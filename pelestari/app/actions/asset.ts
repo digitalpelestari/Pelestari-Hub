@@ -3,67 +3,240 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
-// Helper konversi nama bulan ke indeks angka (1-12)
 function getBulanIndex(bulanNama: string): number {
   const listBulan: { [key: string]: number } = {
-    "Januari": 1, "Februari": 2, "Maret": 3, "April": 4, "Mei": 5, "Juni": 6,
-    "Juli": 7, "Agustus": 8, "September": 9, "Oktober": 10, "November": 11, "Desember": 12
+    Januari: 1,
+    Februari: 2,
+    Maret: 3,
+    April: 4,
+    Mei: 5,
+    Juni: 6,
+    Juli: 7,
+    Agustus: 8,
+    September: 9,
+    Oktober: 10,
+    November: 11,
+    Desember: 12,
   };
+
   return listBulan[bulanNama] || 1;
 }
+
 
 // =========================================================================
 // ACTION: AMBIL SEMUA LIST ASSET (DENGAN KALKULASI DEPRESIASI KOMERSIAL & FISKAL)
 // =========================================================================
+// =========================================================================
+// ACTION: AMBIL SEMUA LIST ASSET
+// DENGAN KALKULASI DEPRESIASI KOMERSIAL & FISKAL
+// =========================================================================
 export async function getAssetsAction(isFinanceView: boolean = false) {
   try {
-    const [rows]: any = await db.execute("SELECT * FROM tb_asset ORDER BY id_asset DESC");
+    const [rows]: any = await db.execute(
+      "SELECT * FROM tb_asset ORDER BY id_asset DESC"
+    );
 
     if (!isFinanceView) {
-      return { success: true, data: rows };
+      return {
+        success: true,
+        data: rows,
+      };
     }
 
+    const sekarang = new Date();
+    const bulanSekarang = sekarang.getMonth() + 1;
+    const tahunSekarang = sekarang.getFullYear();
+
     const computedData = rows.map((asset: any) => {
-      const hargaBeli = Number(asset.harga_beli);
-      const masaKomersial = Number(asset.kelompok_komersial || 4);
-      const masaFiskal = Number(asset.kelompok_fiskal || 4);
-      const isAsetTetap = asset.jenis_asset === "Aset Tetap";
+      const hargaBeli = Number(asset.harga_beli) || 0;
 
-      const penyusutanKomersialTahunan = isAsetTetap ? (hargaBeli / masaKomersial) : 0;
-      const penyusutanFiskalTahunan = isAsetTetap ? (hargaBeli / masaFiskal) : 0;
+      /*
+       * harga_beli dianggap sebagai HARGA BELI TOTAL.
+       * jumlah tidak dikalikan lagi.
+       */
+      const nilaiPerolehan = hargaBeli;
 
-      const penyusutanKomersialBulanan = penyusutanKomersialTahunan / 12;
-      const penyusutanFiskalBulanan = penyusutanFiskalTahunan / 12;
+      const isAsetTetap =
+        asset.jenis_asset === "Aset Tetap";
 
-      let bulanKomersialBerjalan = 8;
-      let bulanFiskalBerjalan = 2;
+      // =========================================
+      // UMUR EKONOMIS
+      // =========================================
 
-      const bulanAsetIdx = getBulanIndex(asset.bulan_perolehan);
-      if (asset.tahun_perolehan === 2025) {
-        bulanKomersialBerjalan = 12 - bulanAsetIdx + 1;
-        bulanFiskalBerjalan = Math.max(1, bulanKomersialBerjalan - 6);
+      const masaKomersial =
+        Number(asset.kelompok_komersial) || 4;
+
+      const masaFiskal =
+        Number(asset.kelompok_fiskal) || 4;
+
+      // =========================================
+      // PENYUSUTAN TAHUNAN
+      // =========================================
+
+      const penyusutanKomersialTahunan =
+        isAsetTetap
+          ? nilaiPerolehan / masaKomersial
+          : 0;
+
+      const penyusutanFiskalTahunan =
+        isAsetTetap
+          ? nilaiPerolehan / masaFiskal
+          : 0;
+
+      // =========================================
+      // PENYUSUTAN BULANAN
+      // =========================================
+
+      const penyusutanKomersialBulanan =
+        penyusutanKomersialTahunan / 12;
+
+      const penyusutanFiskalBulanan =
+        penyusutanFiskalTahunan / 12;
+
+      // =========================================
+      // BULAN & TAHUN PEROLEHAN
+      // =========================================
+
+      const bulanAsetIdx = getBulanIndex(
+        asset.bulan_perolehan
+      );
+
+      const tahunPerolehan =
+        Number(asset.tahun_perolehan) || tahunSekarang;
+
+      // =========================================
+      // HITUNG JUMLAH BULAN BERJALAN
+      // =========================================
+
+      let jumlahBulanBerjalan = 0;
+      if (tahunPerolehan < tahunSekarang) {
+        jumlahBulanBerjalan =
+          (tahunSekarang - tahunPerolehan) * 12 +
+          (bulanSekarang - bulanAsetIdx);
+      } else if (tahunPerolehan === tahunSekarang) {
+        jumlahBulanBerjalan =
+          bulanSekarang - bulanAsetIdx;
       }
 
-      const prorataKomersial = isAsetTetap ? (penyusutanKomersialBulanan * bulanKomersialBerjalan) : 0;
-      const prorataFiskal = isAsetTetap ? (penyusutanFiskalBulanan * bulanFiskalBerjalan) : 0;
+      // Aset yang belum diperoleh tidak mengalami penyusutan
+      if (
+        tahunPerolehan > tahunSekarang ||
+        (
+          tahunPerolehan === tahunSekarang &&
+          bulanAsetIdx > bulanSekarang
+        )
+      ) {
+        jumlahBulanBerjalan = 0;
+      }
 
-      const sisaNilaiBuku = isAsetTetap ? Math.max(0, hargaBeli - prorataFiskal) : hargaBeli;
+      jumlahBulanBerjalan = Math.max(
+        0,
+        jumlahBulanBerjalan
+      );
+
+      // =========================================
+      // BATAS UMUR EKONOMIS
+      // =========================================
+
+      const maksimalBulanKomersial =
+        masaKomersial * 12;
+
+      const maksimalBulanFiskal =
+        masaFiskal * 12;
+
+      const bulanKomersialBerjalan =
+        Math.min(
+          jumlahBulanBerjalan,
+          maksimalBulanKomersial
+        );
+
+      const bulanFiskalBerjalan =
+        Math.min(
+          jumlahBulanBerjalan,
+          maksimalBulanFiskal
+        );
+
+      // =========================================
+      // AKUMULASI PENYUSUTAN
+      // =========================================
+
+      const prorataKomersial =
+        isAsetTetap
+          ? penyusutanKomersialBulanan *
+          bulanKomersialBerjalan
+          : 0;
+
+      const prorataFiskal =
+        isAsetTetap
+          ? penyusutanFiskalBulanan *
+          bulanFiskalBerjalan
+          : 0;
+
+      // =========================================
+      // NILAI BUKU
+      // =========================================
+      // Nilai buku menggunakan penyusutan komersial.
+
+      const sisaNilaiBuku =
+        isAsetTetap
+          ? Math.max(
+            0,
+            nilaiPerolehan - prorataKomersial
+          )
+          : nilaiPerolehan;
 
       return {
         ...asset,
-        tarif_komersial_persen: isAsetTetap ? `${(100 / masaKomersial).toFixed(2)}%` : "0.00%",
-        tarif_fiskal_persen: isAsetTetap ? `${(100 / masaFiskal).toFixed(2)}%` : "0.00%",
-        penyusutan_komersial: penyusutanKomersialTahunan,
-        penyusutan_fiskal: penyusutanFiskalTahunan,
-        prorata_komersial: prorataKomersial,
-        prorata_fiskal: prorataFiskal,
-        sisa_nilai_buku: sisaNilaiBuku
+
+        // Nilai perolehan
+        nilai_perolehan: nilaiPerolehan,
+
+        // Kelompok komersial & fiskal
+        kelompok_komersial: masaKomersial,
+        kelompok_fiskal: masaFiskal,
+
+        // Tarif komersial
+        tarif_komersial_persen:
+          isAsetTetap
+            ? `${(100 / masaKomersial).toFixed(2)}%`
+            : "0.00%",
+
+        // Tarif fiskal
+        tarif_fiskal_persen:
+          isAsetTetap
+            ? `${(100 / masaFiskal).toFixed(2)}%`
+            : "0.00%",
+
+        // Penyusutan tahunan
+        penyusutan_komersial:
+          penyusutanKomersialTahunan,
+
+        penyusutan_fiskal:
+          penyusutanFiskalTahunan,
+
+        // Akumulasi penyusutan berjalan
+        prorata_komersial:
+          prorataKomersial,
+
+        prorata_fiskal:
+          prorataFiskal,
+
+        // Nilai buku
+        sisa_nilai_buku:
+          sisaNilaiBuku,
       };
     });
 
-    return { success: true, data: computedData };
+    return {
+      success: true,
+      data: computedData,
+    };
   } catch (error: any) {
-    return { success: false, message: error.message, data: [] };
+    return {
+      success: false,
+      message: error.message,
+      data: [],
+    };
   }
 }
 
@@ -86,16 +259,14 @@ export async function createAssetAction(payload: any) {
       kondisi,
     } = payload;
 
-    let kelompokKomersial = 4;
-    let kelompokFiskal = 4;
+    const kelompokFinal = String(kelompok || "1");
 
-    if (
-      nama_asset.toLowerCase().includes("mobil") ||
-      nama_asset.toLowerCase().includes("avanza")
-    ) {
-      kelompokKomersial = 6;
-      kelompokFiskal = 4;
-    }
+    let kelompokKomersial =
+      kelompokFinal === "1" ? 4 : 8;
+
+    let kelompokFiskal =
+      kelompokFinal === "1" ? 4 : 8;
+
 
     const jenisAsetFinal = jenis_asset || "Aset Tetap";
 
@@ -166,16 +337,13 @@ export async function updateAssetAction(id_asset: number, payload: any) {
       kondisi,
     } = payload;
 
-    let kelompokKomersial = 4;
-    let kelompokFiskal = 4;
+    const kelompokFinal = String(kelompok || "1");
 
-    if (
-      nama_asset.toLowerCase().includes("mobil") ||
-      nama_asset.toLowerCase().includes("avanza")
-    ) {
-      kelompokKomersial = 6;
-      kelompokFiskal = 4;
-    }
+    let kelompokKomersial =
+      kelompokFinal === "1" ? 4 : 8;
+
+    let kelompokFiskal =
+      kelompokFinal === "1" ? 4 : 8;
 
     const jenisAsetFinal = jenis_asset || "Aset Tetap";
 
@@ -233,10 +401,10 @@ export async function updateAssetAction(id_asset: number, payload: any) {
 export async function deleteAssetAction(id_asset: number) {
   try {
     await db.execute("DELETE FROM tb_asset WHERE id_asset = ?", [id_asset]);
-    
+
     revalidatePath("/dashboard/ga/asset");
     revalidatePath("/dashboard/finance/asset-tracking");
-    
+
     return { success: true, message: "Data aset berhasil dihapus dari sistem!" };
   } catch (error: any) {
     return { success: false, message: error.message };
@@ -255,7 +423,7 @@ export async function updateAssetKondisiAction(id_asset: number, kondisi: string
 
     revalidatePath("/dashboard/ga/asset");
     revalidatePath("/dashboard/finance/asset-tracking");
-    
+
     return { success: true, message: "Kondisi aset berhasil diperbarui!" };
   } catch (error: any) {
     return { success: false, message: error.message };

@@ -325,19 +325,19 @@ export default function GaAssetPage() {
                   </td>
                   <td className="p-3 text-center font-medium">
                     <span className="rounded border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-700">
-                      Kelompok {asset.kelompok || "1"}
+                      {asset.kelompok || "1"}
                     </span>
                   </td>
                   <td className="p-3 text-center font-mono font-medium">
                     {asset.kode_asset || "-"}
                   </td>
 
-                  <td className="p-3 text-center font-medium">
+                  <td className="p-3 text-center">
                     <span
-                      className={`rounded px-2 py-0.5 text-[10px] font-bold ${
+                      className={`inline-flex rounded px-2 py-1 text-[10px] font-semibold ${
                         asset.jenis_asset === "Aset Tetap"
-                          ? "border border-blue-200 bg-blue-50 text-blue-700"
-                          : "border border-purple-200 bg-purple-50 text-purple-700"
+                          ? "bg-blue-50 text-blue-700"
+                          : "bg-purple-50 text-purple-700"
                       }`}
                     >
                       {asset.jenis_asset || "Aset Tetap"}
