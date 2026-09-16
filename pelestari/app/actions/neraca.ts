@@ -49,13 +49,105 @@ export async function getNeracaData(year: string = "2026"): Promise<NeracaData> 
     // 2. HITUNG TOTAL NILAI PEROLEHAN ASET KANTOR DARI tb_asset
     // ----------------------------------------------------------------
     let totalHargaAset = 0;
+    let totalPenyusutanAset = 0;
+
     try {
-      const [asetRows]: any = await db.query(
-        `SELECT SUM(COALESCE(harga_beli, 0) * COALESCE(jumlah, 1)) as total_harga FROM tb_asset`
-      );
-      totalHargaAset = Number(asetRows[0]?.total_harga) || 0;
+      const [asetRows]: any = await db.query(`
+  SELECT
+    harga_beli,
+    jenis_asset,
+    kelompok_komersial,
+    bulan_perolehan,
+    tahun_perolehan
+  FROM tb_asset
+  WHERE jenis_asset = 'Aset Tetap'
+`);
+
+      const bulanMap: { [key: string]: number } = {
+        Januari: 1,
+        Februari: 2,
+        Maret: 3,
+        April: 4,
+        Mei: 5,
+        Juni: 6,
+        Juli: 7,
+        Agustus: 8,
+        September: 9,
+        Oktober: 10,
+        November: 11,
+        Desember: 12,
+      };
+
+      const sekarang = new Date();
+      const bulanSekarang = sekarang.getMonth() + 1;
+      const tahunSekarang = sekarang.getFullYear();
+
+      asetRows.forEach((asset: any) => {
+        const hargaBeli = Number(asset.harga_beli) || 0;
+
+        // harga_beli adalah total nilai perolehan
+        const nilaiPerolehan = hargaBeli;
+
+        totalHargaAset += nilaiPerolehan;
+
+        // Umur ekonomis mengikuti kelompok komersial yang tersimpan
+        const umurEkonomis =
+          Number(asset.kelompok_komersial) || 4;
+
+        // Penyusutan garis lurus per tahun
+        const penyusutanTahunan =
+          nilaiPerolehan / umurEkonomis;
+
+        // Penyusutan per bulan
+        const penyusutanBulanan =
+          penyusutanTahunan / 12;
+
+        const bulanPerolehan =
+          bulanMap[asset.bulan_perolehan] || 1;
+
+        const tahunPerolehan =
+          Number(asset.tahun_perolehan) || tahunSekarang;
+
+        // Bulan perolehan TIDAK dihitung
+        let jumlahBulan = 0;
+
+        if (tahunPerolehan < tahunSekarang) {
+          jumlahBulan =
+            (tahunSekarang - tahunPerolehan) * 12 +
+            (bulanSekarang - bulanPerolehan);
+        } else if (tahunPerolehan === tahunSekarang) {
+          jumlahBulan =
+            bulanSekarang - bulanPerolehan;
+        }
+
+        // Aset yang belum diperoleh belum mengalami penyusutan
+        if (
+          tahunPerolehan > tahunSekarang ||
+          (
+            tahunPerolehan === tahunSekarang &&
+            bulanPerolehan > bulanSekarang
+          )
+        ) {
+          jumlahBulan = 0;
+        }
+
+        jumlahBulan = Math.max(0, jumlahBulan);
+
+        // Maksimal sesuai umur ekonomis
+        const maksimalBulan =
+          umurEkonomis * 12;
+
+        jumlahBulan =
+          Math.min(jumlahBulan, maksimalBulan);
+
+        // Akumulasi penyusutan
+        const akumulasiPenyusutan =
+          penyusutanBulanan * jumlahBulan;
+
+        totalPenyusutanAset += akumulasiPenyusutan;
+      });
     } catch (e) {
-      console.log("Cek tabel tb_asset:", e);
+      console.log("Gagal menghitung penyusutan aset:", e);
     }
 
     // ----------------------------------------------------------------
@@ -102,7 +194,7 @@ export async function getNeracaData(year: string = "2026"): Promise<NeracaData> 
         item.saldo = Math.abs(item.saldo);
         aktivaLancar.push(item);
         totalAktivaLancar += item.saldo;
-      } 
+      }
       // 2. TANGKAP SALDO UNTUK HARTA TETAP KHUSUS
       else if (noAkun.startsWith("1")) {
         if (namaAkunLower.includes("properti") || (namaAkunLower.includes("investasi") && !namaAkunLower.includes("logam"))) {
@@ -111,20 +203,22 @@ export async function getNeracaData(year: string = "2026"): Promise<NeracaData> 
           saldoLogamMulia += Math.abs(nominal);
         } else if (namaAkunLower.includes("kendaraan") && !namaAkunLower.includes("penyusutan") && !namaAkunLower.includes("akumulasi")) {
           saldoKendaraan += Math.abs(nominal);
-        } else if (namaAkunLower.includes("penyusutan") || namaAkunLower.includes("akumulasi")) {
+        } else if (
+          namaAkunLower.includes("penyusutan") ||
+          namaAkunLower.includes("akumulasi")
+        ) {
           if (namaAkunLower.includes("kendaraan")) {
-            saldoPenyusutanKendaraan += nominal > 0 ? -nominal : nominal;
-          } else {
-            saldoPenyusutanAset += nominal > 0 ? -nominal : nominal;
+            saldoPenyusutanKendaraan +=
+              nominal > 0 ? -nominal : nominal;
           }
         }
-      } 
+      }
       // 3. KEWAJIBAN / HUTANG (2xxx)
       else if (noAkun.startsWith("2")) {
         item.saldo = Math.abs(item.saldo);
         kewajiban.push(item);
         totalKewajiban += item.saldo;
-      } 
+      }
       // 4. EKUITAS (3xxx)
       else if (noAkun.startsWith("3")) {
         item.saldo = Math.abs(item.saldo);
@@ -140,33 +234,33 @@ export async function getNeracaData(year: string = "2026"): Promise<NeracaData> 
       {
         no_akun: "14100",
         nama_akun: "Investasi Properti",
-        saldo: saldoInvestasiProperti
+        saldo: saldoInvestasiProperti,
       },
       {
         no_akun: "14200",
         nama_akun: "Logam Mulia",
-        saldo: saldoLogamMulia
+        saldo: saldoLogamMulia,
       },
       {
         no_akun: "15100",
-        nama_akun: "Aset Kantor", // <--- SUDAH DIGANTI MENJADI "Aset Kantor"
-        saldo: totalHargaAset
+        nama_akun: "Aset Kantor",
+        saldo: totalHargaAset,
       },
       {
         no_akun: "15200",
         nama_akun: "Penyusutan Aset",
-        saldo: saldoPenyusutanAset
+        saldo: -totalPenyusutanAset,
       },
       {
         no_akun: "15300",
         nama_akun: "Kendaraan",
-        saldo: saldoKendaraan
+        saldo: saldoKendaraan,
       },
       {
         no_akun: "15400",
         nama_akun: "Penyusutan Aset Kendaraan",
-        saldo: saldoPenyusutanKendaraan
-      }
+        saldo: saldoPenyusutanKendaraan,
+      },
     ];
 
     const totalHartaTetap = hartaTetap.reduce((sum, item) => sum + item.saldo, 0);
