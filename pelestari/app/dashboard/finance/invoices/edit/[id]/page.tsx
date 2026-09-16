@@ -51,14 +51,13 @@ export default function EditInvoicePage() {
     perusahaan_tujuan: "",
     npwp: "",
     alamat_perusahaan: "",
-    // BARIS 1
-    keterangan: "",
-    jumlah_peserta: 0,
-    harga_peserta: 0,
-    // BARIS 2
-    keterangan_2: "",
-    jumlah_peserta_2: 0,
-    harga_peserta_2: 0,
+    items: [
+      {
+        item_deskripsi: "",
+        item_jumlah: 0,
+        item_harga: 0,
+      },
+    ],
     // STATUS & PAJAK
     is_pph23: false,
     is_ppn11: false,
@@ -75,14 +74,33 @@ export default function EditInvoicePage() {
         const res = await getInvoiceById(invoiceId)
         if (res) {
           setFormData({
-            ...res,
-            // Format tanggal SQL ke format input date (YYYY-MM-DD)
+            nomor_invoice: res.nomor_invoice ?? "",
+            batch: res.batch ?? "",
             tanggal: res.tanggal
               ? new Date(res.tanggal).toISOString().split("T")[0]
               : "",
             tanggal_jatuhtempo: res.tanggal_jatuhtempo
               ? new Date(res.tanggal_jatuhtempo).toISOString().split("T")[0]
               : "",
+            perusahaan_tujuan: res.perusahaan_tujuan ?? "",
+            npwp: res.npwp ?? "",
+            alamat_perusahaan: res.alamat_perusahaan ?? "",
+
+            items:
+              res.items && res.items.length > 0
+                ? res.items.map((item: any) => ({
+                    item_deskripsi: item.item_deskripsi ?? "",
+                    item_jumlah: Number(item.item_jumlah) || 0,
+                    item_harga: Number(item.item_harga) || 0,
+                  }))
+                : [
+                    {
+                      item_deskripsi: "",
+                      item_jumlah: 0,
+                      item_harga: 0,
+                    },
+                  ],
+
             is_pph23: res.is_pph23 === 1,
             is_ppn11: res.is_ppn11 === 1,
             is_pnbp: res.is_pnbp === 1,
@@ -100,12 +118,15 @@ export default function EditInvoicePage() {
 
   // 2. Kalkulasi Otomatis Berdasarkan Perubahan (Baris 1 + Baris 2)
   const calculation = useMemo(() => {
-    const sub1 = (formData.jumlah_peserta || 0) * (formData.harga_peserta || 0)
-    const sub2 =
-      (formData.jumlah_peserta_2 || 0) * (formData.harga_peserta_2 || 0)
-    const subtotalDasar = sub1 + sub2
-    const totalPesertaAll =
-      (formData.jumlah_peserta || 0) + (formData.jumlah_peserta_2 || 0)
+    const subtotalDasar = formData.items.reduce(
+      (total, item) => total + (item.item_jumlah || 0) * (item.item_harga || 0),
+      0
+    )
+
+    const totalPesertaAll = formData.items.reduce(
+      (total, item) => total + (item.item_jumlah || 0),
+      0
+    )
 
     const pph = formData.is_pph23 ? subtotalDasar * 0.02 : 0
     const ppn = formData.is_ppn11 ? subtotalDasar * 0.11 : 0
@@ -134,6 +155,45 @@ export default function EditInvoicePage() {
   const handleNumericChange = (key: string, value: string) => {
     const val = value.replace(/\D/g, "")
     setFormData({ ...formData, [key]: val === "" ? 0 : parseInt(val) })
+  }
+
+  const tambahItem = () => {
+    setFormData((prev) => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          item_deskripsi: "",
+          item_jumlah: 0,
+          item_harga: 0,
+        },
+      ],
+    }))
+  }
+
+  const updateItem = (
+    index: number,
+    field: "item_deskripsi" | "item_jumlah" | "item_harga",
+    value: string | number
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              [field]: value,
+            }
+          : item
+      ),
+    }))
+  }
+
+  const hapusItem = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index),
+    }))
   }
 
   // PERBAIKAN UTAMA: Handler khusus untuk memanipulasi perubahan status select secara aman dari TS-Check
@@ -351,93 +411,117 @@ export default function EditInvoicePage() {
             </CardHeader>
             <CardContent className="space-y-8 p-6">
               {/* ITEM 1 */}
-              <div className="relative space-y-4 rounded-[1.5rem] border border-zinc-200 bg-zinc-50 p-5">
-                <Badge className="rounded-md bg-black px-3 text-[9px] font-black text-white uppercase italic hover:bg-black">
-                  Baris Utama
-                </Badge>
-                <Input
-                  placeholder="Layanan 1"
-                  value={formData.keterangan}
-                  onChange={(e) =>
-                    setFormData({ ...formData, keterangan: e.target.value })
-                  }
-                  className="h-11"
-                />
-                <div className="grid grid-cols-2 gap-5">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase opacity-50">
-                      Peserta
-                    </Label>
-                    <Input
-                      type="text"
-                      value={formData.jumlah_peserta || ""}
-                      onChange={(e) =>
-                        handleNumericChange("jumlah_peserta", e.target.value)
-                      }
-                      className="h-11"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase opacity-50">
-                      Harga Satuan
-                    </Label>
-                    <Input
-                      type="text"
-                      value={formData.harga_peserta || ""}
-                      onChange={(e) =>
-                        handleNumericChange("harga_peserta", e.target.value)
-                      }
-                      className="h-11"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* ITEM 2 */}
-              <div className="relative space-y-4 rounded-[1.5rem] border border-dashed border-zinc-300 bg-zinc-50/50 p-5">
-                <Badge
-                  variant="outline"
-                  className="rounded-md bg-white px-3 text-[9px] font-black text-zinc-400 uppercase italic"
+              {formData.items.map((item, index) => (
+                <div
+                  key={index}
+                  className={`relative space-y-4 rounded-[1.5rem] border p-5 ${
+                    index === 0
+                      ? "border-zinc-200 bg-zinc-50"
+                      : "border-dashed border-zinc-300 bg-zinc-50/50"
+                  }`}
                 >
-                  Baris Tambahan
-                </Badge>
-                <Input
-                  placeholder="Layanan 2 (Opsional)"
-                  value={formData.keterangan_2}
-                  onChange={(e) =>
-                    setFormData({ ...formData, keterangan_2: e.target.value })
-                  }
-                  className="h-11"
-                />
-                <div className="grid grid-cols-2 gap-5">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase opacity-30">
-                      Peserta 2
-                    </Label>
-                    <Input
-                      type="text"
-                      value={formData.jumlah_peserta_2 || ""}
-                      onChange={(e) =>
-                        handleNumericChange("jumlah_peserta_2", e.target.value)
+                  <div className="flex items-center justify-between">
+                    <Badge
+                      variant={index === 0 ? "default" : "outline"}
+                      className={
+                        index === 0
+                          ? "rounded-md bg-black px-3 text-[9px] font-black text-white uppercase italic hover:bg-black"
+                          : "rounded-md bg-white px-3 text-[9px] font-black text-zinc-400 uppercase italic"
                       }
-                      className="h-11"
-                    />
+                    >
+                      {index === 0
+                        ? "Baris Utama"
+                        : `Baris Tambahan ${index + 1}`}
+                    </Badge>
+
+                    {index > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => hapusItem(index)}
+                        className="text-xs font-bold text-red-500 hover:text-red-700"
+                      >
+                        Hapus
+                      </button>
+                    )}
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase opacity-30">
-                      Harga Satuan 2
-                    </Label>
-                    <Input
-                      type="text"
-                      value={formData.harga_peserta_2 || ""}
-                      onChange={(e) =>
-                        handleNumericChange("harga_peserta_2", e.target.value)
-                      }
-                      className="h-11"
-                    />
+
+                  <Input
+                    placeholder={
+                      index === 0
+                        ? "Layanan 1"
+                        : `Layanan ${index + 1} (Opsional)`
+                    }
+                    value={item.item_deskripsi}
+                    onChange={(e) =>
+                      updateItem(index, "item_deskripsi", e.target.value)
+                    }
+                    className="h-11"
+                  />
+
+                  <div className="grid grid-cols-2 gap-5">
+                    <div className="space-y-1">
+                      <Label
+                        className={`text-[10px] font-black uppercase ${
+                          index === 0 ? "opacity-50" : "opacity-30"
+                        }`}
+                      >
+                        {index === 0 ? "Peserta" : `Peserta ${index + 1}`}
+                      </Label>
+
+                      <Input
+                        type="text"
+                        value={item.item_jumlah || ""}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, "")
+
+                          updateItem(
+                            index,
+                            "item_jumlah",
+                            value === "" ? 0 : Number(value)
+                          )
+                        }}
+                        className="h-11"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label
+                        className={`text-[10px] font-black uppercase ${
+                          index === 0 ? "opacity-50" : "opacity-30"
+                        }`}
+                      >
+                        {index === 0
+                          ? "Harga Satuan"
+                          : `Harga Satuan ${index + 1}`}
+                      </Label>
+
+                      <Input
+                        type="text"
+                        value={item.item_harga || ""}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, "")
+
+                          updateItem(
+                            index,
+                            "item_harga",
+                            value === "" ? 0 : Number(value)
+                          )
+                        }}
+                        className="h-11"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              ))}
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={tambahItem}
+                className="h-11 rounded-xl font-black uppercase italic"
+              >
+                + Tambah Layanan
+              </Button>
 
               {/* TOGGLE PAJAK */}
               <div className="flex flex-wrap gap-4 rounded-3xl border border-zinc-300 bg-zinc-100 p-5">

@@ -65,7 +65,7 @@ export async function getNextInvoiceNumber() {
     return count + 1;
   } catch (error) {
     console.error("Gagal mengambil urutan nomor:", error);
-    return 1; 
+    return 1;
   }
 }
 
@@ -74,39 +74,35 @@ export async function getNextInvoiceNumber() {
 // =========================================================================
 export async function createInvoice(formData: any) {
   const connection = await db.getConnection();
-  
+
   try {
     await connection.beginTransaction();
 
-    const newInvoiceId = (await connection.query(
+    // 1. Simpan HEADER invoice
+    const [result]: any = await connection.query(
       `INSERT INTO tb_invoice (
-      nomor_invoice,
-      batch,
-      tanggal,
-      jenis_kegiatan,
-      tanggal_jatuhtempo,
-      perusahaan_tujuan,
-      npwp,
-      alamat_perusahaan,
-      file_faktur,
-      cl,
-      keterangan,
-      jumlah_peserta,
-      harga_peserta,
-      keterangan_2,
-      jumlah_peserta_2,
-      harga_peserta_2,
-      is_pph23,
-      is_ppn11,
-      is_pnbp,
-      nominal_pnbp,
-      total,
-      bayar_1,
-      tanggal_bayar_1,
-      bayar_2,
-      tanggal_bayar_2,
-      status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        nomor_invoice,
+        batch,
+        tanggal,
+        jenis_kegiatan,
+        tanggal_jatuhtempo,
+        perusahaan_tujuan,
+        npwp,
+        alamat_perusahaan,
+        file_faktur,
+        cl,
+        is_pph23,
+        is_ppn11,
+        is_pnbp,
+        nominal_pnbp,
+        total,
+        bayar_1,
+        tanggal_bayar_1,
+        bayar_2,
+        tanggal_bayar_2,
+        status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+
       [
         formData.nomor_invoice,
         formData.batch,
@@ -118,39 +114,67 @@ export async function createInvoice(formData: any) {
         formData.alamat_perusahaan,
         formData.file_faktur || null,
         formData.cl || null,
-        formData.keterangan,
-        formData.jumlah_peserta,
-        formData.harga_peserta,
-        formData.keterangan_2 || null,
-        formData.jumlah_peserta_2 || 0,
-        formData.harga_peserta_2 || 0,
         formData.is_pph23 ? 1 : 0,
         formData.is_ppn11 ? 1 : 0,
         formData.is_pnbp ? 1 : 0,
         formData.nominal_pnbp || 0,
-        formData.total,
+        formData.total || 0,
         formData.bayar_1 || 0,
         formData.tanggal_bayar_1 || null,
         formData.bayar_2 || 0,
         formData.tanggal_bayar_2 || null,
-        formData.status || 'Belum Lunas'
+        formData.status || "Belum Lunas",
       ]
-    ) as any).insertId as number;
-
-    const akunPiutang = "12100";
-    await connection.query(
-      "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = ?",
-      [formData.total, akunPiutang]
     );
 
+    // 2. Ambil ID invoice yang baru dibuat
+    const newInvoiceId = result.insertId;
+
+    // 3. Simpan SEMUA layanan ke tb_invoice_detail
+    for (const item of formData.items) {
+      await connection.query(
+        `INSERT INTO tb_invoice_details (
+          invoice_id,
+          item_deskripsi,
+          item_jumlah,
+          item_harga
+        ) VALUES (?, ?, ?, ?)`,
+        [
+          newInvoiceId,
+          item.item_deskripsi,
+          item.item_jumlah,
+          item.item_harga,
+        ]
+      );
+    }
+
+    // 4. Update saldo piutang
+    const akunPiutang = "12100";
+
+    await connection.query(
+      "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = ?",
+      [formData.total || 0, akunPiutang]
+    );
+
+    // 5. Commit
     await connection.commit();
+
     revalidatePath("/dashboard/finance/invoices");
 
-    return { success: true, id: newInvoiceId };
+    return {
+      success: true,
+      id: newInvoiceId,
+    };
+
   } catch (error: any) {
     await connection.rollback();
+
     console.error("CREATE_INVOICE_ERROR:", error.message);
-    return { success: false, message: "Gagal simpan invoice: " + error.message };
+
+    return {
+      success: false,
+      message: "Gagal simpan invoice: " + error.message,
+    };
   } finally {
     connection.release();
   }
@@ -175,38 +199,102 @@ export async function deleteInvoice(id: number) {
 // 5. FUNGSI: UPDATE / EDIT INVOICE DATA
 // =========================================================================
 export async function updateInvoice(id: number, data: any) {
+  const connection = await db.getConnection();
+
   try {
+    await connection.beginTransaction();
+
+    // 1. Update HEADER invoice
     const query = `
       UPDATE tb_invoice SET 
-        batch = ?, jenis_kegiatan = ?, perusahaan_tujuan = ?, npwp = ?, alamat_perusahaan = ?, 
-        file_faktur = ?, cl = ?, keterangan = ?, jumlah_peserta = ?, harga_peserta = ?, 
-        keterangan_2 = ?, jumlah_peserta_2 = ?, harga_peserta_2 = ?, 
-        is_pph23 = ?, is_ppn11 = ?, is_pnbp = ?, nominal_pnbp = ?, 
-        bayar_1 = ?, tanggal_bayar_1 = ?, 
-        bayar_2 = ?, tanggal_bayar_2 = ?, 
-        total = ?, status = ? 
+        batch = ?,
+        jenis_kegiatan = ?,
+        perusahaan_tujuan = ?,
+        npwp = ?,
+        alamat_perusahaan = ?,
+        file_faktur = ?,
+        cl = ?,
+        is_pph23 = ?,
+        is_ppn11 = ?,
+        is_pnbp = ?,
+        nominal_pnbp = ?,
+        bayar_1 = ?,
+        tanggal_bayar_1 = ?,
+        bayar_2 = ?,
+        tanggal_bayar_2 = ?,
+        total = ?,
+        status = ?
       WHERE id = ?
     `;
 
     const values = [
-      data.batch, data.jenis_kegiatan, data.perusahaan_tujuan, data.npwp, data.alamat_perusahaan,
+      data.batch,
+      data.jenis_kegiatan,
+      data.perusahaan_tujuan,
+      data.npwp,
+      data.alamat_perusahaan,
       data.file_faktur || null,
       data.cl || null,
-      data.keterangan, data.jumlah_peserta, data.harga_peserta,
-      data.keterangan_2 || null, data.jumlah_peserta_2 || 0, data.harga_peserta_2 || 0,
-      data.is_pph23 ? 1 : 0, data.is_ppn11 ? 1 : 0, data.is_pnbp ? 1 : 0, data.nominal_pnbp || 0,
-      data.bayar_1 || 0, data.tanggal_bayar_1 || null, 
-      data.bayar_2 || 0, data.tanggal_bayar_2 || null, 
-      data.total, data.status,
-      id
+      data.is_pph23 ? 1 : 0,
+      data.is_ppn11 ? 1 : 0,
+      data.is_pnbp ? 1 : 0,
+      data.nominal_pnbp || 0,
+      data.bayar_1 || 0,
+      data.tanggal_bayar_1 || null,
+      data.bayar_2 || 0,
+      data.tanggal_bayar_2 || null,
+      data.total || 0,
+      data.status || "Belum Lunas",
+      id,
     ];
 
-    await db.query(query, values);
+    await connection.query(query, values);
+
+    // 2. Hapus detail lama
+    await connection.query(
+      `DELETE FROM tb_invoice_details WHERE invoice_id = ?`,
+      [id]
+    );
+
+    // 3. Simpan ulang semua layanan
+    if (Array.isArray(data.items)) {
+      for (const item of data.items) {
+        await connection.query(
+          `INSERT INTO tb_invoice_details (
+            invoice_id,
+            item_deskripsi,
+            item_jumlah,
+            item_harga
+          ) VALUES (?, ?, ?, ?)`,
+          [
+            id,
+            item.item_deskripsi,
+            item.item_jumlah,
+            item.item_harga,
+          ]
+        );
+      }
+    }
+
+    // 4. Commit
+    await connection.commit();
+
     revalidatePath("/dashboard/finance/invoices");
-    return { success: true };
+
+    return {
+      success: true,
+    };
   } catch (error: any) {
-    console.error("SQL_ERROR:", error.message);
-    return { success: false, message: error.message };
+    await connection.rollback();
+
+    console.error("UPDATE_INVOICE_ERROR:", error.message);
+
+    return {
+      success: false,
+      message: error.message,
+    };
+  } finally {
+    connection.release();
   }
 }
 
@@ -216,11 +304,33 @@ export async function updateInvoice(id: number, data: any) {
 export async function getInvoiceById(id: number) {
   try {
     const [rows]: any = await db.query(
-      "SELECT * FROM tb_invoice WHERE id = ?", 
+      "SELECT * FROM tb_invoice WHERE id = ?",
       [id]
     );
-    return rows[0];
+
+    if (!rows[0]) {
+      return null;
+    }
+
+    const [details]: any = await db.query(
+      `SELECT
+        id,
+        invoice_id,
+        item_deskripsi,
+        item_jumlah,
+        item_harga
+      FROM tb_invoice_details
+      WHERE invoice_id = ?
+      ORDER BY id ASC`,
+      [id]
+    );
+
+    return {
+      ...rows[0],
+      items: details,
+    };
   } catch (error) {
+    console.error("GET_INVOICE_BY_ID_ERROR:", error);
     return null;
   }
 }
@@ -231,14 +341,14 @@ export async function getInvoiceById(id: number) {
 export async function getInvoices() {
   try {
     const [rows]: any = await db.query("SELECT * FROM tb_invoice ORDER BY created_at DESC");
-    
+
     const dataLengkap = rows.map((inv: any) => {
       const tglInvoice = new Date(inv.tanggal);
       const tglSekarang = new Date();
-      
+
       const selisihMilidetik = tglSekarang.getTime() - tglInvoice.getTime();
       const hitungHari = Math.floor(selisihMilidetik / (1000 * 60 * 60 * 24));
-      
+
       return {
         ...inv,
         umur_piutang: hitungHari > 0 ? hitungHari : 0
@@ -328,12 +438,12 @@ export async function prosesBayarInvoiceSaja(payload: {
     }
 
     await db.query(updateInvoiceQuery, updateParams);
-    
+
     revalidatePath("/dashboard/finance/invoices");
 
-    return { 
-      success: true, 
-      message: "Pembayaran berhasil dicatat di Invoice! Saldo neraca belum berubah sebelum dijurnal." 
+    return {
+      success: true,
+      message: "Pembayaran berhasil dicatat di Invoice! Saldo neraca belum berubah sebelum dijurnal."
     };
 
   } catch (error: any) {
@@ -341,5 +451,5 @@ export async function prosesBayarInvoiceSaja(payload: {
     return { success: false, message: "Gagal memproses pembayaran: " + error.message };
   }
 
-  
+
 }

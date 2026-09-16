@@ -32,6 +32,7 @@ export default function CreateInvoicePage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [uploadingCL, setUploadingCL] = useState(false)
+  const [summaryTop, setSummaryTop] = useState(24)
   const [clFileName, setClFileName] = useState("")
 
   const [formData, setFormData] = useState({
@@ -45,21 +46,31 @@ export default function CreateInvoicePage() {
     alamat_perusahaan: "",
     file_faktur: "",
     cl: "", // Sesuai nama kolom di DB
-    // BARIS 1
-    keterangan: "",
-    jumlah_peserta: 0,
-    harga_peserta: 0,
-    // BARIS 2
-    keterangan_2: "",
-    jumlah_peserta_2: 0,
-    harga_peserta_2: 0,
+    items: [
+      {
+        item_deskripsi: "",
+        item_jumlah: 0,
+        item_harga: 0,
+      },
+    ],
     // STATUS & PAJAK
     is_pph23: false,
     is_ppn11: false,
     is_pnbp: false,
     status: "Belum Lunas",
   })
+  useEffect(() => {
+    const handleScroll = () => {
+      const offset = 24
+      setSummaryTop(offset)
+    }
 
+    window.addEventListener("scroll", handleScroll)
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll)
+    }
+  }, [])
   useEffect(() => {
     const syncInvoiceNumber = async () => {
       const nextId = await getNextInvoiceNumber()
@@ -88,13 +99,20 @@ export default function CreateInvoicePage() {
   }, [])
 
   const calculation = useMemo(() => {
-    const sub1 = formData.jumlah_peserta * formData.harga_peserta
-    const sub2 = formData.jumlah_peserta_2 * formData.harga_peserta_2
-    const subtotalDasar = sub1 + sub2
-    const totalPesertaAll = formData.jumlah_peserta + formData.jumlah_peserta_2
+    const subtotalDasar = formData.items.reduce(
+      (total, item) => total + item.item_jumlah * item.item_harga,
+      0
+    )
+
+    const totalPesertaAll = formData.items.reduce(
+      (total, item) => total + item.item_jumlah,
+      0
+    )
 
     const pph = formData.is_pph23 ? subtotalDasar * 0.02 : 0
+
     const ppn = formData.is_ppn11 ? subtotalDasar * 0.11 : 0
+
     const nominal_pnbp = formData.is_pnbp ? totalPesertaAll * 600000 : 0
 
     const totalAkhir = subtotalDasar + ppn + nominal_pnbp - pph
@@ -160,15 +178,20 @@ export default function CreateInvoicePage() {
     if (
       !formData.perusahaan_tujuan ||
       !formData.tanggal_jatuhtempo ||
-      !formData.keterangan
+      formData.items.length === 0 ||
+      formData.items.some(
+        (item) =>
+          !item.item_deskripsi || item.item_jumlah <= 0 || item.item_harga <= 0
+      )
     ) {
       swal.warning(
-        "KOLOM WAJIB: [Perusahaan, Jatuh Tempo, & Keterangan 1] Harus Diisi!"
+        "KOLOM WAJIB: [Perusahaan, Jatuh Tempo, & Minimal 1 Layanan] Harus Diisi!"
       )
       return
     }
 
     setLoading(true)
+
     const payload = {
       ...formData,
       nominal_pnbp: calculation.pnbp,
@@ -184,9 +207,46 @@ export default function CreateInvoicePage() {
     } else {
       swal.error("GAGAL SIMPAN: " + res.message)
     }
+
     setLoading(false)
   }
+  const tambahItem = () => {
+    setFormData((prev) => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          item_deskripsi: "",
+          item_jumlah: 0,
+          item_harga: 0,
+        },
+      ],
+    }))
+  }
+  const updateItem = (
+    index: number,
+    field: "item_deskripsi" | "item_jumlah" | "item_harga",
+    value: string | number
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              [field]: value,
+            }
+          : item
+      ),
+    }))
+  }
 
+  const hapusItem = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index),
+    }))
+  }
   return (
     <div className="mx-auto min-h-screen max-w-6xl space-y-8 bg-zinc-50/20 p-6 font-sans text-zinc-900">
       {/* HEADER ACTION */}
@@ -224,7 +284,7 @@ export default function CreateInvoicePage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-3">
         {/* KOLOM KIRI (INPUT DATA) */}
         <div className="space-y-6 lg:col-span-2">
           {/* INFORMASI INVOICE */}
@@ -467,113 +527,122 @@ export default function CreateInvoicePage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-8 p-6">
-              {/* ITEM 1 */}
-              <div className="relative space-y-4 rounded-[1.5rem] border border-zinc-200 bg-zinc-50 p-5">
-                <Badge className="rounded-md bg-black px-3 text-[9px] font-black uppercase italic">
-                  Baris Pertama (Utama)
-                </Badge>
-                <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase italic opacity-50">
-                    Keterangan Layanan 1 *
-                  </Label>
-                  <Input
-                    placeholder="Contoh: Pelatihan ABB"
-                    value={formData.keterangan}
-                    onChange={(e) =>
-                      setFormData({ ...formData, keterangan: e.target.value })
-                    }
-                    className="h-11 border-zinc-300"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-5">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase italic opacity-50">
-                      Jumlah Peserta
-                    </Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={formData.jumlah_peserta || ""}
-                      onChange={(e) =>
-                        handleNumericChange("jumlah_peserta", e.target.value)
-                      }
-                      className="h-11"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase italic opacity-50">
-                      Harga Satuan
-                    </Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="Rp 0"
-                      value={formData.harga_peserta || ""}
-                      onChange={(e) =>
-                        handleNumericChange("harga_peserta", e.target.value)
-                      }
-                      className="h-11"
-                    />
-                  </div>
-                </div>
-              </div>
+              {/* RINCIAN LAYANAN */}
+              <div className="space-y-8">
+                {formData.items.map((item, index) => (
+                  <div
+                    key={index}
+                    className={`relative space-y-4 rounded-[1.5rem] border p-5 ${
+                      index === 0
+                        ? "border-zinc-200 bg-zinc-50"
+                        : "border-dashed border-zinc-300 bg-zinc-50/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <Badge
+                        variant={index === 0 ? "default" : "outline"}
+                        className={
+                          index === 0
+                            ? "rounded-md bg-black px-3 text-[9px] font-black text-white uppercase italic hover:bg-black"
+                            : "rounded-md bg-white px-3 text-[9px] font-black text-zinc-400 uppercase italic"
+                        }
+                      >
+                        {index === 0
+                          ? "Baris Utama"
+                          : `Baris Tambahan ${index + 1}`}
+                      </Badge>
 
-              {/* ITEM 2 */}
-              <div className="relative space-y-4 rounded-[1.5rem] border border-dashed border-zinc-300 bg-zinc-50/50 p-5">
-                <Badge
+                      {index > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => hapusItem(index)}
+                          className="text-xs font-bold text-red-500 hover:text-red-700"
+                        >
+                          Hapus
+                        </button>
+                      )}
+                    </div>
+
+                    <Input
+                      placeholder={
+                        index === 0
+                          ? "Layanan 1"
+                          : `Layanan ${index + 1} (Opsional)`
+                      }
+                      value={item.item_deskripsi}
+                      onChange={(e) =>
+                        updateItem(index, "item_deskripsi", e.target.value)
+                      }
+                      className="h-11"
+                    />
+
+                    <div className="grid grid-cols-2 gap-5">
+                      <div className="space-y-1">
+                        <Label
+                          className={`text-[10px] font-black uppercase ${
+                            index === 0 ? "opacity-50" : "opacity-30"
+                          }`}
+                        >
+                          {index === 0 ? "Peserta" : `Peserta ${index + 1}`}
+                        </Label>
+
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={item.item_jumlah || ""}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, "")
+
+                            updateItem(
+                              index,
+                              "item_jumlah",
+                              value === "" ? 0 : Number(value)
+                            )
+                          }}
+                          className="h-11"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label
+                          className={`text-[10px] font-black uppercase ${
+                            index === 0 ? "opacity-50" : "opacity-30"
+                          }`}
+                        >
+                          {index === 0
+                            ? "Harga Satuan"
+                            : `Harga Satuan ${index + 1}`}
+                        </Label>
+
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={item.item_harga || ""}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, "")
+
+                            updateItem(
+                              index,
+                              "item_harga",
+                              value === "" ? 0 : Number(value)
+                            )
+                          }}
+                          className="h-11"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <Button
+                  type="button"
                   variant="outline"
-                  className="rounded-md px-3 text-[9px] font-black text-zinc-400 uppercase italic"
+                  onClick={tambahItem}
+                  className="h-11 rounded-xl font-black uppercase italic"
                 >
-                  Baris Kedua (Opsional)
-                </Badge>
-                <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase italic opacity-30">
-                    Keterangan Layanan 2
-                  </Label>
-                  <Input
-                    placeholder="Contoh: Pembinaan AKABB"
-                    value={formData.keterangan_2}
-                    onChange={(e) =>
-                      setFormData({ ...formData, keterangan_2: e.target.value })
-                    }
-                    className="h-11 border-zinc-200"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-5">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase italic opacity-30">
-                      Jumlah Peserta 2
-                    </Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={formData.jumlah_peserta_2 || ""}
-                      onChange={(e) =>
-                        handleNumericChange("jumlah_peserta_2", e.target.value)
-                      }
-                      className="h-11"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase italic opacity-30">
-                      Harga Satuan 2
-                    </Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="Rp 0"
-                      value={formData.harga_peserta_2 || ""}
-                      onChange={(e) =>
-                        handleNumericChange("harga_peserta_2", e.target.value)
-                      }
-                      className="h-11"
-                    />
-                  </div>
-                </div>
+                  + Tambah Layanan
+                </Button>
               </div>
-
               {/* TOGGLE PAJAK & PNBP */}
               <div className="flex flex-wrap gap-4 rounded-3xl border border-dashed border-zinc-300 bg-zinc-100 p-5">
                 <div className="flex items-center space-x-2 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
@@ -626,87 +695,92 @@ export default function CreateInvoicePage() {
             </CardContent>
           </Card>
         </div>
-
         {/* KOLOM KANAN (RINGKASAN & TOTAL) */}
         <div className="lg:col-span-1">
-          <Card className="sticky top-6 overflow-hidden rounded-[2.5rem] border-none bg-zinc-900 text-white shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] ring-4 ring-white">
-            <CardContent className="space-y-6 p-8 font-sans">
-              <div className="mb-4 flex items-center justify-between">
-                <CardTitle className="text-[10px] font-black tracking-[0.4em] uppercase opacity-30">
-                  Nota Kalkulasi
-                </CardTitle>
-                <Calculator className="h-5 w-5 text-zinc-600" />
-              </div>
-
-              <div className="space-y-4 border-t border-zinc-800 pt-6">
-                <div className="flex justify-between text-sm">
-                  <span className="text-[10px] font-bold tracking-widest uppercase opacity-40">
-                    Subtotal Dasar
-                  </span>
-                  <span className="font-mono font-bold tracking-tight">
-                    {formatIDR(calculation.subtotalDasar)}
-                  </span>
+          <div className="sticky top-6">
+            <Card className="overflow-hidden rounded-[2.5rem] border-none bg-zinc-900 text-white shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] ring-4 ring-white">
+              <CardContent className="space-y-6 p-8 font-sans">
+                <div className="mb-4 flex items-center justify-between">
+                  <CardTitle className="text-[10px] font-black tracking-[0.4em] uppercase opacity-30">
+                    Nota Kalkulasi
+                  </CardTitle>
+                  <Calculator className="h-5 w-5 text-zinc-600" />
                 </div>
-                {formData.is_pph23 && (
-                  <div className="flex justify-between text-sm font-medium text-rose-400 italic">
-                    <span className="text-[10px] font-bold uppercase">
-                      Potongan PPH 2%
+
+                <div className="space-y-4 border-t border-zinc-800 pt-6">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[10px] font-bold tracking-widest uppercase opacity-40">
+                      Subtotal Dasar
                     </span>
-                    <span className="font-mono">
-                      - {formatIDR(calculation.pph)}
-                    </span>
-                  </div>
-                )}
-                {formData.is_ppn11 && (
-                  <div className="flex justify-between text-sm font-medium text-blue-400 italic">
-                    <span className="text-[10px] font-bold uppercase">
-                      PPN 11%
-                    </span>
-                    <span className="font-mono">
-                      + {formatIDR(calculation.ppn)}
+                    <span className="font-mono font-bold tracking-tight">
+                      {formatIDR(calculation.subtotalDasar)}
                     </span>
                   </div>
-                )}
-                {formData.is_pnbp && (
-                  <div className="flex justify-between text-sm font-medium text-emerald-400 italic">
-                    <div className="flex flex-col text-right text-[10px] font-bold uppercase">
-                      <span>Biaya PNBP</span>
-                      <span className="text-[8px] italic opacity-40">
-                        ({calculation.totalPesertaAll} Peserta Total)
+                  {formData.is_pph23 && (
+                    <div className="flex justify-between text-sm font-medium text-rose-400 italic">
+                      <span className="text-[10px] font-bold uppercase">
+                        Potongan PPH 2%
+                      </span>
+                      <span className="font-mono">
+                        - {formatIDR(calculation.pph)}
                       </span>
                     </div>
-                    <span className="font-mono">
-                      + {formatIDR(calculation.pnbp)}
-                    </span>
-                  </div>
-                )}
-              </div>
+                  )}
+                  {formData.is_ppn11 && (
+                    <div className="flex justify-between text-sm font-medium text-blue-400 italic">
+                      <span className="text-[10px] font-bold uppercase">
+                        PPN 11%
+                      </span>
+                      <span className="font-mono">
+                        + {formatIDR(calculation.ppn)}
+                      </span>
+                    </div>
+                  )}
+                  {formData.is_pnbp && (
+                    <div className="flex justify-between text-sm font-medium text-emerald-400 italic">
+                      <div className="flex flex-col text-right text-[10px] font-bold uppercase">
+                        <span>Biaya PNBP</span>
+                        <span className="text-[8px] italic opacity-40">
+                          ({calculation.totalPesertaAll} Peserta Total)
+                        </span>
+                      </div>
+                      <span className="font-mono">
+                        + {formatIDR(calculation.pnbp)}
+                      </span>
+                    </div>
+                  )}
+                </div>
 
-              <div className="flex flex-col gap-2 border-t border-zinc-800 pt-10 leading-none">
-                <span className="text-[10px] font-black tracking-[0.2em] text-emerald-500 uppercase italic">
-                  Total Tagihan Akhir
-                </span>
-                <h2 className="text-4xl leading-none font-black tracking-tighter italic tabular-nums">
-                  {formatIDR(calculation.totalAkhir)}
-                </h2>
-              </div>
+                <div className="flex flex-col gap-2 border-t border-zinc-800 pt-10 leading-none">
+                  <span className="text-[10px] font-black tracking-[0.2em] text-emerald-500 uppercase italic">
+                    Total Tagihan Akhir
+                  </span>
+                  <h2 className="text-4xl leading-none font-black tracking-tighter italic tabular-nums">
+                    {formatIDR(calculation.totalAkhir)}
+                  </h2>
+                </div>
 
-              <div className="mt-4 flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-800/50 p-4">
-                <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-500"></div>
-                <span className="text-[9px] font-black tracking-[0.2em] text-zinc-500 uppercase">
-                  Status Invoice: {formData.status}
-                </span>
-              </div>
+                <div className="mt-4 flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-800/50 p-4">
+                  <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-500"></div>
+                  <span className="text-[9px] font-black tracking-[0.2em] text-zinc-500 uppercase">
+                    Status Invoice: {formData.status}
+                  </span>
+                </div>
 
-              <Button
-                onClick={handleSubmit}
-                disabled={loading || uploadingCL}
-                className="mt-6 h-20 w-full rounded-[1.5rem] bg-emerald-500 text-2xl font-black tracking-tighter text-black uppercase italic shadow-[0_10px_20px_rgba(16,185,129,0.3)] transition-all hover:bg-emerald-400 active:scale-95"
-              >
-                {loading ? <Loader2 className="animate-spin" /> : "KONFIRMASI"}
-              </Button>
-            </CardContent>
-          </Card>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={loading || uploadingCL}
+                  className="mt-6 h-20 w-full rounded-[1.5rem] bg-emerald-500 text-2xl font-black tracking-tighter text-black uppercase italic shadow-[0_10px_20px_rgba(16,185,129,0.3)] transition-all hover:bg-emerald-400 active:scale-95"
+                >
+                  {loading ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    "KONFIRMASI"
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
