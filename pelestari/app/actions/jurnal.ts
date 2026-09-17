@@ -290,7 +290,7 @@ export async function exportJurnalToExcel(
           worksheet.mergeCells(`B${internalScanIdx}:B${subEnd}`);
           worksheet.mergeCells(`C${internalScanIdx}:C${subEnd}`);
           worksheet.mergeCells(`D${internalScanIdx}:D${subEnd}`);
-        } catch (e) {}
+        } catch (e) { }
       }
       internalScanIdx++;
     });
@@ -425,7 +425,7 @@ export async function getJurnalList(
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     // 1. HITUNG TOTAL DATA
-   const countQuery = `
+    const countQuery = `
   SELECT COUNT(*) AS total
   FROM tb_jurnal j
   LEFT JOIN tb_penerima p ON j.penerima_id = p.id
@@ -920,7 +920,19 @@ export async function createJurnalUmum(payload: JurnalPayload) {
 
   try {
     await connection.beginTransaction();
+    const [existing]: any = await connection.query(
+      `SELECT id FROM tb_jurnal WHERE no_registrasi = ? LIMIT 1`,
+      [payload.noRegistrasi]
+    );
 
+    if (existing.length > 0) {
+      await connection.rollback();
+
+      return {
+        success: false,
+        message: `Nomor registrasi ${payload.noRegistrasi} sudah ada di jurnal.`,
+      };
+    }
     const headerQuery = `
       INSERT INTO tb_jurnal (tanggal, no_registrasi, no_referensi, invoice_id, po_id, penerima_id, pemohon_id, keterangan)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -1037,7 +1049,7 @@ export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayl
       targetAkunKeyword = "UTANG";
     }
 
-     // 4. Cari akun-akun yang kelompok_biaya-nya mengandung kata target (PIUTANG/UTANG)
+    // 4. Cari akun-akun yang kelompok_biaya-nya mengandung kata target (PIUTANG/UTANG)
     const [targetRows]: any = await connection.query(
       `SELECT a.no_akun
        FROM tb_akun a
@@ -1128,7 +1140,7 @@ export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayl
       lookup.found === "invoice" ? refId : null,
       lookup.found === "po" ? refId : null,
       payload.penerimaId ?? null,
-      payload.pemohonId ?? null, 
+      payload.pemohonId ?? null,
       payload.keterangan,
     ]);
     const jurnalId = headerResult.insertId;

@@ -34,6 +34,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Upload,
 } from "lucide-react"
 import {
   getJurnalList,
@@ -406,7 +407,15 @@ export default function JurnalUmumListPage() {
             <Download className="h-4 w-4 text-zinc-500" />
             {isExporting ? "MENGONVERSI..." : "EKSPOR EXCEL"}
           </Button>
-
+          <Link href="/dashboard/finance/pos/jurnal/import">
+            <Button
+              variant="outline"
+              className="h-10 gap-2 rounded-lg border-zinc-200 px-4 text-xs font-semibold text-zinc-700 transition-all hover:bg-zinc-50"
+            >
+              <Upload className="h-4 w-4 text-zinc-500" />
+              IMPORT EXCEL
+            </Button>
+          </Link>
           <Link href="/dashboard/finance/pos/kasir">
             <Button className="h-10 gap-2 rounded-lg bg-zinc-900 px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-zinc-800">
               <Plus className="h-4 w-4" /> BUAT JURNAL BARU
