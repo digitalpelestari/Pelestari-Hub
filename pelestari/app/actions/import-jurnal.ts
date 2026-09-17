@@ -26,7 +26,7 @@ const REKENING_MAPPING: Record<string, string> = {
 };
 
 const AKUN_KAS_KECIL = "11100";
-const AKUN_PIUTANG_USAHA = "13000";
+const AKUN_PIUTANG_USAHA = "12100";
 const NAMA_PENERIMA_CI = "PT Peduli Lestari Indonesia";
 
 /* ============================================================
@@ -312,8 +312,12 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 const noAkunKasBank = REKENING_MAPPING[rekeningKey] || null;
 
                 // Tahap 1: cocokkan Kelompok Biaya -> tb_kelompok_biaya
-                const matchKelompok = findBestMatch(kelompokBiaya, kandidatKelompok, 0.35);
-
+                const matchKelompok = findBestMatch(
+                    kelompokBiaya,
+                    kandidatKelompok,
+                    0.60,
+                    0.10
+                );
                 let noAkunLawan: string | null = null;
                 let namaAkunLawan: string | null = null;
                 let skorMatchLawan: number | null = null;
@@ -326,17 +330,16 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     const kandidatAkunDalamKelompok: FuzzyCandidate<any>[] = akunDalamKelompok.map(
                         (a: any) => ({ item: a, label: a.nama_akun })
                     );
-                    const matchAkun = findBestMatch(jenisBiaya, kandidatAkunDalamKelompok, 0.25);
-
+                    const matchAkun = findBestMatch(
+                        jenisBiaya,
+                        kandidatAkunDalamKelompok,
+                        0.60,
+                        0.10
+                    );
                     if (matchAkun) {
                         noAkunLawan = matchAkun.item.no_akun;
                         namaAkunLawan = matchAkun.item.nama_akun;
                         skorMatchLawan = Number(matchAkun.score.toFixed(2));
-                    } else if (akunDalamKelompok.length > 0) {
-                        // fallback: akun pertama dalam kelompok yang cocok
-                        noAkunLawan = akunDalamKelompok[0].no_akun;
-                        namaAkunLawan = akunDalamKelompok[0].nama_akun;
-                        skorMatchLawan = Number(matchKelompok.score.toFixed(2));
                     }
                 }
 
@@ -427,7 +430,8 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 const matchKelompok = findBestMatch(
                     kelompokBiaya,
                     kandidatKelompok,
-                    0.35
+                    0.60,
+                    0.10
                 );
 
                 let noAkunLawan: string | null = null;
@@ -450,7 +454,8 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     const matchAkun = findBestMatch(
                         jenisBiaya,
                         kandidatAkunDalamKelompok,
-                        0.25
+                        0.60,
+                        0.10
                     );
 
                     if (matchAkun) {

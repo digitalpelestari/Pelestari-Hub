@@ -18,6 +18,7 @@ import {
   XCircle,
   Copy,
   Landmark,
+  Loader2,
 } from "lucide-react"
 import {
   previewImportJurnal,
@@ -42,6 +43,9 @@ export default function ImportJurnalPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isParsing, setIsParsing] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState(0)
+  const [importTotal, setImportTotal] = useState(0)
+  const [importProcessed, setImportProcessed] = useState(0)
   const [fileName, setFileName] = useState("")
 
   const [ciRows, setCiRows] = useState<ImportPreviewRow[]>([])
@@ -205,15 +209,82 @@ export default function ImportJurnalPage() {
   )
 
   return (
-    <div className="min-h-screen w-full space-y-6 bg-zinc-50/50 p-6 font-sans text-zinc-900">
+    <div className="relative min-h-screen w-full space-y-6 bg-zinc-50/50 p-6 font-sans text-zinc-900">
+      {/* ============================================================
+        LOADING OVERLAY
+    ============================================================ */}
+      {(isParsing || isImporting) && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
+          <div className="w-[360px] rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl">
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-4 rounded-full bg-zinc-100 p-4">
+                <Loader2 className="h-8 w-8 animate-spin text-zinc-700" />
+              </div>
+
+              <h3 className="text-sm font-bold text-zinc-900">
+                {isParsing ? "Memproses File Excel" : "Mengimpor Jurnal"}
+              </h3>
+
+              <p className="mt-1 text-xs text-zinc-500">
+                {isParsing
+                  ? "Membaca data dan mencocokkan akun..."
+                  : "Sedang menyimpan transaksi jurnal, mohon tunggu..."}
+              </p>
+
+              {/* Progress import */}
+              {isImporting && importTotal > 0 && (
+                <div className="mt-5 w-full">
+                  <div className="mb-1.5 flex items-center justify-between text-[11px] text-zinc-500">
+                    <span>Progress</span>
+                    <span>
+                      {importProcessed} / {importTotal}
+                    </span>
+                  </div>
+
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-100">
+                    <div
+                      className="h-full rounded-full bg-emerald-600 transition-all duration-300"
+                      style={{
+                        width: `${Math.min(
+                          (importProcessed / importTotal) * 100,
+                          100
+                        )}%`,
+                      }}
+                    />
+                  </div>
+
+                  <p className="mt-2 text-center text-[10px] text-zinc-400">
+                    {Math.round((importProcessed / importTotal) * 100)}%
+                  </p>
+                </div>
+              )}
+
+              {/* Loading tanpa progress */}
+              {isParsing && (
+                <div className="mt-5 flex w-full items-center gap-2">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100">
+                    <div className="h-full w-1/3 animate-pulse rounded-full bg-zinc-700" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+        HEADER
+    ============================================================ */}
       <div className="flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="rounded-lg bg-zinc-900 p-2 text-white">
           <Landmark className="h-5 w-5" />
         </div>
+
         <div>
           <h1 className="text-xl font-bold tracking-tight">
             Import Jurnal dari Excel (CI / CO / KK)
           </h1>
+
           <p className="text-xs text-zinc-500">
             Upload file laporan bulanan, sistem akan membaca sheet "CI ...", "CO
             ..." dan "Petty Cash" lalu mencocokkannya ke akun secara otomatis.
@@ -222,27 +293,38 @@ export default function ImportJurnalPage() {
         </div>
       </div>
 
-      {/* UPLOAD */}
+      {/* ============================================================
+        UPLOAD
+    ============================================================ */}
       <div className="flex items-center gap-4 rounded-xl border border-dashed border-zinc-300 bg-white p-6">
         <UploadCloud className="h-8 w-8 text-zinc-400" />
+
         <div className="flex-1">
           <input
             ref={fileInputRef}
             type="file"
             accept=".xlsx,.xls"
             onChange={handleFileChange}
+            disabled={isParsing || isImporting}
             className="text-xs"
           />
+
           {fileName && (
             <p className="mt-1 text-xs text-zinc-500">File: {fileName}</p>
           )}
         </div>
+
         {isParsing && (
-          <span className="text-xs text-zinc-500">Memproses file...</span>
+          <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Membaca Excel & mencocokkan akun...</span>
+          </div>
         )}
       </div>
 
-      {/* REKENING YANG BELUM ADA DI CONFIG */}
+      {/* ============================================================
+        REKENING YANG BELUM ADA DI CONFIG
+    ============================================================ */}
       {rekeningBelumDimapping.length > 0 && (
         <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-5">
           <p className="text-sm font-semibold text-amber-800">
@@ -255,6 +337,7 @@ export default function ImportJurnalPage() {
             ). Baris dengan rekening ini akan dilewati sampai diisi dan aplikasi
             di-redeploy.
           </p>
+
           <ul className="flex flex-wrap gap-2">
             {rekeningBelumDimapping.map((nama) => (
               <li
@@ -265,14 +348,18 @@ export default function ImportJurnalPage() {
               </li>
             ))}
           </ul>
+
           <Button
             size="sm"
             variant="outline"
             onClick={handleCopySnippet}
+            disabled={isParsing || isImporting}
             className="h-8 gap-1 border-amber-300 bg-white text-xs text-amber-800 hover:bg-amber-100"
           >
-            <Copy className="h-3 w-3" /> Copy snippet untuk REKENING_MAPPING
+            <Copy className="h-3 w-3" />
+            Copy snippet untuk REKENING_MAPPING
           </Button>
+
           <p className="text-[11px] text-amber-700">
             Tempel hasil copy ke dalam objek <code>REKENING_MAPPING</code>,
             ganti <code>NO_AKUN_DISINI</code> dengan no_akun Kas/Bank yang
@@ -281,37 +368,48 @@ export default function ImportJurnalPage() {
         </div>
       )}
 
-      {/* SUMMARY + TOMBOL IMPORT */}
+      {/* ============================================================
+        SUMMARY + TOMBOL IMPORT
+    ============================================================ */}
       {(ciRows.length > 0 || coRows.length > 0 || kkRows.length > 0) && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex gap-4 text-xs text-zinc-600">
             <span>
               Total baris: <b>{summary.totalBaris}</b>
             </span>
+
             <span className="text-emerald-600">
               Siap: <b>{summary.siap}</b>
             </span>
+
             <span className="text-rose-600">
               Dilewati: <b>{summary.dilewati}</b>
             </span>
           </div>
+
           <Button
             onClick={handleImport}
-            disabled={isImporting || summary.siap === 0}
+            disabled={isImporting || isParsing || summary.siap === 0}
             className="h-9 gap-2 bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
           >
             <CheckCircle2 className="h-4 w-4" />
-            {isImporting ? "MENGIMPOR..." : `IMPOR ${summary.siap} TRANSAKSI`}
+
+            {isImporting
+              ? `MENGIMPOR... ${importProcessed}/${importTotal}`
+              : `IMPOR ${summary.siap} TRANSAKSI`}
           </Button>
         </div>
       )}
 
-      {/* PREVIEW CI */}
+      {/* ============================================================
+        PREVIEW CI
+    ============================================================ */}
       {ciRows.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-100 bg-zinc-50/70 px-4 py-2 text-xs font-bold uppercase">
             Pemasukan (CI) — {ciRows.length} baris
           </div>
+
           <div className="overflow-x-auto">
             <Table className="min-w-[900px]">
               <TableHeader>
@@ -326,18 +424,22 @@ export default function ImportJurnalPage() {
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>{ciRows.map(renderRow)}</TableBody>
             </Table>
           </div>
         </div>
       )}
 
-      {/* PREVIEW CO */}
+      {/* ============================================================
+        PREVIEW CO
+    ============================================================ */}
       {coRows.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-100 bg-zinc-50/70 px-4 py-2 text-xs font-bold uppercase">
             Pengeluaran (CO) — {coRows.length} baris
           </div>
+
           <div className="overflow-x-auto">
             <Table className="min-w-[900px]">
               <TableHeader>
@@ -352,12 +454,16 @@ export default function ImportJurnalPage() {
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>{coRows.map(renderRow)}</TableBody>
             </Table>
           </div>
         </div>
       )}
-      {/* PREVIEW KK / PETTY CASH */}
+
+      {/* ============================================================
+        PREVIEW KK / PETTY CASH
+    ============================================================ */}
       {kkRows.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-100 bg-zinc-50/70 px-4 py-2 text-xs font-bold uppercase">
