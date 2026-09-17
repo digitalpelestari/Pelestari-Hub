@@ -52,7 +52,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Karyawan",
       url: "#",
       icon: <Users />,
-      roles: ["ADMIN", "GA", "FINANCE", "MANAGER FINANCE", "HR"],
+      roles: ["ADMIN", "GA", "FINANCE", "MANAGER FINANCE", "HR", "PELATIHAN", "STAFF"],
       items: [
         {
           title: "Perjalanan Dinas",
@@ -200,26 +200,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     },
     // GA DROPDOWN
     {
-      title: "GA",
+      title: "General Affair",
       url: "#",
-      icon: <History />,
-      roles: ["ADMIN", "GA", "HR"],
+      icon: <Users />,
+      roles: ["ADMIN", "HR", "GA"],
       items: [
-        {
-          title: "Facility Management",
-          url: "#",
-          icon: <Building2 />,
-          roles: ["ADMIN", "GA"],
-          items: [
-            { title: "Purchase Order", url: "/dashboard/ga/purchase-order" },
+         { title: "Purchase Order", url: "/dashboard/ga/purchase-order" },
             { title: "Asset", url: "/dashboard/ga/asset" },
             { title: "Utilities", url: "/dashboard/ga/utilities" },
-          ],
-        },
       ],
     },
+
     {
-      title: "HR",
+      title: "Human Resources",
       url: "#",
       icon: <Users />,
       roles: ["ADMIN", "HR"],
@@ -238,6 +231,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       items: [
         { title: "Matrix", url: "/dashboard/pelatihan/matrix" },
         { title: "Batch", url: "/dashboard/pelatihan/batch" },
+        { title: "Perusahaan", url: "/dashboard/pelatihan/perusahaan" },
       ],
     },
   ]

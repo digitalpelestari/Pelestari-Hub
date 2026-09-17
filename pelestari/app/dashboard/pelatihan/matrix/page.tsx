@@ -1663,12 +1663,12 @@ export default function PelatihanMatrixPage() {
                   />
                 </div>
 
+                {/* Dropdown Jenis Muatan (B3 / LB3) */}
                 <div className="md:col-span-3">
                   <label className="mb-1 block text-xs font-semibold text-slate-600">
                     Jenis Muatan
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={formValues.jenis_muatan}
                     onChange={(e) =>
                       setFormValues({
@@ -1676,9 +1676,12 @@ export default function PelatihanMatrixPage() {
                         jenis_muatan: e.target.value,
                       })
                     }
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    placeholder="Contoh: Bahan Kimia Cair (B3)"
-                  />
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                  >
+                    <option value="">Pilih Jenis Muatan</option>
+                    <option value="B3">B3</option>
+                    <option value="LB3">LB3</option>
+                  </select>
                 </div>
 
                 {/* Jenis Pelatihan: Not Null / Boleh Kosong & Default Placeholder */}
