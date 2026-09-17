@@ -2,14 +2,14 @@
 
 import { db } from "@/lib/db";
 
-// Interface untuk item rincian individual (anak)
 export interface SubAkunItem {
   no_akun: string;
   nama_akun: string;
+  kelompok_biaya_id: number | string | null;
+  kelompok_biaya: string; // Langsung berisi teks seperti "Biaya Pokok Pelatihan", "Biaya Operasional Kantor", dll.
   saldo: number;
 }
 
-// Interface untuk baris utama / induk (parent)
 export interface AkunItem {
   no_akun: string;
   nama_akun: string;
@@ -21,16 +21,16 @@ export interface LabaRugiData {
   pendapatanPelatihan: number;
   pendapatanKonsultan: number;
   totalPendapatan: number;
-  
+
   bebanOperasional: AkunItem[];
   subTotalBeban: number;
-  
+
   bebanPenyusutan: AkunItem[];
-  totalBebanUsaha: number; // Sub Total Beban + Penyusutan
-  
+  totalBebanUsaha: number;
+
   pnbpDanPajak: AkunItem[];
   totalPnbpDanPajak: number;
-  
+
   labaBersih: number;
 }
 
@@ -39,9 +39,7 @@ export async function getLabaRugiData(
   month: string = "all"
 ): Promise<LabaRugiData> {
   try {
-    // ========================================================
-    // 1. QUERY PENDAPATAN (INVOICE)
-    // ========================================================
+    // 1. PENDAPATAN INVOICE
     let queryInvoice = `
       SELECT 
         LOWER(jenis_kegiatan) as kegiatan,
@@ -51,14 +49,12 @@ export async function getLabaRugiData(
     `;
     const invoiceParams: any[] = [year];
 
-    // Filter bulan jika bukan "all"
     if (month !== "all") {
       queryInvoice += ` AND MONTH(created_at) = ?`;
       invoiceParams.push(month);
     }
 
     queryInvoice += ` GROUP BY jenis_kegiatan`;
-    
     const [invoiceRows]: any = await db.query(queryInvoice, invoiceParams);
 
     let pendapatanPelatihan = 0;
@@ -75,16 +71,19 @@ export async function getLabaRugiData(
 
     const totalPendapatan = pendapatanPelatihan + pendapatanKonsultan;
 
-    // ========================================================
-    // 2. QUERY MASTER AKUN & PENGELOMPOKAN BEBAN DENGAN RINCIAN
-    // ========================================================
+    // 2. QUERY MASTER AKUN + JOIN KE TABEL KELOMPOK BIAYA
+    // Sesuaikan nama tabel 'tb_kelompok_biaya' jika di database kamu bernama 'kelompok_biaya'
     const queryAkun = `
       SELECT 
         a.no_akun,
         a.nama_akun,
+        a.kelompok_biaya_id,
+        COALESCE(kb.kelompok_biaya, 'Biaya Operasional Kantor') AS kelompok_biaya,
         a.saldo
       FROM tb_akun a
+      LEFT JOIN tb_kelompok_biaya kb ON a.kelompok_biaya_id = kb.id
       WHERE a.no_akun NOT LIKE '1%' 
+        AND a.no_akun NOT LIKE '2%'
         AND a.no_akun NOT LIKE '3%'
         AND a.no_akun NOT LIKE '4%' 
     `;
@@ -94,23 +93,26 @@ export async function getLabaRugiData(
     const mapBeban = new Map<string, AkunItem>();
     const mapPenyusutan = new Map<string, AkunItem>();
     const mapPajak = new Map<string, AkunItem>();
-    
+
     let subTotalBeban = 0;
     let totalPenyusutan = 0;
     let totalPnbpDanPajak = 0;
 
-    // Helper untuk memasukkan rincian akun ke map kategori induk
     const insertIntoMap = (
       targetMap: Map<string, AkunItem>,
       groupKey: string,
       noAkun: string,
       namaAkun: string,
+      kelompokId: number | string | null,
+      kelompokBiaya: string,
       saldo: number
     ) => {
       const subItem: SubAkunItem = {
         no_akun: noAkun,
         nama_akun: namaAkun,
-        saldo: saldo
+        kelompok_biaya_id: kelompokId,
+        kelompok_biaya: kelompokBiaya,
+        saldo: saldo,
       };
 
       if (targetMap.has(groupKey)) {
@@ -122,7 +124,7 @@ export async function getLabaRugiData(
           no_akun: noAkun,
           nama_akun: groupKey,
           saldo: saldo,
-          rincian: [subItem]
+          rincian: [subItem],
         });
       }
     };
@@ -130,42 +132,33 @@ export async function getLabaRugiData(
     akunRows.forEach((row: any) => {
       const namaAkun = (row.nama_akun || "").trim();
       const noAkun = String(row.no_akun || "");
+      const kelompokId = row.kelompok_biaya_id ?? null;
+      const kelompokBiaya = (row.kelompok_biaya || "").trim();
       const saldo = Math.abs(Number(row.saldo) || 0);
       const namaAkunLower = namaAkun.toLowerCase();
 
-      // Lewatkan saldo 0 agar laporan tetap rapi
       if (saldo === 0) return;
 
-      // Kategori 1: PNBP & Pajak
       if (namaAkunLower.includes("pnbp") || namaAkunLower.includes("pajak terhutang")) {
         totalPnbpDanPajak += saldo;
-        insertIntoMap(mapPajak, namaAkun, noAkun, namaAkun, saldo);
-      } 
-      // Kategori 2: Penyusutan
-      else if (namaAkunLower.includes("penyusutan")) {
+        insertIntoMap(mapPajak, namaAkun, noAkun, namaAkun, kelompokId, kelompokBiaya, saldo);
+      } else if (namaAkunLower.includes("penyusutan")) {
         totalPenyusutan += saldo;
-        insertIntoMap(mapPenyusutan, namaAkun, noAkun, namaAkun, saldo);
-      } 
-      // Kategori 3: Beban Operasional Lainnya
-      else {
+        insertIntoMap(mapPenyusutan, namaAkun, noAkun, namaAkun, kelompokId, kelompokBiaya, saldo);
+      } else {
         subTotalBeban += saldo;
-
-        // Grouping kustom untuk ATK & Perlengkapan sejenis
-        let groupName = namaAkun;
-        if (namaAkunLower.includes("atk") || namaAkunLower.includes("alat tulis")) {
-          groupName = "Beban ATK & Perlengkapan";
-        }
-
-        insertIntoMap(mapBeban, groupName, noAkun, namaAkun, saldo);
+        const groupName = namaAkun;
+        insertIntoMap(mapBeban, groupName, noAkun, namaAkun, kelompokId, kelompokBiaya, saldo);
       }
     });
 
-    // Helper untuk merapikan urutan alfabetis
     const formatDanUrutkan = (map: Map<string, AkunItem>) => {
       return Array.from(map.values())
         .map((item) => ({
           ...item,
-          rincian: item.rincian ? item.rincian.sort((a, b) => a.nama_akun.localeCompare(b.nama_akun)) : []
+          rincian: item.rincian
+            ? item.rincian.sort((a, b) => a.no_akun.localeCompare(b.no_akun))
+            : [],
         }))
         .sort((a, b) => a.nama_akun.localeCompare(b.nama_akun));
     };
@@ -181,19 +174,14 @@ export async function getLabaRugiData(
       pendapatanPelatihan,
       pendapatanKonsultan,
       totalPendapatan,
-      
       bebanOperasional,
       subTotalBeban,
-      
       bebanPenyusutan,
       totalBebanUsaha,
-      
       pnbpDanPajak,
       totalPnbpDanPajak,
-      
-      labaBersih
+      labaBersih,
     };
-
   } catch (error) {
     console.error("CRITICAL_ERR_LABA_RUGI:", error);
     return {
@@ -206,7 +194,7 @@ export async function getLabaRugiData(
       totalBebanUsaha: 0,
       pnbpDanPajak: [],
       totalPnbpDanPajak: 0,
-      labaBersih: 0
+      labaBersih: 0,
     };
   }
 }

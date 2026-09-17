@@ -1,11 +1,18 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { getLabaRugiData, LabaRugiData } from "@/app/actions/labarugi" 
+import { getLabaRugiData, LabaRugiData } from "@/app/actions/labarugi"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { FileSpreadsheet, RefreshCw, Landmark, ChevronDown, ChevronRight } from "lucide-react"
+import {
+  FileSpreadsheet,
+  RefreshCw,
+  Landmark,
+  ChevronDown,
+  ChevronRight,
+  Tag,
+} from "lucide-react"
 
 const BULAN_OPTIONS = [
   { value: "all", label: "Semua Bulan (Tahunan)" },
@@ -20,7 +27,7 @@ const BULAN_OPTIONS = [
   { value: "9", label: "September" },
   { value: "10", label: "Oktober" },
   { value: "11", label: "November" },
-  { value: "12", label: "Desember" }
+  { value: "12", label: "Desember" },
 ]
 
 export default function LabaRugiPage() {
@@ -50,7 +57,7 @@ export default function LabaRugiPage() {
         setData(res)
       }
     } catch (err) {
-      console.error("Gagal memuat struktur laba rugi:", err)
+      console.error("Gagal memuat data laba rugi:", err)
     } finally {
       setLoading(false)
     }
@@ -64,11 +71,10 @@ export default function LabaRugiPage() {
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
-      minimumFractionDigits: 0
+      minimumFractionDigits: 0,
     }).format(num)
   }
 
-  // Label periode dinamis untuk Kop Laporan
   const getPeriodeLabel = () => {
     if (currentMonth === "all") {
       return `Periode : 31 Desember ${currentYear}`
@@ -79,30 +85,37 @@ export default function LabaRugiPage() {
 
   if (loading) {
     return (
-      <div className="flex h-96 w-full items-center justify-center gap-3 text-xs font-bold text-zinc-500 uppercase tracking-widest italic bg-white/50">
-        <RefreshCw className="h-4 w-4 animate-spin text-zinc-900" /> 
+      <div className="flex h-96 w-full items-center justify-center gap-3 text-xs font-bold tracking-widest text-slate-500 uppercase">
+        <RefreshCw className="h-4 w-4 animate-spin text-blue-600" />
         Mengkalkulasi Laporan Laba Rugi...
       </div>
     )
   }
 
   return (
-    <div className="p-6 w-full space-y-6 font-sans text-zinc-900">
-      
+    <div className="w-full space-y-6 p-4 sm:p-6">
       {/* HEADER UTAMA */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 pb-4 w-full">
+      <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-black uppercase tracking-tighter italic text-black flex items-center gap-2">
-            <Landmark className="h-6 w-6" /> Laporan Finansial Laba Rugi
-          </h1>
+          <div className="flex items-center gap-2">
+            <span className="rounded-lg bg-blue-50 p-2 text-blue-600">
+              <Landmark className="h-5 w-5" />
+            </span>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">
+              Laporan Finansial Laba Rugi
+            </h1>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Kalkulasi pendapatan dan beban berdasarkan bagan akun riil database.
+          </p>
         </div>
-        
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap self-end sm:self-auto">
-          {/* SELECT BULAN */}
-          <select 
-            value={currentMonth} 
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            aria-label="Pilih Bulan"
+            value={currentMonth}
             onChange={(e) => setCurrentMonth(e.target.value)}
-            className="h-9 px-3 text-xs font-black bg-white border border-zinc-300 rounded-sm outline-none focus:border-black cursor-pointer uppercase italic"
+            className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             {BULAN_OPTIONS.map((item) => (
               <option key={item.value} value={item.value}>
@@ -111,191 +124,280 @@ export default function LabaRugiPage() {
             ))}
           </select>
 
-          {/* SELECT TAHUN */}
-          <select 
-            value={currentYear} 
+          <select
+            aria-label="Pilih Tahun"
+            value={currentYear}
             onChange={(e) => setCurrentYear(e.target.value)}
-            className="h-9 px-3 text-xs font-black bg-white border border-zinc-300 rounded-sm outline-none focus:border-black cursor-pointer uppercase italic"
+            className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="2026">Tahun 2026</option>
             <option value="2025">Tahun 2025</option>
             <option value="2024">Tahun 2024</option>
           </select>
 
-          <Button variant="outline" size="sm" onClick={fetchData} className="h-9 border-zinc-300 text-zinc-700 text-xs font-black rounded-sm px-4 gap-1.5 bg-white">
-            <RefreshCw className="h-3.5 w-3.5" /> REFRESH
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchData}
+            className="h-9 gap-1.5 rounded-xl border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <RefreshCw className="h-3.5 w-3.5 text-blue-600" /> REFRESH
           </Button>
-          
-          <Button size="sm" className="h-9 bg-black text-white text-xs font-black italic rounded-sm px-4 gap-1.5 hover:bg-zinc-800 shadow-sm">
+
+          <Button
+            size="sm"
+            className="h-9 gap-1.5 rounded-xl bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+          >
             <FileSpreadsheet className="h-4 w-4" /> EKSPOR
           </Button>
         </div>
       </div>
 
-      {/* AREA KERTAS KERJA LAPORAN */}
-      <Card className="border border-zinc-300 shadow-sm rounded-sm bg-white w-full overflow-hidden">
-        <CardHeader className="text-left border-b-2 border-black bg-white py-4 px-6 rounded-none">
+      {/* KERTAS KERJA LAPORAN */}
+      <Card className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <CardHeader className="border-b border-slate-200 bg-slate-50/70 py-4 px-6">
           <div>
-            <CardTitle className="text-base font-black uppercase text-black">
-              LABA RUGI
+            <CardTitle className="text-sm font-bold tracking-wider text-blue-950 uppercase">
+              LAPORAN LABA RUGI KOMPREHENSIF
             </CardTitle>
-            <p className="text-sm font-black text-black uppercase mt-0.5">
+            <p className="mt-0.5 text-xs font-bold text-slate-700 uppercase">
               PT PEDULI LESTARI INDONESIA
             </p>
-            <p className="text-xs font-medium text-black mt-0.5">
+            <p className="mt-0.5 text-[11px] font-medium text-slate-500">
               {getPeriodeLabel()}
             </p>
           </div>
         </CardHeader>
-        
-        <CardContent className="p-0 w-full overflow-x-auto">
+
+        <CardContent className="w-full overflow-x-auto p-0">
           <Table className="w-full border-collapse">
-            <TableBody className="text-[13px] font-medium text-black">
-              
+            <TableBody className="text-xs sm:text-sm text-slate-800">
               {/* PENDAPATAN */}
-              <TableRow className="hover:bg-transparent border-none">
-                <TableCell className="font-bold py-2 px-6" colSpan={2}>
-                  Pendapatan
+              <TableRow className="border-none bg-slate-50/50 hover:bg-slate-50/50">
+                <TableCell className="py-2.5 px-6 font-bold text-blue-900 uppercase" colSpan={2}>
+                  I. Pendapatan
                 </TableCell>
               </TableRow>
-              
-              <TableRow className="hover:bg-zinc-50 border-none transition-colors">
-                <TableCell className="pl-6 py-1.5">Pendapatan Jasa Pelatihan</TableCell>
-                <TableCell className="text-right pr-6 w-1/3 whitespace-nowrap">
+
+              <TableRow className="border-none transition-colors hover:bg-slate-50">
+                <TableCell className="py-2 pl-8">Pendapatan Jasa Pelatihan</TableCell>
+                <TableCell className="w-1/3 py-2 pr-6 text-right font-mono font-medium whitespace-nowrap">
                   {formatRupiah(data?.pendapatanPelatihan || 0)}
                 </TableCell>
               </TableRow>
-              
-              <TableRow className="hover:bg-zinc-50 border-none transition-colors">
-                <TableCell className="pl-6 py-1.5">Pendapatan Jasa Konsultan</TableCell>
-                <TableCell className="text-right pr-6 w-1/3 whitespace-nowrap">
+
+              <TableRow className="border-none transition-colors hover:bg-slate-50">
+                <TableCell className="py-2 pl-8">Pendapatan Jasa Konsultan</TableCell>
+                <TableCell className="w-1/3 py-2 pr-6 text-right font-mono font-medium whitespace-nowrap">
                   {formatRupiah(data?.pendapatanKonsultan || 0)}
                 </TableCell>
               </TableRow>
 
-              <TableRow className="hover:bg-transparent border-none">
-                <TableCell className="pl-6 py-2">Jumlah Pendapatan Bersih</TableCell>
-                <TableCell className="text-right font-bold pr-6 pt-2 w-1/3 whitespace-nowrap">
-                  <span className="border-b-4 border-double border-black pb-0.5 block w-full text-right">
+              <TableRow className="border-b border-slate-200 bg-slate-50/30 hover:bg-slate-50/30">
+                <TableCell className="py-2.5 pl-8 font-semibold text-slate-900">
+                  Jumlah Pendapatan Bersih
+                </TableCell>
+                <TableCell className="w-1/3 py-2.5 pr-6 text-right font-mono font-bold text-blue-700 whitespace-nowrap">
+                  <span className="border-b-2 border-slate-300 pb-0.5">
                     {formatRupiah(data?.totalPendapatan || 0)}
                   </span>
                 </TableCell>
               </TableRow>
-              
-              <TableRow className="h-4 border-none hover:bg-transparent"><TableCell colSpan={2}></TableCell></TableRow>
+
+              <TableRow className="h-3 border-none hover:bg-transparent">
+                <TableCell colSpan={2} />
+              </TableRow>
 
               {/* BEBAN OPERASIONAL */}
-              <TableRow className="hover:bg-transparent border-none">
-                <TableCell className="font-bold py-2 px-6" colSpan={2}>
-                  Beban
+              <TableRow className="border-none bg-slate-50/50 hover:bg-slate-50/50">
+                <TableCell className="py-2.5 px-6 font-bold text-blue-900 uppercase" colSpan={2}>
+                  II. Beban Operasional & Usaha
                 </TableCell>
               </TableRow>
-              
+
               {data?.bebanOperasional.map((item) => {
-                const hasDetails = item.rincian && item.rincian.length > 0
+                const rincianList = item.rincian || []
+
+                // Cek apakah ada lebih dari 1 pos akun DAN kelompok biaya atau nomor akunnya berbeda
+                const distinctAccounts = new Set(
+                  rincianList.map((r: any) => `${r.no_akun}-${r.kelompok_biaya_id || r.kelompok_biaya}`)
+                )
+                const shouldDropdown = rincianList.length > 1 && distinctAccounts.size > 1
                 const isExpanded = expandedRows.has(item.no_akun)
 
                 return (
                   <React.Fragment key={item.no_akun}>
-                    <TableRow 
-                      onClick={() => hasDetails && toggleRow(item.no_akun)}
-                      className={`border-none transition-colors ${
-                        hasDetails ? "cursor-pointer hover:bg-zinc-100/70" : "hover:bg-zinc-50"
+                    <TableRow
+                      onClick={() => shouldDropdown && toggleRow(item.no_akun)}
+                      className={`border-b border-slate-100 transition-colors ${
+                        shouldDropdown
+                          ? "cursor-pointer hover:bg-blue-50/30"
+                          : "hover:bg-slate-50"
                       }`}
                     >
-                      <TableCell className="pl-6 py-1.5 flex items-center gap-1.5">
-                        {hasDetails ? (
-                          isExpanded ? (
-                            <ChevronDown className="h-3.5 w-3.5 text-zinc-600 transition-transform" />
+                      <TableCell className="py-2.5 pl-8">
+                        <div className="flex items-center gap-2">
+                          {/* Chevron HANYA MUNCUL jika gabungan beda kelompok/akun */}
+                          {shouldDropdown ? (
+                            isExpanded ? (
+                              <ChevronDown className="h-4 w-4 text-blue-600 transition-transform" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-slate-400 transition-transform" />
+                            )
                           ) : (
-                            <ChevronRight className="h-3.5 w-3.5 text-zinc-600 transition-transform" />
-                          )
-                        ) : (
-                          <span className="w-3.5 inline-block" />
-                        )}
-                        <span className={hasDetails ? "font-semibold text-zinc-900" : ""}>
-                          {item.nama_akun}
-                        </span>
+                            <span className="inline-block w-4" />
+                          )}
+
+                          <span
+                            className={
+                              shouldDropdown
+                                ? "font-semibold text-slate-900"
+                                : "font-normal text-slate-800"
+                            }
+                          >
+                            {item.nama_akun}
+                          </span>
+
+                          {/* Jika cuma akun tunggal, tampilkan kode akun langsung */}
+                          {!shouldDropdown && item.no_akun && (
+                            <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
+                              {item.no_akun}
+                            </span>
+                          )}
+
+                          {/* Badge jumlah jika gabungan */}
+                          {shouldDropdown && (
+                            <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                              {rincianList.length} pos akun
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-right pr-6 py-1.5 w-1/3 whitespace-nowrap font-medium">
+                      <TableCell className="w-1/3 py-2.5 pr-6 text-right font-mono font-medium text-slate-900 whitespace-nowrap">
                         {formatRupiah(item.saldo)}
                       </TableCell>
                     </TableRow>
 
-                    {hasDetails && isExpanded && item.rincian?.map((sub) => (
-                      <TableRow 
-                        key={sub.no_akun} 
-                        className="border-none bg-zinc-50/50 hover:bg-zinc-100/40 text-xs text-zinc-600 italic"
-                      >
-                        <TableCell className="pl-14 py-1 flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
-                          <span>{sub.nama_akun}</span>
-                        </TableCell>
-                        <TableCell className="text-right pr-6 py-1 w-1/3 whitespace-nowrap text-zinc-700">
-                          {formatRupiah(sub.saldo)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {/* SUB-ROWS: Label murni dari field database kelompok_biaya */}
+                    {shouldDropdown &&
+                      isExpanded &&
+                      rincianList.map((sub: any, idx) => {
+                        const namaKelompok =
+                          sub.kelompok_biaya ||
+                          sub.nama_kelompok ||
+                          (sub.kelompok_biaya_id ? `Kelompok ${sub.kelompok_biaya_id}` : "-")
+
+                        return (
+                          <TableRow
+                            key={`${sub.no_akun}-${idx}`}
+                            className="border-none bg-slate-50/70 hover:bg-blue-50/20 text-xs text-slate-600"
+                          >
+                            <TableCell className="py-2 pl-16">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                                <span className="font-semibold text-slate-800">
+                                  {sub.nama_akun}
+                                </span>
+
+                                {sub.no_akun && (
+                                  <span className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-600">
+                                    {sub.no_akun}
+                                  </span>
+                                )}
+
+                                {/* TAG KELOMPOK DARI DATABASE */}
+                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                                  <Tag className="h-2.5 w-2.5" />
+                                  {namaKelompok}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="w-1/3 py-2 pr-6 text-right font-mono text-slate-700 whitespace-nowrap">
+                              {formatRupiah(sub.saldo)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
                   </React.Fragment>
                 )
               })}
 
-              {/* SUB TOTAL BEBAN */}
-              <TableRow className="hover:bg-transparent border-none mt-2">
-                <TableCell className="font-bold pl-6 py-3">Sub Total Beban</TableCell>
-                <TableCell className="text-right font-bold pr-6 py-3 w-1/3 whitespace-nowrap">
-                  <span className="border-b-4 border-double border-black pb-0.5 block w-full text-right">
+              {/* SUB TOTAL */}
+              <TableRow className="border-none bg-slate-50/40 hover:bg-slate-50/40">
+                <TableCell className="py-2.5 pl-8 font-semibold text-slate-800">
+                  Sub Total Beban
+                </TableCell>
+                <TableCell className="w-1/3 py-2.5 pr-6 text-right font-mono font-bold text-slate-800 whitespace-nowrap">
+                  <span className="border-b border-slate-300 pb-0.5">
                     {formatRupiah(data?.subTotalBeban || 0)}
                   </span>
                 </TableCell>
               </TableRow>
 
               {/* PENYUSUTAN */}
-              {data?.bebanPenyusutan.map((item) => (
-                <TableRow key={item.no_akun} className="hover:bg-zinc-50 border-none transition-colors">
-                  <TableCell className="pl-6 py-1">{item.nama_akun}</TableCell>
-                  <TableCell className="text-right pr-6 py-1 w-1/3 whitespace-nowrap">
-                    {formatRupiah(item.saldo)}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {data?.bebanPenyusutan && data.bebanPenyusutan.length > 0 && (
+                <>
+                  <TableRow className="border-none bg-slate-50/50 hover:bg-slate-50/50">
+                    <TableCell className="py-2 pl-8 font-bold text-slate-700" colSpan={2}>
+                      Beban Penyusutan
+                    </TableCell>
+                  </TableRow>
+                  {data.bebanPenyusutan.map((item) => (
+                    <TableRow key={item.no_akun} className="border-none hover:bg-slate-50">
+                      <TableCell className="py-1.5 pl-12">{item.nama_akun}</TableCell>
+                      <TableCell className="w-1/3 py-1.5 pr-6 text-right font-mono text-slate-700 whitespace-nowrap">
+                        {formatRupiah(item.saldo)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </>
+              )}
 
-              <TableRow className="hover:bg-transparent border-none">
-                <TableCell className="pl-6 py-2">Total Beban Usaha</TableCell>
-                <TableCell className="text-right font-bold pr-6 pt-2 w-1/3 whitespace-nowrap">
-                  <span className="border-b-4 border-double border-black pb-0.5 block w-full text-right">
-                    {formatRupiah(data?.totalBebanUsaha || 0)}
+              <TableRow className="border-b border-slate-200 bg-slate-50/30 hover:bg-slate-50/30">
+                <TableCell className="py-2.5 pl-8 font-semibold text-slate-900">
+                  Total Beban Usaha
+                </TableCell>
+                <TableCell className="w-1/3 py-2.5 pr-6 text-right font-mono font-bold text-rose-600 whitespace-nowrap">
+                  <span className="border-b-2 border-slate-300 pb-0.5">
+                    ({formatRupiah(data?.totalBebanUsaha || 0)})
                   </span>
                 </TableCell>
               </TableRow>
 
               {/* PNBP & PAJAK */}
-              {data?.pnbpDanPajak.map((item) => (
-                <TableRow key={item.no_akun} className="hover:bg-zinc-50 border-none transition-colors">
-                  <TableCell className="pl-6 py-1.5">{item.nama_akun}</TableCell>
-                  <TableCell className="text-right pr-6 py-1.5 w-1/3 whitespace-nowrap">
-                    {formatRupiah(item.saldo)}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {data?.pnbpDanPajak && data.pnbpDanPajak.length > 0 && (
+                <>
+                  <TableRow className="border-none bg-slate-50/50 hover:bg-slate-50/50">
+                    <TableCell className="py-2 pl-8 font-bold text-slate-700" colSpan={2}>
+                      Beban Pajak & Administrasi Lainnya
+                    </TableCell>
+                  </TableRow>
+                  {data.pnbpDanPajak.map((item) => (
+                    <TableRow key={item.no_akun} className="border-none hover:bg-slate-50">
+                      <TableCell className="py-1.5 pl-12">{item.nama_akun}</TableCell>
+                      <TableCell className="w-1/3 py-1.5 pr-6 text-right font-mono text-slate-700 whitespace-nowrap">
+                        {formatRupiah(item.saldo)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </>
+              )}
 
               {/* LABA BERSIH */}
-              <TableRow className="hover:bg-transparent border-none">
-                <TableCell className="font-bold text-[14px] pl-6 pt-3 pb-6">
+              <TableRow className="border-t-2 border-slate-300 bg-blue-50/30 hover:bg-blue-50/50">
+                <TableCell className="py-4 pl-6 font-bold text-slate-900">
                   Laba Bersih Sesudah Pajak
                 </TableCell>
-                <TableCell className="text-right font-bold text-[14px] pr-6 pt-3 pb-6 w-1/3 whitespace-nowrap">
-                  <span className="border-b-4 border-double border-black pb-1 block w-full text-right">
+                <TableCell className="w-1/3 py-4 pr-6 text-right font-mono text-base font-bold text-blue-700 whitespace-nowrap">
+                  <span className="border-b-4 border-double border-blue-700 pb-1">
                     {formatRupiah(data?.labaBersih || 0)}
                   </span>
                 </TableCell>
               </TableRow>
-
             </TableBody>
           </Table>
         </CardContent>
       </Card>
-      
     </div>
   )
 }
