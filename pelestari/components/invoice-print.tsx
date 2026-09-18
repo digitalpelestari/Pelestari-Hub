@@ -3,36 +3,44 @@
 export const InvoicePrint = ({ data }: { data: any }) => {
   if (!data) return null
 
-  // Pembulatan angka bulat tanpa desimal/koma
-  const formatNumber = (amount: number) => {
+  // Format angka murni tanpa pembulatan (mempertahankan nilai desimal asli)
+  const formatAngka = (amount: number | string) => {
+    const num = Number(amount)
+    if (isNaN(num)) return "0"
     return new Intl.NumberFormat("id-ID", {
-      maximumFractionDigits: 0,
-    }).format(Math.round(amount || 0))
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(num)
   }
 
   // Item layanan diambil dari tb_invoice_details (data.items)
   const items: any[] = Array.isArray(data.items) ? data.items : []
 
-  const subtotalDasar = Math.round(
-    items.reduce(
-      (sum, item) =>
-        sum + (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0),
-      0
-    )
+  // Subtotal dasar murni tanpa pembulatan
+  const subtotalDasar = items.reduce(
+    (sum, item) =>
+      sum + (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0),
+    0
   )
 
-  // DPP Nilai Lain (11/12) dibulatkan utuh
-  const nilaiDppNilaiLain = Math.round((11 / 12) * subtotalDasar);
+  // DPP Nilai Lain (11/12) murni tanpa pembulatan[cite: 8]
+  const nilaiDppNilaiLain = (11 / 12) * subtotalDasar
 
-  // Pajak & PNBP dibulatkan utuh
-  const nilaiPPN = data.is_ppn11 === 1 ? Math.round(subtotalDasar * 0.11) : 0
-  const nilaiPPH = data.is_pph23 === 1 ? Math.round(subtotalDasar * 0.02) : 0
-  const nilaiPNBP = data.is_pnbp === 1 ? Math.round(data.nominal_pnbp || 0) : 0
+  // Pajak & PNBP murni tanpa pembulatan
+  const nilaiPPN = data.is_ppn11 === 1 ? subtotalDasar * 0.11 : 0
+  const nilaiPPH = data.is_pph23 === 1 ? subtotalDasar * 0.02 : 0
+  const nilaiPNBP = data.is_pnbp === 1 ? Number(data.nominal_pnbp) || 0 : 0
 
   const totalJumlahPeserta = items.reduce(
     (sum, item) => sum + (Number(item.item_jumlah) || 0),
     0
   )
+
+  // Total murni tanpa pembulatan
+  const totalMurni =
+    data.total !== undefined && data.total !== null
+      ? Number(data.total)
+      : subtotalDasar + nilaiPPN - nilaiPPH + nilaiPNBP
 
   let currentNo = 1
 
@@ -176,7 +184,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
               {items.length > 0 ? (
                 items.map((item, idx) => {
                   const jumlah = Number(item.item_jumlah) || 0
-                  const harga = Math.round(Number(item.item_harga) || 0)
+                  const harga = Number(item.item_harga) || 0
                   return (
                     <tr
                       key={item.id ?? idx}
@@ -194,12 +202,12 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                       <td className="border-r border-[#0170c0] px-3 py-2">
                         <div className="flex justify-between">
                           <span>Rp</span>
-                          <span>{formatNumber(harga)}</span>
+                          <span>{formatAngka(harga)}</span>
                         </div>
                       </td>
                       <td className="flex justify-between px-3 py-2">
                         <span>Rp</span>
-                        {formatNumber(jumlah * harga)}
+                        {formatAngka(jumlah * harga)}
                       </td>
                     </tr>
                   )
@@ -230,23 +238,23 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   <td className="border-r border-[#0170c0] px-3 py-2">
                     <div className="flex justify-between">
                       <span>Rp</span>
-                      <span>600.000</span>
+                      <span>600.000,00</span>
                     </div>
                   </td>
                   <td className="flex justify-between px-3 py-2">
-                    <span>Rp</span> {formatNumber(nilaiPNBP)}
+                    <span>Rp</span> {formatAngka(nilaiPNBP)}
                   </td>
                 </tr>
               )}
 
-              {/* DPP NILAI LAIN (TIDAK BERPENGARUH KE TOTALAN) */}
+              {/* DPP NILAI LAIN (PENCATATAN SAJA, TIDAK MASUK TOTAL) */}
               {data.is_dpp === 1 && (
                 <tr className="border-[#0170c0] bg-zinc-50/30 italic">
                   <td className="border-r border-[#0170c0] py-2 text-center text-zinc-400">
-                    -
+                    {currentNo++}
                   </td>
                   <td className="border-r border-[#0170c0] px-3 py-2 font-medium">
-                    Dasar Pengenaan Pajak (DPP)
+                    Dasar Pengenaan Pajak
                   </td>
                   <td className="border-r border-[#0170c0] py-2 text-center">
                     -
@@ -256,7 +264,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   </td>
                   <td className="flex justify-between px-3 py-2 font-medium">
                     <span>Rp</span>
-                    {formatNumber(nilaiDppNilaiLain)}
+                    {formatAngka(nilaiDppNilaiLain)}
                   </td>
                 </tr>
               )}
@@ -278,7 +286,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   </td>
                   <td className="flex justify-between px-3 py-2">
                     <span>Rp</span>
-                    {formatNumber(nilaiPPN)}
+                    {formatAngka(nilaiPPN)}
                   </td>
                 </tr>
               )}
@@ -299,7 +307,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                     -
                   </td>
                   <td className="flex justify-between px-3 py-2">
-                    <span>Rp</span> ({formatNumber(nilaiPPH)})
+                    <span>Rp</span> ({formatAngka(nilaiPPH)})
                   </td>
                 </tr>
               )}
@@ -313,7 +321,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   Total Tagihan
                 </td>
                 <td className="flex justify-between px-3 py-2">
-                  <span>Rp</span> {formatNumber(Math.round(data.total || 0))}
+                  <span>Rp</span> {formatAngka(totalMurni)}
                 </td>
               </tr>
             </tfoot>
