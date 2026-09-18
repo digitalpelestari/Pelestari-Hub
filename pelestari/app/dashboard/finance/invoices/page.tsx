@@ -109,6 +109,7 @@ export default function InvoiceListPage() {
       ...inv,
       id: inv.id,
       nomor_invoice: inv.nomor_invoice,
+      items: inv.items || [],
       batch: inv.batch || "N/A",
       raw_tanggal: inv.tanggal ? inv.tanggal : null,
       tanggal: inv.tanggal
@@ -140,57 +141,57 @@ export default function InvoiceListPage() {
     loadData()
   }, [])
 
-const handlePrint = async (inv: any) => {
-  const pilihan = await Swal.fire({
-    title: "Pilih Metode Pembayaran",
-    text: "Metode pembayaran yang ditampilkan pada invoice",
-    icon: "question",
-    showDenyButton: true,
-    showCancelButton: true,
-    confirmButtonText: "Rekening Biasa",
-    denyButtonText: "Rekening VA",
-    cancelButtonText: "Batal",
-    confirmButtonColor: "#18181b",
-    denyButtonColor: "#0170c0",
-  })
-
-  if (pilihan.isConfirmed) {
-    // Rekening biasa -> langsung print
-    setPrintData({ ...inv, metode_pembayaran: "biasa" })
-    setTimeout(() => {
-      window.print()
-    }, 200)
-    return
-  }
-
-  if (pilihan.isDenied) {
-    // Rekening VA -> minta isi nomor VA dulu, baru print
-    const { value: noVA } = await Swal.fire({
-      title: "Masukkan Nomor Virtual Account",
-      input: "text",
-      inputPlaceholder: "Contoh: 88081234567890",
+  const handlePrint = async (inv: any) => {
+    const pilihan = await Swal.fire({
+      title: "Pilih Metode Pembayaran",
+      text: "Metode pembayaran yang ditampilkan pada invoice",
+      icon: "question",
+      showDenyButton: true,
       showCancelButton: true,
-      confirmButtonText: "Cetak Invoice",
+      confirmButtonText: "Rekening Biasa",
+      denyButtonText: "Rekening VA",
       cancelButtonText: "Batal",
-      confirmButtonColor: "#0170c0",
-      inputValidator: (value) => {
-        if (!value) return "Nomor VA wajib diisi"
-      },
+      confirmButtonColor: "#18181b",
+      denyButtonColor: "#0170c0",
     })
 
-    if (noVA) {
-      setPrintData({
-        ...inv,
-        metode_pembayaran: "va",
-        va_nomor: noVA,
-        va_bank: "BCA",
-      })
+    if (pilihan.isConfirmed) {
+      // Rekening biasa -> langsung print
+      setPrintData({ ...inv, metode_pembayaran: "biasa" })
       setTimeout(() => {
         window.print()
       }, 200)
+      return
+    }
+
+    if (pilihan.isDenied) {
+      // Rekening VA -> minta isi nomor VA dulu, baru print
+      const { value: noVA } = await Swal.fire({
+        title: "Masukkan Nomor Virtual Account",
+        input: "text",
+        inputPlaceholder: "Contoh: 88081234567890",
+        showCancelButton: true,
+        confirmButtonText: "Cetak Invoice",
+        cancelButtonText: "Batal",
+        confirmButtonColor: "#0170c0",
+        inputValidator: (value) => {
+          if (!value) return "Nomor VA wajib diisi"
+        },
+      })
+
+      if (noVA) {
+        setPrintData({
+          ...inv,
+          metode_pembayaran: "va",
+          va_nomor: noVA,
+          va_bank: "BCA",
+        })
+        setTimeout(() => {
+          window.print()
+        }, 200)
+      }
     }
   }
-}
 
   const handleDelete = async (id: number) => {
     const res = await deleteInvoice(id)
@@ -712,29 +713,32 @@ const handlePrint = async (inv: any) => {
 
                           <TableCell className="border-r bg-zinc-50/30 py-5">
                             <div className="flex flex-col gap-2">
-                              <div className="space-y-0.5">
-                                <span className="line-clamp-1 text-[11px] leading-relaxed font-medium text-zinc-600 italic">
-                                  {inv.keterangan}
-                                </span>
-                                <div className="flex items-center gap-1 text-[9px] font-bold text-zinc-400">
-                                  <Users className="h-2.5 w-2.5" />{" "}
-                                  {inv.jumlah_peserta} Peserta
-                                </div>
-                              </div>
-                              {inv.keterangan_2 && inv.keterangan_2 !== "-" && (
-                                <div className="space-y-0.5 border-t border-zinc-200 pt-1">
-                                  <span className="line-clamp-1 text-[11px] leading-relaxed font-medium text-zinc-600 italic">
-                                    {inv.keterangan_2}
-                                  </span>
-                                  <div className="flex items-center gap-1 text-[9px] font-bold text-zinc-400">
-                                    <Users className="h-2.5 w-2.5" />{" "}
-                                    {inv.jumlah_peserta_2} Peserta
+                              {inv.items && inv.items.length > 0 ? (
+                                inv.items.map((item: any, idx: number) => (
+                                  <div
+                                    key={item.id ?? idx}
+                                    className={
+                                      idx > 0
+                                        ? "space-y-0.5 border-t border-zinc-200 pt-1"
+                                        : "space-y-0.5"
+                                    }
+                                  >
+                                    <span className="line-clamp-1 text-[11px] leading-relaxed font-medium text-zinc-600 italic">
+                                      {item.item_deskripsi || "-"}
+                                    </span>
+                                    <div className="flex items-center gap-1 text-[9px] font-bold text-zinc-400">
+                                      <Users className="h-2.5 w-2.5" />{" "}
+                                      {item.item_jumlah || 0} Peserta
+                                    </div>
                                   </div>
-                                </div>
+                                ))
+                              ) : (
+                                <span className="text-[11px] text-zinc-400 italic">
+                                  Tidak ada layanan
+                                </span>
                               )}
                             </div>
                           </TableCell>
-
                           <TableCell
                             className={`border-r px-6 py-5 text-right text-[12px] font-black ${inv.status === "Lunas" ? "text-emerald-600 italic" : "text-zinc-900"}`}
                           >
