@@ -3,30 +3,30 @@
 export const InvoicePrint = ({ data }: { data: any }) => {
   if (!data) return null
 
-  // Format angka murni tanpa pembulatan (mempertahankan nilai desimal asli)
+  // Format angka tanpa koma/desimal di belakangnya
   const formatAngka = (amount: number | string) => {
     const num = Number(amount)
     if (isNaN(num)) return "0"
     return new Intl.NumberFormat("id-ID", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(num)
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(Math.trunc(num))
   }
 
   // Item layanan diambil dari tb_invoice_details (data.items)
   const items: any[] = Array.isArray(data.items) ? data.items : []
 
-  // Subtotal dasar murni tanpa pembulatan
+  // Subtotal dasar murni
   const subtotalDasar = items.reduce(
     (sum, item) =>
       sum + (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0),
     0
   )
 
-  // DPP Nilai Lain (11/12) murni tanpa pembulatan[cite: 8]
+  // DPP Nilai Lain (11/12) murni
   const nilaiDppNilaiLain = (11 / 12) * subtotalDasar
 
-  // Pajak & PNBP murni tanpa pembulatan
+  // Pajak & PNBP murni
   const nilaiPPN = data.is_ppn11 === 1 ? subtotalDasar * 0.11 : 0
   const nilaiPPH = data.is_pph23 === 1 ? subtotalDasar * 0.02 : 0
   const nilaiPNBP = data.is_pnbp === 1 ? Number(data.nominal_pnbp) || 0 : 0
@@ -36,7 +36,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
     0
   )
 
-  // Total murni tanpa pembulatan
+  // Total murni
   const totalMurni =
     data.total !== undefined && data.total !== null
       ? Number(data.total)
@@ -238,7 +238,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   <td className="border-r border-[#0170c0] px-3 py-2">
                     <div className="flex justify-between">
                       <span>Rp</span>
-                      <span>600.000,00</span>
+                      <span>600.000</span>
                     </div>
                   </td>
                   <td className="flex justify-between px-3 py-2">

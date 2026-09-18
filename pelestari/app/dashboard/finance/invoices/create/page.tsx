@@ -78,19 +78,19 @@ export default function CreateInvoicePage() {
 
   const calculation = useMemo(() => {
     const subtotalDasar = formData.items.reduce(
-      (total, item) => total + (item.item_jumlah || 0) * (item.item_harga || 0),
+      (total, item) => total + (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0),
       0
     )
 
     const totalPesertaAll = formData.items.reduce(
-      (total, item) => total + (item.item_jumlah || 0),
+      (total, item) => total + (Number(item.item_jumlah) || 0),
       0
     )
 
-    // Rumus DPP: (11/12) x total jumlah layanan
+    // DPP Nilai Lain: (11/12) x subtotal
     const dppNilai = formData.is_dpp ? (11 / 12) * subtotalDasar : subtotalDasar
 
-    // PPh 23: 2% dari DPP jika DPP aktif, atau dari subtotal jika DPP tidak aktif
+    // PPh 23: 2% dari DPP jika DPP aktif, atau dari subtotal dasar jika tidak aktif
     const basisPajak = formData.is_dpp ? dppNilai : subtotalDasar
     const pph = formData.is_pph23 ? basisPajak * 0.02 : 0
     const ppn = formData.is_ppn11 ? subtotalDasar * 0.11 : 0
@@ -113,7 +113,8 @@ export default function CreateInvoicePage() {
       style: "currency",
       currency: "IDR",
       minimumFractionDigits: 0,
-    }).format(amount)
+      maximumFractionDigits: 2,
+    }).format(amount || 0)
   }
 
   const handleFileUploadCL = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -188,7 +189,7 @@ export default function CreateInvoicePage() {
       !formData.tanggal_jatuhtempo ||
       formData.items.length === 0 ||
       formData.items.some(
-        (item) => !item.item_deskripsi.trim() || item.item_jumlah <= 0 || item.item_harga <= 0
+        (item) => !item.item_deskripsi.trim() || Number(item.item_jumlah) <= 0 || Number(item.item_harga) <= 0
       )
     ) {
       swal.warning("Pastikan Perusahaan, Jatuh Tempo, dan minimal 1 layanan dengan harga valid telah diisi!")
@@ -199,6 +200,11 @@ export default function CreateInvoicePage() {
 
     const payload = {
       ...formData,
+      items: formData.items.map((it) => ({
+        ...it,
+        item_jumlah: Number(it.item_jumlah) || 0,
+        item_harga: Number(it.item_harga) || 0, // Nilai float murni tanpa Math.round atau parseInt
+      })),
       nominal_pnbp: calculation.pnbp,
       total: calculation.totalAkhir,
     }
@@ -413,7 +419,7 @@ export default function CreateInvoicePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {formData.items.map((item, index) => {
-                const itemSubtotal = (item.item_jumlah || 0) * (item.item_harga || 0)
+                const itemSubtotal = (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0)
                 return (
                   <div
                     key={index}
@@ -456,12 +462,13 @@ export default function CreateInvoicePage() {
                           <Input
                             type="number"
                             min="1"
+                            step="any"
                             value={item.item_jumlah || ""}
                             onChange={(e) =>
                               updateItem(
                                 index,
                                 "item_jumlah",
-                                e.target.value === "" ? 0 : Math.max(0, parseInt(e.target.value))
+                                e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
                               )
                             }
                             className="h-10 bg-white dark:bg-zinc-950"
@@ -474,12 +481,20 @@ export default function CreateInvoicePage() {
                           </Label>
                           <Input
                             type="text"
-                            inputMode="numeric"
-                            value={item.item_harga ? item.item_harga.toLocaleString("id-ID") : ""}
+                            inputMode="decimal"
+                            value={item.item_harga !== undefined && item.item_harga !== null ? item.item_harga : ""}
                             placeholder="0"
                             onChange={(e) => {
-                              const raw = e.target.value.replace(/\D/g, "")
-                              updateItem(index, "item_harga", raw === "" ? 0 : parseInt(raw))
+                              // Ganti koma jadi titik agar valid float JS
+                              const val = e.target.value.replace(",", ".")
+                              // Hanya menerima angka dan satu titik desimal
+                              if (/^\d*\.?\d*$/.test(val)) {
+                                updateItem(
+                                  index,
+                                  "item_harga",
+                                  val === "" || val === "." ? 0 : parseFloat(val)
+                                )
+                              }
                             }}
                             className="h-10 bg-white font-mono text-sm dark:bg-zinc-950"
                           />
@@ -589,7 +604,7 @@ export default function CreateInvoicePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {/* 1. CHECKBOX DPP (DI ATAS PPH) */}
+                {/* 1. CHECKBOX DPP */}
                 <label className="flex cursor-pointer items-center justify-between rounded-lg border border-zinc-200/70 p-3 transition hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900/50">
                   <div className="flex items-center gap-3">
                     <Checkbox
@@ -717,7 +732,7 @@ export default function CreateInvoicePage() {
                   </p>
                   <div className="divide-y divide-zinc-800/60">
                     {formData.items.map((item, index) => {
-                      const itemSubtotal = (item.item_jumlah || 0) * (item.item_harga || 0)
+                      const itemSubtotal = (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0)
                       return (
                         <div
                           key={index}
@@ -730,7 +745,7 @@ export default function CreateInvoicePage() {
                               {item.item_deskripsi.trim() || `Layanan #${index + 1}`}
                             </p>
                             <p className="text-[11px] text-zinc-500 font-mono">
-                              {item.item_jumlah || 0} peserta × {formatIDR(item.item_harga || 0)}
+                              {item.item_jumlah || 0} peserta × {formatIDR(Number(item.item_harga) || 0)}
                             </p>
                           </div>
                           <span className="font-mono font-medium text-zinc-200 whitespace-nowrap">
