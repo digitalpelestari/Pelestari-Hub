@@ -3,26 +3,31 @@
 export const InvoicePrint = ({ data }: { data: any }) => {
   if (!data) return null
 
+  // Pembulatan angka bulat tanpa desimal/koma
   const formatNumber = (amount: number) => {
-    return new Intl.NumberFormat("id-ID").format(amount || 0)
+    return new Intl.NumberFormat("id-ID", {
+      maximumFractionDigits: 0,
+    }).format(Math.round(amount || 0))
   }
 
   // Item layanan diambil dari tb_invoice_details (data.items)
   const items: any[] = Array.isArray(data.items) ? data.items : []
 
-  const subtotalDasar = items.reduce(
-    (sum, item) =>
-      sum + (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0),
-    0
+  const subtotalDasar = Math.round(
+    items.reduce(
+      (sum, item) =>
+        sum + (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0),
+      0
+    )
   )
 
-  // DPP Nilai Lain (11/12) HANYA UNTUK PENCATATAN / MEMO INFORMASI PAJAK
-  const nilaiDppNilaiLain = Math.round((11 / 12) * subtotalDasar)
+  // DPP Nilai Lain (11/12) dibulatkan utuh
+  const nilaiDppNilaiLain = Math.round((11 / 12) * subtotalDasar);
 
-  // Pajak & PNBP
-  const nilaiPPN = data.is_ppn11 === 1 ? subtotalDasar * 0.11 : 0
-  const nilaiPPH = data.is_pph23 === 1 ? subtotalDasar * 0.02 : 0
-  const nilaiPNBP = data.is_pnbp === 1 ? data.nominal_pnbp || 0 : 0
+  // Pajak & PNBP dibulatkan utuh
+  const nilaiPPN = data.is_ppn11 === 1 ? Math.round(subtotalDasar * 0.11) : 0
+  const nilaiPPH = data.is_pph23 === 1 ? Math.round(subtotalDasar * 0.02) : 0
+  const nilaiPNBP = data.is_pnbp === 1 ? Math.round(data.nominal_pnbp || 0) : 0
 
   const totalJumlahPeserta = items.reduce(
     (sum, item) => sum + (Number(item.item_jumlah) || 0),
@@ -171,7 +176,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
               {items.length > 0 ? (
                 items.map((item, idx) => {
                   const jumlah = Number(item.item_jumlah) || 0
-                  const harga = Number(item.item_harga) || 0
+                  const harga = Math.round(Number(item.item_harga) || 0)
                   return (
                     <tr
                       key={item.id ?? idx}
@@ -234,16 +239,14 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                 </tr>
               )}
 
-          
-
-              {/* dpp */}
+              {/* DPP NILAI LAIN (TIDAK BERPENGARUH KE TOTALAN) */}
               {data.is_dpp === 1 && (
-                <tr className="border-[#0170c0] bg-zinc-50/30">
-                  <td className="border-r border-[#0170c0] py-2 text-center">
-                    {currentNo++}
+                <tr className="border-[#0170c0] bg-zinc-50/30 italic">
+                  <td className="border-r border-[#0170c0] py-2 text-center text-zinc-400">
+                    -
                   </td>
-                  <td className="border-r border-[#0170c0] px-3 py-2 font-medium ">
-                    Dasar Pengenaan Pajak
+                  <td className="border-r border-[#0170c0] px-3 py-2 font-medium">
+                    Dasar Pengenaan Pajak (DPP)
                   </td>
                   <td className="border-r border-[#0170c0] py-2 text-center">
                     -
@@ -251,21 +254,21 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   <td className="border-r border-[#0170c0] px-3 py-2 text-center">
                     -
                   </td>
-                  <td className="flex justify-between px-3 py-2">
+                  <td className="flex justify-between px-3 py-2 font-medium">
                     <span>Rp</span>
                     {formatNumber(nilaiDppNilaiLain)}
                   </td>
                 </tr>
               )}
 
-               {/* PPN */}
+              {/* PPN */}
               {data.is_ppn11 === 1 && (
                 <tr className="border-[#0170c0] bg-zinc-50/30">
                   <td className="border-r border-[#0170c0] py-2 text-center">
                     {currentNo++}
                   </td>
                   <td className="border-r border-[#0170c0] px-3 py-2 font-medium uppercase">
-                   PPN
+                    PPN
                   </td>
                   <td className="border-r border-[#0170c0] py-2 text-center">
                     -
@@ -280,8 +283,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                 </tr>
               )}
 
-
-              {/* PPH */}
+              {/* PPH 23 */}
               {data.is_pph23 === 1 && (
                 <tr className="border-[#0170c0] bg-zinc-50/30">
                   <td className="border-r border-[#0170c0] py-2 text-center">
@@ -311,36 +313,33 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   Total Tagihan
                 </td>
                 <td className="flex justify-between px-3 py-2">
-                  <span>Rp</span> {formatNumber(data.total)}
+                  <span>Rp</span> {formatNumber(Math.round(data.total || 0))}
                 </td>
               </tr>
             </tfoot>
           </table>
         </div>
 
-        
-       
-
         {/* FOOTER KETENTUAN */}
-       <div className="mb-6 px-10 text-[10pt]">
-  {data.jenis_kegiatan !== "konsultan" && (
-    <p>
-      Apabila sesuai ketentuan perpajakan pengguna jasa wajib melakukan
-      pemotongan PPh Pasal 23, maka pemotongan dilakukan dari{" "}
-      <b>nilai jasa tanpa memperhitungkan PNBP</b> dan Bukti Potong agar
-      dikirimkan kepada kami
-    </p>
-  )}
-</div>
+        <div className="mb-6 px-10 text-[10pt]">
+          {data.jenis_kegiatan !== "konsultan" && (
+            <p>
+              Apabila sesuai ketentuan perpajakan pengguna jasa wajib melakukan
+              pemotongan PPh Pasal 23, maka pemotongan dilakukan dari{" "}
+              <b>nilai jasa tanpa memperhitungkan PNBP</b> dan Bukti Potong agar
+              dikirimkan kepada kami
+            </p>
+          )}
+        </div>
 
-<div className="mb-6 px-10 text-[10pt]">
-  {data.jenis_kegiatan === "pelatihan" && data.is_ppn11 === 0 && (
-    <p className="mb-4 text-[10pt]">
-      Transaksi ini tidak dikenakan PPN karena termasuk jasa pendidikan
-      sesuai pasal 4A ayat (3b) UU PPN
-    </p>
-  )}
-</div>
+        <div className="mb-6 px-10 text-[10pt]">
+          {data.jenis_kegiatan === "pelatihan" && data.is_ppn11 === 0 && (
+            <p className="mb-4 text-[10pt]">
+              Transaksi ini tidak dikenakan PPN karena termasuk jasa pendidikan
+              sesuai pasal 4A ayat (3b) UU PPN
+            </p>
+          )}
+        </div>
 
         {/* METODE TRANSFER */}
         <div className="mb-6 px-10 text-[10pt]">
