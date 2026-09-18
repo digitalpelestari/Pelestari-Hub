@@ -7,13 +7,25 @@ export const InvoicePrint = ({ data }: { data: any }) => {
     return new Intl.NumberFormat("id-ID").format(amount || 0)
   }
 
-  const totalItem1 = data.jumlah_peserta * data.harga_peserta
-  const totalItem2 = (data.jumlah_peserta_2 || 0) * (data.harga_peserta_2 || 0)
-  const subtotalDasar = totalItem1 + totalItem2
+  // Item layanan sekarang diambil dari tb_invoice_details (data.items),
+  // BUKAN dari field header seperti data.jumlah_peserta / data.harga_peserta
+  // yang sudah tidak lagi diisi untuk invoice yang dibuat lewat form.
+  const items: any[] = Array.isArray(data.items) ? data.items : []
+
+  const subtotalDasar = items.reduce(
+    (sum, item) =>
+      sum + (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0),
+    0
+  )
 
   const nilaiPPN = data.is_ppn11 === 1 ? subtotalDasar * 0.11 : 0
   const nilaiPPH = data.is_pph23 === 1 ? subtotalDasar * 0.02 : 0
   const nilaiPNBP = data.is_pnbp === 1 ? data.nominal_pnbp || 0 : 0
+
+  const totalJumlahPeserta = items.reduce(
+    (sum, item) => sum + (Number(item.item_jumlah) || 0),
+    0
+  )
 
   let currentNo = 1
 
@@ -65,7 +77,6 @@ export const InvoicePrint = ({ data }: { data: any }) => {
 
         {/* INFO ATAS */}
         <div className="mx-10 mb-4 grid grid-cols-12 border border-black shadow-sm">
-          {/* Bagian Kiri */}
           <div className="col-span-7 flex min-h-[100px] flex-col justify-between border-r border-black p-3">
             <div>
               <p className="mb-1 text-[8.5pt] font-bold">Kepada Yth,</p>
@@ -88,7 +99,6 @@ export const InvoicePrint = ({ data }: { data: any }) => {
             </div>
           </div>
 
-          {/* Bagian Kanan */}
           <div className="col-span-5 bg-zinc-50/50 p-3 text-[8.5pt]">
             <div className="mb-1 flex justify-end text-end font-medium">
               <p>
@@ -119,7 +129,10 @@ export const InvoicePrint = ({ data }: { data: any }) => {
             Dengan hormat, bersama ini kami sampaikan tagihan atas
             {data.jenis_kegiatan === "konsultan" ? (
               <span>
-                {` ${data.keterangan}${data.keterangan_2 && data.keterangan_2 !== "-" ? ` dan ${data.keterangan_2}` : ""}`}
+                {` ${items
+                  .map((it) => it.item_deskripsi)
+                  .filter(Boolean)
+                  .join(" dan ")}`}
               </span>
             ) : (
               " pelaksanaan kegiatan pelatihan"
@@ -152,50 +165,45 @@ export const InvoicePrint = ({ data }: { data: any }) => {
               </tr>
             </thead>
             <tbody className="bg-white">
-              {/* BARIS 1 */}
-              <tr className="border-[#0170c0]">
-                <td className="border-r border-[#0170c0] py-2 text-center">
-                  {currentNo++}
-                </td>
-                <td className="border-r border-[#0170c0] px-3 py-2 font-medium">
-                  {data.keterangan}
-                </td>
-                <td className="border-r border-[#0170c0] py-2 text-center">
-                  {data.jumlah_peserta}
-                </td>
-                <td className="border-r border-[#0170c0] px-3 py-2">
-                  <div className="flex justify-between">
-                    <span>Rp</span>
-                    <span>{formatNumber(data.harga_peserta)}</span>
-                  </div>
-                </td>
-                <td className="flex justify-between px-3 py-2">
-                  <span>Rp</span>
-                  {formatNumber(totalItem1)}
-                </td>
-              </tr>
-
-              {/* BARIS 2 */}
-              {data.keterangan_2 && data.keterangan_2 !== "-" && (
-                <tr className="border-[#0170c0] bg-zinc-50/30">
-                  <td className="border-r border-[#0170c0] py-2 text-center">
-                    {currentNo++}
-                  </td>
-                  <td className="border-r border-[#0170c0] px-3 py-2 font-medium uppercase">
-                    {data.keterangan_2}
-                  </td>
-                  <td className="border-r border-[#0170c0] py-2 text-center">
-                    {data.jumlah_peserta_2}
-                  </td>
-                  <td className="border-r border-[#0170c0] px-3 py-2">
-                    <div className="flex justify-between">
-                      <span>Rp</span>{" "}
-                      <span>{formatNumber(data.harga_peserta_2)}</span>
-                    </div>
-                  </td>
-                  <td className="flex justify-between px-3 py-2">
-                    <span>Rp</span>
-                    {formatNumber(totalItem2)}
+              {/* BARIS LAYANAN - looping dari tb_invoice_details */}
+              {items.length > 0 ? (
+                items.map((item, idx) => {
+                  const jumlah = Number(item.item_jumlah) || 0
+                  const harga = Number(item.item_harga) || 0
+                  return (
+                    <tr
+                      key={item.id ?? idx}
+                      className={`border-[#0170c0] ${idx % 2 === 1 ? "bg-zinc-50/30" : ""}`}
+                    >
+                      <td className="border-r border-[#0170c0] py-2 text-center">
+                        {currentNo++}
+                      </td>
+                      <td className="border-r border-[#0170c0] px-3 py-2 font-medium uppercase">
+                        {item.item_deskripsi || "-"}
+                      </td>
+                      <td className="border-r border-[#0170c0] py-2 text-center">
+                        {jumlah}
+                      </td>
+                      <td className="border-r border-[#0170c0] px-3 py-2">
+                        <div className="flex justify-between">
+                          <span>Rp</span>
+                          <span>{formatNumber(harga)}</span>
+                        </div>
+                      </td>
+                      <td className="flex justify-between px-3 py-2">
+                        <span>Rp</span>
+                        {formatNumber(jumlah * harga)}
+                      </td>
+                    </tr>
+                  )
+                })
+              ) : (
+                <tr className="border-[#0170c0]">
+                  <td
+                    colSpan={5}
+                    className="py-3 text-center text-zinc-400 italic"
+                  >
+                    Tidak ada rincian layanan
                   </td>
                 </tr>
               )}
@@ -210,7 +218,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                     PNBP
                   </td>
                   <td className="border-r border-[#0170c0] py-2 text-center">
-                    {data.jumlah_peserta + (data.jumlah_peserta_2 || 0)}
+                    {totalJumlahPeserta}
                   </td>
                   <td className="border-r border-[#0170c0] px-3 py-2">
                     <div className="flex justify-between">

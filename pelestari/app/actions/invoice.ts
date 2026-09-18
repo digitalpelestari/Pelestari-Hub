@@ -7,15 +7,36 @@ import { revalidatePath } from "next/cache";
 // 1. FUNGSI: IMPORT DATA EXCEL INVOICES BULK
 // =========================================================================
 export async function importInvoices(dataArray: any[]) {
+  const connection = await db.getConnection();
+
   try {
+    await connection.beginTransaction();
+
     for (const item of dataArray) {
+      // ============================================================
+      // 1. SIMPAN HEADER INVOICE
+      // ============================================================
       const query = `INSERT INTO tb_invoice (
-        nomor_invoice, batch, jenis_kegiatan, tanggal, tanggal_jatuhtempo,
-        perusahaan_tujuan, npwp, alamat_perusahaan, file_faktur, cl, keterangan,
-        jumlah_peserta, harga_peserta, keterangan_2, jumlah_peserta_2,
-        harga_peserta_2, is_pph23, is_ppn11, is_pnbp, nominal_pnbp,
-        total, status, bayar_1, bayar_2
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        nomor_invoice,
+        batch,
+        jenis_kegiatan,
+        tanggal,
+        tanggal_jatuhtempo,
+        perusahaan_tujuan,
+        npwp,
+        alamat_perusahaan,
+        file_faktur,
+        cl,
+        keterangan,
+        is_pph23,
+        is_ppn11,
+        is_pnbp,
+        nominal_pnbp,
+        total,
+        status,
+        bayar_1,
+        bayar_2
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
       const values = [
         item.nomor_invoice,
@@ -29,29 +50,100 @@ export async function importInvoices(dataArray: any[]) {
         item.file_faktur || null,
         item.cl || null,
         item.keterangan || "-",
-        Number(item.jumlah_peserta) || 0,
-        Number(item.harga_peserta) || 0,
-        item.keterangan_2 || null,
-        Number(item.jumlah_peserta_2) || 0,
-        Number(item.harga_peserta_2) || 0,
+
         item.is_pph23 ? 1 : 0,
         item.is_ppn11 ? 1 : 0,
         item.is_pnbp ? 1 : 0,
+
         Number(item.nominal_pnbp) || 0,
         Number(item.total) || 0,
-        item.status || 'Belum Lunas',
+
+        item.status || "Belum Lunas",
+
         Number(item.bayar_1) || 0,
-        Number(item.bayar_2) || 0
+        Number(item.bayar_2) || 0,
       ];
 
-      await db.query(query, values);
+      const [result]: any = await connection.query(query, values);
+
+      const invoiceId = result.insertId;
+
+      // ============================================================
+      // 2. SIMPAN LAYANAN PERTAMA
+      // ============================================================
+      const jumlahPeserta1 = Number(item.jumlah_peserta) || 0;
+      const hargaPeserta1 = Number(item.harga_peserta) || 0;
+      const keterangan1 = item.jenis_kegiatan || item.keterangan || "-";
+
+      if (
+        keterangan1 ||
+        jumlahPeserta1 > 0 ||
+        hargaPeserta1 > 0
+      ) {
+        await connection.query(
+          `INSERT INTO tb_invoice_details (
+            invoice_id,
+            item_deskripsi,
+            item_jumlah,
+            item_harga
+          ) VALUES (?, ?, ?, ?)`,
+          [
+            invoiceId,
+            keterangan1,
+            jumlahPeserta1,
+            hargaPeserta1,
+          ]
+        );
+      }
+
+      // ============================================================
+      // 3. SIMPAN LAYANAN KEDUA JIKA ADA
+      // ============================================================
+      const jumlahPeserta2 = Number(item.jumlah_peserta_2) || 0;
+      const hargaPeserta2 = Number(item.harga_peserta_2) || 0;
+      const keterangan2 = item.keterangan_2 || "";
+
+      if (
+        keterangan2 ||
+        jumlahPeserta2 > 0 ||
+        hargaPeserta2 > 0
+      ) {
+        await connection.query(
+          `INSERT INTO tb_invoice_details (
+            invoice_id,
+            item_deskripsi,
+            item_jumlah,
+            item_harga
+          ) VALUES (?, ?, ?, ?)`,
+          [
+            invoiceId,
+            keterangan2,
+            jumlahPeserta2,
+            hargaPeserta2,
+          ]
+        );
+      }
     }
 
+    await connection.commit();
+
     revalidatePath("/dashboard/finance/invoices");
-    return { success: true, message: `${dataArray.length} data berhasil diimpor` };
+
+    return {
+      success: true,
+      message: `${dataArray.length} data berhasil diimpor`,
+    };
   } catch (error: any) {
+    await connection.rollback();
+
     console.error("IMPORT_ERROR:", error.message);
-    return { success: false, message: "Gagal impor: " + error.message };
+
+    return {
+      success: false,
+      message: "Gagal impor: " + error.message,
+    };
+  } finally {
+    connection.release();
   }
 }
 
@@ -340,18 +432,47 @@ export async function getInvoiceById(id: number) {
 // =========================================================================
 export async function getInvoices() {
   try {
-    const [rows]: any = await db.query("SELECT * FROM tb_invoice ORDER BY created_at DESC");
+    const [rows]: any = await db.query(`
+      SELECT
+        i.*,
+        d.id AS detail_id,
+        d.item_deskripsi,
+        d.item_jumlah,
+        d.item_harga
+      FROM tb_invoice i
+      LEFT JOIN tb_invoice_details d
+        ON d.invoice_id = i.id
+      ORDER BY i.id DESC, d.id ASC
+    `);
 
-    const dataLengkap = rows.map((inv: any) => {
+    // Kelompokkan baris-baris detail per invoice_id jadi array `items`
+    const invoiceMap = new Map<number, any>();
+
+    for (const row of rows) {
+      if (!invoiceMap.has(row.id)) {
+        const { detail_id, item_deskripsi, item_jumlah, item_harga, ...header } = row;
+        invoiceMap.set(row.id, { ...header, items: [] });
+      }
+
+      if (row.detail_id) {
+        invoiceMap.get(row.id).items.push({
+          id: row.detail_id,
+          item_deskripsi: row.item_deskripsi,
+          item_jumlah: row.item_jumlah,
+          item_harga: row.item_harga,
+        });
+      }
+    }
+
+    const dataLengkap = Array.from(invoiceMap.values()).map((inv: any) => {
       const tglInvoice = new Date(inv.tanggal);
       const tglSekarang = new Date();
-
       const selisihMilidetik = tglSekarang.getTime() - tglInvoice.getTime();
       const hitungHari = Math.floor(selisihMilidetik / (1000 * 60 * 60 * 24));
 
       return {
         ...inv,
-        umur_piutang: hitungHari > 0 ? hitungHari : 0
+        umur_piutang: hitungHari > 0 ? hitungHari : 0,
       };
     });
 
