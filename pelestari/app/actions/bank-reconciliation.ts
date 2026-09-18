@@ -554,12 +554,17 @@ export async function createReconciliation(data: {
   coa_ending_balance: number;
 }) {
   try {
-    const adjustedBankBalance =
-      data.bank_ending_balance +
-      (data.deposit_in_transit || 0) -
-      (data.outstanding_payment || 0) +
-      (data.bank_error || 0);
+    const recon = data as typeof data & {
+      deposit_in_transit?: number;
+      outstanding_payment?: number;
+      bank_error?: number;
+    };
 
+    const adjustedBankBalance =
+      recon.bank_ending_balance +
+      (recon.deposit_in_transit || 0) -
+      (recon.outstanding_payment || 0) +
+      (recon.bank_error || 0);
     const difference = adjustedBankBalance - data.coa_ending_balance;
 
     const query = `
