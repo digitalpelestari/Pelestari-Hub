@@ -242,8 +242,8 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   <td className="border-r border-[#0170c0] py-2 text-center">
                     {currentNo++}
                   </td>
-                  <td className="border-r border-[#0170c0] px-3 py-2 font-medium uppercase">
-                    Dasar Pengenaan Pajak (DPP)
+                  <td className="border-r border-[#0170c0] px-3 py-2 font-medium ">
+                    Dasar Pengenaan Pajak
                   </td>
                   <td className="border-r border-[#0170c0] py-2 text-center">
                     -
@@ -322,22 +322,25 @@ export const InvoicePrint = ({ data }: { data: any }) => {
        
 
         {/* FOOTER KETENTUAN */}
-        <div className="mb-6 px-10 text-[10pt]">
-          <p>
-            Apabila sesuai ketentuan perpajakan pengguna jasa wajib melakukan
-            pemotongan PPh Pasal 23, maka pemotongan dilakukan dari{" "}
-            <b>nilai jasa tanpa memperhitungkan PNBP</b> dan Bukti Potong agar
-            dikirimkan kepada kami
-          </p>
-        </div>
-        <div className="mb-6 px-10 text-[10pt]">
-          {data.jenis_kegiatan === "pelatihan" && data.is_ppn11 === 0 && (
-            <p className="mb-4 text-[10pt]">
-              Transaksi ini tidak dikenakan PPN karena termasuk jasa pendidikan
-              sesuai pasal 4A ayat (3b) UU PPN
-            </p>
-          )}
-        </div>
+       <div className="mb-6 px-10 text-[10pt]">
+  {data.jenis_kegiatan !== "konsultan" && (
+    <p>
+      Apabila sesuai ketentuan perpajakan pengguna jasa wajib melakukan
+      pemotongan PPh Pasal 23, maka pemotongan dilakukan dari{" "}
+      <b>nilai jasa tanpa memperhitungkan PNBP</b> dan Bukti Potong agar
+      dikirimkan kepada kami
+    </p>
+  )}
+</div>
+
+<div className="mb-6 px-10 text-[10pt]">
+  {data.jenis_kegiatan === "pelatihan" && data.is_ppn11 === 0 && (
+    <p className="mb-4 text-[10pt]">
+      Transaksi ini tidak dikenakan PPN karena termasuk jasa pendidikan
+      sesuai pasal 4A ayat (3b) UU PPN
+    </p>
+  )}
+</div>
 
         {/* METODE TRANSFER */}
         <div className="mb-6 px-10 text-[10pt]">
