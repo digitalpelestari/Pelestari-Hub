@@ -242,7 +242,7 @@ function PanelTransaksi({
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-[13px]">
-          <thead className="border-b bg-zinc-100/80 text-xs tracking-wider text-zinc-700 uppercase">
+          <thead className="border-b bg-zinc-100/80 text-[10px] tracking-wider text-zinc-700 uppercase">
             <tr>
               <th className="border-r p-3 font-bold">Pilih</th>
               <th className="border-r p-3 font-bold">Tanggal</th>

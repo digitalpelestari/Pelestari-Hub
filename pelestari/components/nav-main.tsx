@@ -59,11 +59,7 @@ function NavItem({
     if (depth === 0) {
       return (
         <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip={item.title}
-            className="p-0"
-            isActive={isActiveItem}
-          >
+          <SidebarMenuButton className="p-0" isActive={isActiveItem}>
             <Link
               href={item.url}
               className="flex h-full w-full items-center gap-2 px-2.5"
@@ -101,18 +97,20 @@ function NavItem({
     return (
       <Collapsible defaultOpen={false} className="group/collapsible">
         <SidebarMenuItem>
-          <CollapsibleTrigger>
-            <SidebarMenuButton
-              tooltip={item.title}
-              className="flex w-full items-center justify-between"
-              isActive={isActiveItem}
-            >
-              <div className="flex items-center gap-2">
-                {item.icon}
-                <span>{item.title}</span>
-              </div>
-              <ChevronRight className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-            </SidebarMenuButton>
+          <CollapsibleTrigger
+            render={
+              <SidebarMenuButton
+                className="flex w-full items-center justify-between"
+                isActive={isActiveItem}
+              />
+            }
+          >
+            <div className="flex items-center gap-2">
+              {item.icon}
+              <span>{item.title}</span>
+            </div>
+
+            <ChevronRight className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
           </CollapsibleTrigger>
           <CollapsibleContent className="transition-all duration-300">
             <SidebarMenuSub>

@@ -27,6 +27,7 @@ export interface TransaksiRekonDTO {
   tanggal: string; // YYYY-MM-DD
   keterangan: string;
   nominal: number;
+    noAkun: string | null
   tipe: TipeTransaksi;
   status: StatusRekon;
   /** id lawan transaksi yang sudah match: jurnal_item_id (sisi bank) / bank_transaksi_id (sisi GL) */
@@ -39,6 +40,8 @@ interface BankTransaksiRow extends RowDataPacket {
   keterangan: string;
   nominal: string;
   tipe: TipeTransaksi;
+    no_akun: string;
+
   jurnal_item_id: number | null; // hasil LEFT JOIN tb_rekonsiliasi
 }
 
@@ -46,6 +49,7 @@ interface JurnalDetailRow extends RowDataPacket {
   id: number; // id di tb_jurnal_item (bukan id header tb_jurnal)
   tanggal: string; // dari tb_jurnal.tanggal
   keterangan: string;
+  no_akun: string;
   debit: string;
   kredit: string;
   bank_transaksi_id: number | null; // hasil LEFT JOIN tb_rekonsiliasi
@@ -106,6 +110,7 @@ export async function getDataRekonsiliasiHarian(
     `SELECT
         bt.id,
         bt.tanggal,
+        a.no_akun,
         bt.keterangan,
         bt.nominal,
         bt.tipe,
@@ -125,6 +130,7 @@ export async function getDataRekonsiliasiHarian(
     `SELECT
         jd_lawan.id,
         j.tanggal,
+        jd_lawan.no_akun,
         COALESCE(jd_lawan.keterangan, j.keterangan) AS keterangan,
         jd_lawan.debit,
         jd_lawan.kredit,
@@ -149,6 +155,7 @@ export async function getDataRekonsiliasiHarian(
     keterangan: row.keterangan,
     nominal: Number(row.nominal),
     tipe: row.tipe,
+    noAkun: row.no_akun,
     status: row.jurnal_item_id
       ? "TERHUBUNG"
       : "BELUM_TERHUBUNG",
@@ -165,6 +172,7 @@ export async function getDataRekonsiliasiHarian(
     return {
       id: row.id,
       tanggal: formatTanggal(row.tanggal),
+      noAkun: row.no_akun,
       keterangan: row.keterangan ?? "-",
       nominal,
       tipe,

@@ -291,12 +291,12 @@ export const InvoicePrint = ({ data }: { data: any }) => {
           </table>
         </div>
 
-        {/* FOOTER */}
+        {/* FOOTER KETENTUAN */}
         <div className="mb-6 px-10 text-[10pt]">
           <p>
             Apabila sesuai ketentuan perpajakan pengguna jasa wajib melakukan
             pemotongan PPh Pasal 23, maka pemotongan dilakukan dari{" "}
-            <b>nilai jasa memperhitungkan PNBP</b> dan Bukti Potong agar
+            <b>nilai jasa tanpa memperhitungkan PNBP</b> dan Bukti Potong agar
             dikirimkan kepada kami
           </p>
         </div>
@@ -309,6 +309,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
           )}
         </div>
 
+        {/* METODE TRANSFER */}
         <div className="mb-6 px-10 text-[10pt]">
           {data.metode_pembayaran === "va" ? (
             <>
@@ -322,10 +323,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                 </span>
               </p>
               <p className="mt-0.5">PT Peduli Lestari Indonesia</p>
-              <p className="mt-2 text-[9pt] italic">
-                *Virtual Account ini berlaku untuk periode pembayaran yang
-                tercantum pada invoice.
-              </p>
+              
             </>
           ) : (
             <>
@@ -339,16 +337,24 @@ export const InvoicePrint = ({ data }: { data: any }) => {
           )}
         </div>
 
+        {/* PARAGRAF PENUTUP KONDISIONAL */}
         <div className="mb-4 px-10 text-[10pt] leading-normal">
-          <p>
-            Demikian <span className="italic">invoice</span> ini kami sampaikan.
-            Besar harapan kami agar pembayaran dapat diproses pada kesempatan
-            pertama sebelum jatuh tempo. Mohon dapat melakukan konfirmasi
-            setelah melakukan pembayaran. Atas perhatian dan kerja sama
-            Bapak/Ibu, kami ucapkan terimakasih.
-          </p>
+          {data.metode_pembayaran === "va" ? (
+            <p>
+              Demikian <i>invoice</i> ini kami sampaikan. Pembayaran dilakukan melalui <i>Virtual Account</i> yang tercantum dan tidak melalui rekening bank perusahaan. Apabila VA telah melewati batas waktu pembayaran, penerbitan VA baru akan dikenakan biaya administrasi sesuai ketentuan. Mohon melakukan konfirmasi setelah pembayaran berhasil dilakukan. Terima kasih atas perhatian dan kerja samanya.
+            </p>
+          ) : (
+            <p>
+              Demikian <span className="italic">invoice</span> ini kami sampaikan.
+              Besar harapan kami agar pembayaran dapat diproses pada kesempatan
+              pertama sebelum jatuh tempo. Mohon dapat melakukan konfirmasi
+              setelah melakukan pembayaran. Atas perhatian dan kerja sama
+              Bapak/Ibu, kami ucapkan terimakasih.
+            </p>
+          )}
         </div>
 
+        {/* TANDA TANGAN */}
         <div className="flex justify-end px-10 pt-2">
           <div className="w-[180px] text-center">
             <p className="mt-6 mb-24 text-[10pt]">Hormat Kami,</p>

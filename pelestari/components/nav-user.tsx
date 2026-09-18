@@ -1,10 +1,6 @@
 "use client"
 
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +16,13 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { EllipsisVerticalIcon, CircleUserRoundIcon, CreditCardIcon, BellIcon, LogOutIcon } from "lucide-react"
+import {
+  EllipsisVerticalIcon,
+  CircleUserRoundIcon,
+  CreditCardIcon,
+  BellIcon,
+  LogOutIcon,
+} from "lucide-react"
 
 // 1. Import hook dan fungsi dari next-auth
 import { useSession, signOut } from "next-auth/react"
@@ -28,7 +30,7 @@ import Link from "next/link"
 
 export function NavUser() {
   const { isMobile } = useSidebar()
-  
+
   // 2. Ambil data session yang sedang aktif secara real-time
   const { data: session } = useSession()
 
@@ -56,14 +58,18 @@ export function NavUser() {
           >
             <Avatar className="size-8 rounded-lg grayscale">
               <AvatarImage src={userAvatar} alt={userName} />
-              <AvatarFallback className="rounded-lg">{avatarFallback}</AvatarFallback>
+              <AvatarFallback className="rounded-lg">
+                {avatarFallback}
+              </AvatarFallback>
             </Avatar>
+
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">{userName}</span>
               <span className="truncate text-xs text-white/70">
                 {userEmail}
               </span>
             </div>
+
             <EllipsisVerticalIcon className="ml-auto size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -77,7 +83,9 @@ export function NavUser() {
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar className="size-8">
                     <AvatarImage src={userAvatar} alt={userName} />
-                    <AvatarFallback className="rounded-lg">{avatarFallback}</AvatarFallback>
+                    <AvatarFallback className="rounded-lg">
+                      {avatarFallback}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">{userName}</span>
@@ -97,12 +105,11 @@ export function NavUser() {
                   Account
                 </DropdownMenuItem>
               </Link>
-             
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             {/* 4. Tambahkan fungsi signOut bawaan NextAuth pada tombol Log Out */}
-            <DropdownMenuItem 
-              className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
+            <DropdownMenuItem
+              className="cursor-pointer text-red-600 focus:bg-red-50 focus:text-red-600"
               onClick={() => signOut({ callbackUrl: "/login" })}
             >
               <LogOutIcon />

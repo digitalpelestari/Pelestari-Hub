@@ -12,12 +12,7 @@ import {
   Trash2,
 } from "lucide-react"
 
-import React, {
-  useCallback,
-  useState,
-  useTransition,
-  useEffect,
-} from "react"
+import React, { useCallback, useState, useTransition, useEffect } from "react"
 
 // Sesuaikan path import berikut dengan lokasi file actions kamu.
 import {
@@ -245,10 +240,11 @@ function PanelTransaksi({
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-[13px]">
-          <thead className="border-b bg-zinc-100/80 text-xs tracking-wider text-zinc-700 uppercase">
+          <thead className="border-b bg-zinc-100/80 text-[10px] tracking-wider text-zinc-700 uppercase">
             <tr>
               <th className="border-r p-3 font-bold">Pilih</th>
               <th className="border-r p-3 font-bold">Tanggal</th>
+              <th className="border-r p-3 font-bold">No. Akun</th>
               <th className="border-r p-3 font-bold">{kolomTerakhir}</th>
               <th className="border-r p-3 font-bold">Nominal</th>
               <th className="border-r p-3 font-bold">Tipe</th>
@@ -307,6 +303,9 @@ function PanelTransaksi({
                     </td>
                     <td className="border-r p-3 font-mono text-[11px] font-bold text-zinc-600">
                       {item.tanggal}
+                    </td>
+                    <td className="border-r p-3 font-mono text-[11px] font-bold text-zinc-700">
+                      {item.noAkun ?? "-"}
                     </td>
                     <td className="border-r p-3 font-medium text-zinc-700">
                       {item.keterangan}
