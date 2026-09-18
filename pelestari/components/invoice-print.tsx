@@ -249,7 +249,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
 
               {/* DPP NILAI LAIN (PENCATATAN SAJA, TIDAK MASUK TOTAL) */}
               {data.is_dpp === 1 && (
-                <tr className="border-[#0170c0] bg-zinc-50/30 italic">
+                <tr className="border-[#0170c0] bg-zinc-50/30">
                   <td className="border-r border-[#0170c0] py-2 text-center text-zinc-400">
                     {currentNo++}
                   </td>
