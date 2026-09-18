@@ -898,19 +898,7 @@ export default function InvoiceListPage() {
                           </TableCell>
 
                           <TableCell className="sticky right-0 z-10 bg-white px-4 py-5 text-center shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] group-hover:bg-zinc-50">
-                            {" "}
                             <div className="flex items-center justify-center gap-0.5 text-zinc-400">
-                              <Link
-                                href={`/dashboard/finance/invoices/${inv.id}/bayar`}
-                              >
-                                <Button
-                                  size="sm"
-                                  className="h-8 rounded-sm bg-emerald-600 px-2.5 text-[10px] font-black text-white italic hover:bg-emerald-700"
-                                >
-                                  <CreditCard className="mr-1 h-3 w-3" /> BAYAR
-                                </Button>
-                              </Link>
-
                               <Link
                                 href={`/dashboard/finance/invoices/${inv.id}`}
                               >

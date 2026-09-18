@@ -483,31 +483,6 @@ export async function getInvoices() {
   }
 }
 
-// =========================================================================
-// 8. FUNGSI: UPDATE DATA MANUAL PEMBAYARAN
-// =========================================================================
-export async function updatePayment(id: number, data: any) {
-  try {
-    const query = `
-      UPDATE tb_invoice SET 
-        bayar_1 = ?, tanggal_bayar_1 = ?, 
-        bayar_2 = ?, tanggal_bayar_2 = ?, 
-        status = ? 
-      WHERE id = ?
-    `;
-    const values = [
-      data.bayar_1, data.tanggal_bayar_1 || null,
-      data.bayar_2, data.tanggal_bayar_2 || null,
-      data.status,
-      id
-    ];
-    await db.query(query, values);
-    revalidatePath("/dashboard/finance/invoices");
-    return { success: true };
-  } catch (error: any) {
-    return { success: false, message: error.message };
-  }
-}
 
 export async function updateInvoiceFile(
   id: number,
@@ -523,54 +498,4 @@ export async function updateInvoiceFile(
     console.error("UPDATE_FILE_ERROR:", error.message);
     return { success: false, message: error.message };
   }
-}
-
-
-// =========================================================================
-// 9. FUNGSI: PROSES BAYAR INVOICE SAJA
-// =========================================================================
-export async function prosesBayarInvoiceSaja(payload: {
-  invoiceId: number;
-  jumlahBayar: number;
-  jenisPembayaran: "DP" | "Pelunasan";
-}) {
-  try {
-    let updateInvoiceQuery = "";
-    let updateParams = [];
-
-    if (payload.jenisPembayaran === "DP") {
-      updateInvoiceQuery = `
-        UPDATE tb_invoice SET 
-          bayar_1 = ?, 
-          tanggal_bayar_1 = NOW(), 
-          status = 'Belum Lunas' 
-        WHERE id = ?
-      `;
-      updateParams = [payload.jumlahBayar, payload.invoiceId];
-    } else {
-      updateInvoiceQuery = `
-        UPDATE tb_invoice SET 
-          bayar_2 = ?, 
-          tanggal_bayar_2 = NOW(), 
-          status = 'Lunas' 
-        WHERE id = ?
-      `;
-      updateParams = [payload.jumlahBayar, payload.invoiceId];
-    }
-
-    await db.query(updateInvoiceQuery, updateParams);
-
-    revalidatePath("/dashboard/finance/invoices");
-
-    return {
-      success: true,
-      message: "Pembayaran berhasil dicatat di Invoice! Saldo neraca belum berubah sebelum dijurnal."
-    };
-
-  } catch (error: any) {
-    console.error("PROSES_BAYAR_ERROR:", error.message);
-    return { success: false, message: "Gagal memproses pembayaran: " + error.message };
-  }
-
-
 }
