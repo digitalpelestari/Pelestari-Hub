@@ -1,47 +1,59 @@
-import { NextResponse } from 'next/server';
-import webPush from 'web-push';
-import { subscribersDb } from '@/app/api/subscribe/route';
-
-webPush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
 
 export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { status, invoiceNumber, customerName, totalAmount } = await req.json();
+    // Await params sesuai standar Next.js 15
+    const { id } = await params;
 
-    // 1. Logika update status ke database di sini...
-    // contoh: await db.invoice.update({ where: { id: params.id }, data: { status } });
-
-    // 2. Jika status berubah menjadi "lunas", kirim Web Push ke akun finance & admin
-    if (status.toLowerCase() === 'lunas') {
-      const allowedRoles = ['finance', 'admin'];
-
-      const targetClients = subscribersDb.filter((sub) =>
-        allowedRoles.includes(sub.role)
-      );
-
-      const payload = JSON.stringify({
-        title: `Invoice ${invoiceNumber} Lunas! ✅`,
-        body: `Pembayaran dari ${customerName || 'Pelanggan'} sebesar Rp${Number(totalAmount).toLocaleString('id-ID')} telah diverifikasi.`,
-        url: `/dashboard/finance`,
-      });
-
-      // Kirim push notification ke browser masing-masing akun target
-      await Promise.allSettled(
-        targetClients.map((target) =>
-          webPush.sendNotification(target.subscription, payload)
-        )
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "ID invoice tidak ditemukan." },
+        { status: 400 }
       );
     }
 
-    return NextResponse.json({ success: true, message: 'Status invoice diperbarui.' });
-  } catch (err) {
-    return NextResponse.json({ success: false, error: (err as Error).message }, { status: 500 });
+    const body = await req.json();
+    const { status } = body;
+
+    if (!status) {
+      return NextResponse.json(
+        { success: false, error: "Status pembayaran wajib diisi." },
+        { status: 400 }
+      );
+    }
+
+    // Query update status invoice
+    const query = `
+      UPDATE tb_invoice 
+      SET status = ?, updated_at = NOW() 
+      WHERE id = ?
+    `;
+
+    const [result]: any = await db.query(query, [status, id]);
+
+    if (result.affectedRows === 0) {
+      return NextResponse.json(
+        { success: false, error: `Invoice dengan ID ${id} tidak ditemukan.` },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Status invoice #${id} berhasil diperbarui menjadi ${status}.`,
+    });
+  } catch (err: any) {
+    console.error("ERR_UPDATE_INVOICE_STATUS:", err);
+    return NextResponse.json(
+      {
+        success: false,
+        error: err.message || "Terjadi kesalahan saat memperbarui status invoice.",
+      },
+      { status: 500 }
+    );
   }
 }
