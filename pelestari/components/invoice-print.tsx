@@ -231,6 +231,27 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   </td>
                 </tr>
               )}
+                {/* PPN */}
+              {data.is_ppn11 === 1 && (
+                <tr className="border-[#0170c0] bg-zinc-50/30">
+                  <td className="border-r border-[#0170c0] py-2 text-center">
+                    {currentNo++}
+                  </td>
+                  <td className="border-r border-[#0170c0] px-3 py-2 font-medium uppercase">
+                    PPN 
+                  </td>
+                  <td className="border-r border-[#0170c0] py-2 text-center">
+                    -
+                  </td>
+                  <td className="border-r border-[#0170c0] px-3 py-2 text-center">
+                    -
+                  </td>
+                  <td className="flex justify-between px-3 py-2">
+                    <span>Rp</span>
+                    {formatNumber(nilaiPPN)}
+                  </td>
+                </tr>
+              )}
 
               {/* PPH */}
               {data.is_pph23 === 1 && (
@@ -253,27 +274,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                 </tr>
               )}
 
-              {/* PPN */}
-              {data.is_ppn11 === 1 && (
-                <tr className="border-[#0170c0] bg-zinc-50/30">
-                  <td className="border-r border-[#0170c0] py-2 text-center">
-                    {currentNo++}
-                  </td>
-                  <td className="border-r border-[#0170c0] px-3 py-2 font-medium uppercase">
-                    PPN 11%
-                  </td>
-                  <td className="border-r border-[#0170c0] py-2 text-center">
-                    -
-                  </td>
-                  <td className="border-r border-[#0170c0] px-3 py-2 text-center">
-                    -
-                  </td>
-                  <td className="flex justify-between px-3 py-2">
-                    <span>Rp</span>
-                    {formatNumber(nilaiPPN)}
-                  </td>
-                </tr>
-              )}
+            
             </tbody>
             <tfoot>
               <tr className="bg-[#0170c0] text-[8pt] font-bold text-white">

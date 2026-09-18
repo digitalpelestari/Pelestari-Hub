@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useCallback } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -37,8 +37,8 @@ interface JournalItem {
   accountCode: string
   accountName: string
   accountType: string
-  debit: number
-  kredit: number
+  debit: number | string
+  kredit: number | string
   keterangan: string
 }
 
@@ -60,19 +60,28 @@ function makeEmptyItems(): JournalItem[] {
       accountCode: "",
       accountName: "",
       accountType: "",
-      debit: 0,
-      kredit: 0,
+      debit: "",
+      kredit: "",
       keterangan: "",
     },
     {
       accountCode: "",
       accountName: "",
       accountType: "",
-      debit: 0,
-      kredit: 0,
+      debit: "",
+      kredit: "",
       keterangan: "",
     },
   ]
+}
+
+// Helper untuk konversi input teks (bisa koma/titik) ke float murni
+function parseDecimal(val: string | number): number {
+  if (typeof val === "number") return isNaN(val) ? 0 : val
+  if (!val) return 0
+  const normalized = val.toString().replace(/,/g, ".")
+  const parsed = parseFloat(normalized)
+  return isNaN(parsed) ? 0 : parsed
 }
 
 export default function KasirJurnalPage() {
@@ -103,15 +112,12 @@ export default function KasirJurnalPage() {
     items: makeEmptyItems(),
   })
 
-  // State lookup referensi -- HANYA untuk info sisa tagihan & validasi, TIDAK auto-fill baris jurnal
+  // State lookup referensi
   const [referensiMatch, setReferensiMatch] = useState<ReferensiMatch>({
     found: null,
   })
   const [isLooking, setIsLooking] = useState(false)
   const lastQueriedRef = useRef<string>("")
-
-  // Ref untuk dropdown penerima
-  const penerimaRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     async function loadAkun() {
@@ -125,13 +131,7 @@ export default function KasirJurnalPage() {
   useEffect(() => {
     const keyword = searchPenerima.trim()
 
-    if (!keyword) {
-      setPenerimaList([])
-      setLoadingSearchPenerima(false)
-      return
-    }
-
-    if (keyword.length < 2) {
+    if (!keyword || keyword.length < 2) {
       setPenerimaList([])
       setLoadingSearchPenerima(false)
       return
@@ -156,13 +156,7 @@ export default function KasirJurnalPage() {
   useEffect(() => {
     const keyword = searchPemohon.trim()
 
-    if (!keyword) {
-      setPemohonList([])
-      setLoadingSearchPemohon(false)
-      return
-    }
-
-    if (keyword.length < 2) {
+    if (!keyword || keyword.length < 2) {
       setPemohonList([])
       setLoadingSearchPemohon(false)
       return
@@ -184,25 +178,29 @@ export default function KasirJurnalPage() {
     return () => clearTimeout(timer)
   }, [searchPemohon])
 
-  const totalDebit = form.items.reduce(
-    (sum, item) => sum + (Number(item.debit) || 0),
-    0
+  // Hitung total dengan penanganan desimal yang presisi
+  const totalDebit = Number(
+    form.items
+      .reduce((sum, item) => sum + parseDecimal(item.debit), 0)
+      .toFixed(2)
   )
-  const totalKredit = form.items.reduce(
-    (sum, item) => sum + (Number(item.kredit) || 0),
-    0
+  const totalKredit = Number(
+    form.items
+      .reduce((sum, item) => sum + parseDecimal(item.kredit), 0)
+      .toFixed(2)
   )
-  const isBalanced = totalDebit === totalKredit && totalDebit > 0
 
-  // Generator manual saat tombol +BK / +BD / +KK diklik
-  const handleGenerateManual = async (tipe: "BK" | "BD" | "KK"| "KD" ) => {
+  const selisih = Math.abs(totalDebit - totalKredit)
+  // Seimbang jika selisih di bawah toleransi floating-point (< 0.01)
+  const isBalanced = selisih < 0.01 && totalDebit > 0
+
+  const handleGenerateManual = async (tipe: "BK" | "BD" | "KK" | "KD") => {
     const res = await generateNoRegistrasiOtomatis(tipe as any)
     if (res.success && res.code) {
       setForm((prev) => ({ ...prev, noRegistrasi: res.code }))
     }
   }
 
-  // Debounce lookup noReferensi ~400ms -- HANYA menampilkan info sisa tagihan, tidak isi baris jurnal
   useEffect(() => {
     const noRef = (form.noReferensi || "").trim()
     if (noRef.length < 3) {
@@ -234,21 +232,24 @@ export default function KasirJurnalPage() {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
-  // Handler nominal murni tanpa side effect ke nomor registrasi
   const handleItemChange = (
     index: number,
     field: keyof JournalItem,
-    value: string | number
+    value: string
   ) => {
     const updatedItems = [...form.items]
 
     if (field === "accountCode") {
-      updatedItems[index].accountCode = value as string
+      updatedItems[index].accountCode = value
       const targetAkun = akunList.find((a) => a.no_akun === value)
       updatedItems[index].accountName = targetAkun ? targetAkun.nama_akun : ""
       updatedItems[index].accountType = targetAkun
         ? targetAkun.nama_kelompok || "General Parameter"
         : ""
+    } else if (field === "debit" || field === "kredit") {
+      // Izinkan pengetikan angka, tanda titik, atau koma secara fleksibel
+      const sanitized = value.replace(/[^0-9.,]/g, "")
+      updatedItems[index][field] = sanitized
     } else {
       updatedItems[index] = { ...updatedItems[index], [field]: value }
     }
@@ -265,8 +266,8 @@ export default function KasirJurnalPage() {
           accountCode: "",
           accountName: "",
           accountType: "",
-          debit: 0,
-          kredit: 0,
+          debit: "",
+          kredit: "",
           keterangan: "",
         },
       ],
@@ -289,17 +290,16 @@ export default function KasirJurnalPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Validasi awal: jika referensi invoice/PO, pastikan akun target dan bank/kas diisi
     if (referensiMatch.found === "invoice" || referensiMatch.found === "po") {
       const keyword = referensiMatch.found === "invoice" ? "PIUTANG" : "UTANG"
       const hasTarget = form.items.some((item) => {
         const tipe = (item.accountType || "").toUpperCase()
-        const nominal = (Number(item.debit) || 0) + (Number(item.kredit) || 0)
+        const nominal = parseDecimal(item.debit) + parseDecimal(item.kredit)
         return tipe.includes(keyword) && nominal > 0
       })
       const hasBank = form.items.some((item) => {
         const tipe = (item.accountType || "").toUpperCase()
-        const nominal = (Number(item.debit) || 0) + (Number(item.kredit) || 0)
+        const nominal = parseDecimal(item.debit) + parseDecimal(item.kredit)
         return tipe.includes("KAS/BANK") && nominal > 0
       })
 
@@ -315,7 +315,6 @@ export default function KasirJurnalPage() {
     if (!isBalanced)
       return swal.warning("Total Debit dan Kredit harus seimbang (Balanced)!")
 
-    // Validasi dini: cek apakah nominal bayar melebihi sisa tagihan invoice/PO
     if (referensiMatch.found === "invoice" || referensiMatch.found === "po") {
       const sisaTagihan = Number(referensiMatch.data.sisa_tagihan) || 0
       const keyword = referensiMatch.found === "invoice" ? "PIUTANG" : "UTANG"
@@ -323,7 +322,7 @@ export default function KasirJurnalPage() {
       const nominalTerkait = form.items.reduce((sum, item) => {
         const tipe = (item.accountType || "").toUpperCase()
         if (tipe.includes(keyword)) {
-          return sum + (Number(item.debit) || 0) + (Number(item.kredit) || 0)
+          return sum + parseDecimal(item.debit) + parseDecimal(item.kredit)
         }
         return sum
       }, 0)
@@ -335,8 +334,18 @@ export default function KasirJurnalPage() {
       }
     }
 
+    // Normalisasi angka desimal sebelum payload dikirim ke server action
+    const normalizedPayload = {
+      ...form,
+      items: form.items.map((item) => ({
+        ...item,
+        debit: parseDecimal(item.debit),
+        kredit: parseDecimal(item.kredit),
+      })),
+    }
+
     setLoading(true)
-    const res = await createJurnalDenganReferensiInvoiceOnly(form)
+    const res = await createJurnalDenganReferensiInvoiceOnly(normalizedPayload as any)
 
     if (res.success) {
       swal.success(res.message)
@@ -391,7 +400,7 @@ export default function KasirJurnalPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* HEADER TRANSAKSI (5 KOLOM RESPONSIF) */}
+        {/* HEADER TRANSAKSI */}
         <Card className="rounded-sm border bg-zinc-50/50 shadow-sm">
           <CardContent className="p-3">
             <div className="grid grid-cols-6 items-start gap-2 text-xs">
@@ -410,7 +419,7 @@ export default function KasirJurnalPage() {
                 />
               </div>
 
-              {/* 2. NO. REGISTRASI + 3 BADGE (BK / BD / KK) */}
+              {/* 2. NO. REGISTRASI */}
               <div className="space-y-1">
                 <label className="ml-0.5 text-[9px] font-black text-zinc-500 uppercase italic">
                   No. Registrasi
@@ -453,7 +462,6 @@ export default function KasirJurnalPage() {
                   >
                     +KD
                   </Badge>
-                  
                 </div>
               </div>
 
@@ -538,7 +546,7 @@ export default function KasirJurnalPage() {
                 )}
               </div>
 
-              {/* 4. PENERIMA / VENDOR */}
+              {/* 4. PENERIMA */}
               <div className="space-y-1">
                 <label className="ml-0.5 text-[9px] font-black text-zinc-500 uppercase italic">
                   Penerima
@@ -709,6 +717,7 @@ export default function KasirJurnalPage() {
             </div>
           </CardContent>
         </Card>
+
         {/* TABLE DATA ITEM */}
         <div className="overflow-hidden rounded-sm border border-zinc-300 bg-white shadow-sm">
           <Table>
@@ -794,34 +803,35 @@ export default function KasirJurnalPage() {
                       className="h-9 border-none bg-transparent text-xs font-medium shadow-none focus-visible:ring-0"
                     />
                   </TableCell>
+
+                  {/* Input Debit Fleksibel Koma/Titik */}
                   <TableCell className="border-r p-1">
                     <Input
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="decimal"
                       placeholder="0"
-                      value={item.debit || ""}
+                      value={item.debit ?? ""}
                       onChange={(e) =>
-                        handleItemChange(index, "debit", Number(e.target.value))
+                        handleItemChange(index, "debit", e.target.value)
                       }
                       className="h-9 border-none bg-transparent text-right font-mono text-xs font-bold shadow-none focus-visible:ring-0"
                     />
                   </TableCell>
+
+                  {/* Input Kredit Fleksibel Koma/Titik */}
                   <TableCell className="border-r p-1">
                     <Input
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="decimal"
                       placeholder="0"
-                      value={item.kredit || ""}
+                      value={item.kredit ?? ""}
                       onChange={(e) =>
-                        handleItemChange(
-                          index,
-                          "kredit",
-                          Number(e.target.value)
-                        )
+                        handleItemChange(index, "kredit", e.target.value)
                       }
                       className="h-9 border-none bg-transparent text-right font-mono text-xs font-bold shadow-none focus-visible:ring-0"
                     />
                   </TableCell>
+
                   <TableCell className="p-1 text-center">
                     <Button
                       type="button"
@@ -849,6 +859,7 @@ export default function KasirJurnalPage() {
           >
             <Plus className="mr-1 h-3.5 w-3.5" /> TAMBAH BARIS AKUN
           </Button>
+
           <div className="text-center text-xs font-bold">
             {totalDebit === 0 && totalKredit === 0 ? (
               <span className="text-zinc-400 italic">
@@ -860,7 +871,11 @@ export default function KasirJurnalPage() {
                   ✓ SEIMBANG (BALANCE)
                 </span>
                 <span className="font-mono text-zinc-600">
-                  Total: Rp {totalDebit.toLocaleString("id-ID")},00
+                  Total: Rp{" "}
+                  {totalDebit.toLocaleString("id-ID", {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2,
+                  })}
                 </span>
               </div>
             ) : (
@@ -870,8 +885,10 @@ export default function KasirJurnalPage() {
                 </span>
                 <span className="font-mono text-rose-600">
                   Selisih: Rp{" "}
-                  {Math.abs(totalDebit - totalKredit).toLocaleString("id-ID")}
-                  ,00
+                  {selisih.toLocaleString("id-ID", {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2,
+                  })}
                 </span>
               </div>
             )}
@@ -883,7 +900,11 @@ export default function KasirJurnalPage() {
           <Button
             type="submit"
             disabled={!isBalanced || loading}
-            className={`h-10 rounded-sm px-8 text-xs font-black italic shadow-sm ${isBalanced ? "bg-black text-white hover:bg-zinc-800" : "cursor-not-allowed bg-zinc-200 text-zinc-400"}`}
+            className={`h-10 rounded-sm px-8 text-xs font-black italic shadow-sm ${
+              isBalanced
+                ? "bg-black text-white hover:bg-zinc-800"
+                : "cursor-not-allowed bg-zinc-200 text-zinc-400"
+            }`}
           >
             <Save className="mr-1.5 h-4 w-4" />{" "}
             {loading ? "SEDANG MENYIMPAN..." : "SIMPAN JURNAL UMUM"}
