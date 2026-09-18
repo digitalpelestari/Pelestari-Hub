@@ -363,7 +363,12 @@ export async function exportJurnalToExcel(
     };
   } catch (error: any) {
     console.error("EXPORT_EXCEL_ERROR:", error.message);
-    return { success: false, message: "Gagal memproses ekspor spreadsheet: " + error.message, base64: null, fileName: "" };
+    return {
+      success: false,
+      message: "Terjadi gangguan koneksi. Silakan refresh halaman dan coba kembali.",
+      base64: null,
+      fileName: "",
+    };
   }
 }
 
@@ -594,11 +599,17 @@ export async function getJurnalList(
     };
   } catch (error: any) {
     console.error("GET_JURNAL_LIST_ERROR:", error.message);
+
     return {
       success: false,
       data: [],
-      pagination: { page: page || 1, pageSize: pageSize || 20, total: 0, totalPages: 0 },
-      message: error.message,
+      pagination: {
+        page: page || 1,
+        pageSize: pageSize || 20,
+        total: 0,
+        totalPages: 0,
+      },
+      message: "Terjadi gangguan koneksi. Silakan refresh halaman dan coba kembali.",
     };
   }
 }
@@ -776,7 +787,11 @@ export async function updateJurnalItem(
   } catch (error: any) {
     await connection.rollback();
     console.error("EDIT_JURNAL_ITEM_ERROR:", error.message);
-    return { success: false, message: "Gagal menyesuaikan saldo: " + error.message };
+
+    return {
+      success: false,
+      message: "Terjadi gangguan koneksi. Silakan refresh halaman dan coba kembali.",
+    };
   } finally {
     connection.release();
   }
@@ -914,7 +929,11 @@ export async function deleteJurnalByHeader(jurnalId: number) {
   } catch (error: any) {
     await connection.rollback();
     console.error("DELETE_JURNAL_ERROR:", error.message);
-    return { success: false, message: "Gagal menghapus transaksi jurnal: " + error.message };
+
+    return {
+      success: false,
+      message: "Terjadi gangguan koneksi. Silakan refresh halaman dan coba kembali.",
+    };
   } finally {
     connection.release();
   }
@@ -988,7 +1007,11 @@ export async function createJurnalUmum(payload: JurnalPayload) {
   } catch (error: any) {
     await connection.rollback();
     console.error("CREATE_JURNAL_ERROR:", error.message);
-    return { success: false, message: "Gagal menyimpan jurnal: " + error.message };
+
+    return {
+      success: false,
+      message: "Terjadi gangguan koneksi. Silakan refresh halaman dan coba kembali.",
+    };
   } finally {
     connection.release();
   }
@@ -1240,7 +1263,11 @@ export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayl
   } catch (error: any) {
     await connection.rollback();
     console.error("CREATE_JURNAL_DGN_REFENS_ERROR:", error.message);
-    return { success: false, message: "Gagal menyimpan jurnal referensi: " + error.message };
+
+    return {
+      success: false,
+      message: "Terjadi gangguan koneksi. Silakan refresh halaman dan coba kembali.",
+    };
   } finally {
     connection.release();
   }
@@ -1335,6 +1362,7 @@ export async function generateNoRegistrasiOtomatis(
     return {
       success: false,
       code: "",
+      message: "Terjadi gangguan koneksi. Silakan refresh halaman dan coba kembali.",
     }
   }
 }
