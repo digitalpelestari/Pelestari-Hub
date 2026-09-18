@@ -148,7 +148,7 @@ export default function InvoiceListPage() {
       icon: "question",
       showDenyButton: true,
       showCancelButton: true,
-      confirmButtonText: "Rekening Biasa",
+      confirmButtonText: "Rekening Bank",
       denyButtonText: "Rekening VA",
       cancelButtonText: "Batal",
       confirmButtonColor: "#18181b",

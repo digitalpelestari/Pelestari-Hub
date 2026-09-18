@@ -13,9 +13,6 @@ export async function importInvoices(dataArray: any[]) {
     await connection.beginTransaction();
 
     for (const item of dataArray) {
-      // ============================================================
-      // 1. SIMPAN HEADER INVOICE
-      // ============================================================
       const query = `INSERT INTO tb_invoice (
         nomor_invoice,
         batch,
@@ -28,6 +25,7 @@ export async function importInvoices(dataArray: any[]) {
         file_faktur,
         cl,
         keterangan,
+        is_dpp,
         is_pph23,
         is_ppn11,
         is_pnbp,
@@ -36,7 +34,7 @@ export async function importInvoices(dataArray: any[]) {
         status,
         bayar_1,
         bayar_2
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
       const values = [
         item.nomor_invoice,
@@ -51,6 +49,7 @@ export async function importInvoices(dataArray: any[]) {
         item.cl || null,
         item.keterangan || "-",
 
+        item.is_dpp ? 1 : 0,
         item.is_pph23 ? 1 : 0,
         item.is_ppn11 ? 1 : 0,
         item.is_pnbp ? 1 : 0,
@@ -65,21 +64,13 @@ export async function importInvoices(dataArray: any[]) {
       ];
 
       const [result]: any = await connection.query(query, values);
-
       const invoiceId = result.insertId;
 
-      // ============================================================
-      // 2. SIMPAN LAYANAN PERTAMA
-      // ============================================================
       const jumlahPeserta1 = Number(item.jumlah_peserta) || 0;
       const hargaPeserta1 = Number(item.harga_peserta) || 0;
       const keterangan1 = item.jenis_kegiatan || item.keterangan || "-";
 
-      if (
-        keterangan1 ||
-        jumlahPeserta1 > 0 ||
-        hargaPeserta1 > 0
-      ) {
+      if (keterangan1 || jumlahPeserta1 > 0 || hargaPeserta1 > 0) {
         await connection.query(
           `INSERT INTO tb_invoice_details (
             invoice_id,
@@ -96,18 +87,11 @@ export async function importInvoices(dataArray: any[]) {
         );
       }
 
-      // ============================================================
-      // 3. SIMPAN LAYANAN KEDUA JIKA ADA
-      // ============================================================
       const jumlahPeserta2 = Number(item.jumlah_peserta_2) || 0;
       const hargaPeserta2 = Number(item.harga_peserta_2) || 0;
       const keterangan2 = item.keterangan_2 || "";
 
-      if (
-        keterangan2 ||
-        jumlahPeserta2 > 0 ||
-        hargaPeserta2 > 0
-      ) {
+      if (keterangan2 || jumlahPeserta2 > 0 || hargaPeserta2 > 0) {
         await connection.query(
           `INSERT INTO tb_invoice_details (
             invoice_id,
@@ -126,7 +110,6 @@ export async function importInvoices(dataArray: any[]) {
     }
 
     await connection.commit();
-
     revalidatePath("/dashboard/finance/invoices");
 
     return {
@@ -135,9 +118,7 @@ export async function importInvoices(dataArray: any[]) {
     };
   } catch (error: any) {
     await connection.rollback();
-
     console.error("IMPORT_ERROR:", error.message);
-
     return {
       success: false,
       message: "Gagal impor: " + error.message,
@@ -170,7 +151,6 @@ export async function createInvoice(formData: any) {
   try {
     await connection.beginTransaction();
 
-    // 1. Simpan HEADER invoice
     const [result]: any = await connection.query(
       `INSERT INTO tb_invoice (
         nomor_invoice,
@@ -183,6 +163,7 @@ export async function createInvoice(formData: any) {
         alamat_perusahaan,
         file_faktur,
         cl,
+        is_dpp,
         is_pph23,
         is_ppn11,
         is_pnbp,
@@ -193,7 +174,7 @@ export async function createInvoice(formData: any) {
         bayar_2,
         tanggal_bayar_2,
         status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
       [
         formData.nomor_invoice,
@@ -206,6 +187,7 @@ export async function createInvoice(formData: any) {
         formData.alamat_perusahaan,
         formData.file_faktur || null,
         formData.cl || null,
+        formData.is_dpp ? 1 : 0,
         formData.is_pph23 ? 1 : 0,
         formData.is_ppn11 ? 1 : 0,
         formData.is_pnbp ? 1 : 0,
@@ -219,10 +201,8 @@ export async function createInvoice(formData: any) {
       ]
     );
 
-    // 2. Ambil ID invoice yang baru dibuat
     const newInvoiceId = result.insertId;
 
-    // 3. Simpan SEMUA layanan ke tb_invoice_detail
     for (const item of formData.items) {
       await connection.query(
         `INSERT INTO tb_invoice_details (
@@ -240,29 +220,22 @@ export async function createInvoice(formData: any) {
       );
     }
 
-    // 4. Update saldo piutang
     const akunPiutang = "12100";
-
     await connection.query(
       "UPDATE tb_akun SET saldo = saldo + ? WHERE no_akun = ?",
       [formData.total || 0, akunPiutang]
     );
 
-    // 5. Commit
     await connection.commit();
-
     revalidatePath("/dashboard/finance/invoices");
 
     return {
       success: true,
       id: newInvoiceId,
     };
-
   } catch (error: any) {
     await connection.rollback();
-
     console.error("CREATE_INVOICE_ERROR:", error.message);
-
     return {
       success: false,
       message: "Gagal simpan invoice: " + error.message,
@@ -296,7 +269,6 @@ export async function updateInvoice(id: number, data: any) {
   try {
     await connection.beginTransaction();
 
-    // 1. Update HEADER invoice
     const query = `
       UPDATE tb_invoice SET 
         batch = ?,
@@ -306,6 +278,7 @@ export async function updateInvoice(id: number, data: any) {
         alamat_perusahaan = ?,
         file_faktur = ?,
         cl = ?,
+        is_dpp = ?,
         is_pph23 = ?,
         is_ppn11 = ?,
         is_pnbp = ?,
@@ -327,6 +300,7 @@ export async function updateInvoice(id: number, data: any) {
       data.alamat_perusahaan,
       data.file_faktur || null,
       data.cl || null,
+      data.is_dpp ? 1 : 0,
       data.is_pph23 ? 1 : 0,
       data.is_ppn11 ? 1 : 0,
       data.is_pnbp ? 1 : 0,
@@ -342,13 +316,11 @@ export async function updateInvoice(id: number, data: any) {
 
     await connection.query(query, values);
 
-    // 2. Hapus detail lama
     await connection.query(
       `DELETE FROM tb_invoice_details WHERE invoice_id = ?`,
       [id]
     );
 
-    // 3. Simpan ulang semua layanan
     if (Array.isArray(data.items)) {
       for (const item of data.items) {
         await connection.query(
@@ -368,9 +340,7 @@ export async function updateInvoice(id: number, data: any) {
       }
     }
 
-    // 4. Commit
     await connection.commit();
-
     revalidatePath("/dashboard/finance/invoices");
 
     return {
@@ -378,9 +348,7 @@ export async function updateInvoice(id: number, data: any) {
     };
   } catch (error: any) {
     await connection.rollback();
-
     console.error("UPDATE_INVOICE_ERROR:", error.message);
-
     return {
       success: false,
       message: error.message,
@@ -445,7 +413,6 @@ export async function getInvoices() {
       ORDER BY i.id DESC, d.id ASC
     `);
 
-    // Kelompokkan baris-baris detail per invoice_id jadi array `items`
     const invoiceMap = new Map<number, any>();
 
     for (const row of rows) {
@@ -482,7 +449,6 @@ export async function getInvoices() {
     return [];
   }
 }
-
 
 export async function updateInvoiceFile(
   id: number,

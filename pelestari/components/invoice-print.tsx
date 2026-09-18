@@ -7,9 +7,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
     return new Intl.NumberFormat("id-ID").format(amount || 0)
   }
 
-  // Item layanan sekarang diambil dari tb_invoice_details (data.items),
-  // BUKAN dari field header seperti data.jumlah_peserta / data.harga_peserta
-  // yang sudah tidak lagi diisi untuk invoice yang dibuat lewat form.
+  // Item layanan diambil dari tb_invoice_details (data.items)
   const items: any[] = Array.isArray(data.items) ? data.items : []
 
   const subtotalDasar = items.reduce(
@@ -18,6 +16,10 @@ export const InvoicePrint = ({ data }: { data: any }) => {
     0
   )
 
+  // DPP Nilai Lain (11/12) HANYA UNTUK PENCATATAN / MEMO INFORMASI PAJAK
+  const nilaiDppNilaiLain = Math.round((11 / 12) * subtotalDasar)
+
+  // Pajak & PNBP
   const nilaiPPN = data.is_ppn11 === 1 ? subtotalDasar * 0.11 : 0
   const nilaiPPH = data.is_pph23 === 1 ? subtotalDasar * 0.02 : 0
   const nilaiPNBP = data.is_pnbp === 1 ? data.nominal_pnbp || 0 : 0
@@ -142,8 +144,8 @@ export const InvoicePrint = ({ data }: { data: any }) => {
           </p>
         </div>
 
-        {/* TABEL */}
-        <div className="mb-6 px-10">
+        {/* TABEL TAGIHAN UTAMA */}
+        <div className="px-10">
           <table className="w-full border border-blue-600 text-[8pt]">
             <thead>
               <tr className="bg-[#0170c0] text-[8pt] text-white">
@@ -165,7 +167,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
               </tr>
             </thead>
             <tbody className="bg-white">
-              {/* BARIS LAYANAN - looping dari tb_invoice_details */}
+              {/* BARIS LAYANAN */}
               {items.length > 0 ? (
                 items.map((item, idx) => {
                   const jumlah = Number(item.item_jumlah) || 0
@@ -231,14 +233,39 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   </td>
                 </tr>
               )}
-                {/* PPN */}
+
+          
+
+              {/* dpp */}
+              {data.is_dpp === 1 && (
+                <tr className="border-[#0170c0] bg-zinc-50/30">
+                  <td className="border-r border-[#0170c0] py-2 text-center">
+                    {currentNo++}
+                  </td>
+                  <td className="border-r border-[#0170c0] px-3 py-2 font-medium uppercase">
+                    Dasar Pengenaan Pajak (DPP)
+                  </td>
+                  <td className="border-r border-[#0170c0] py-2 text-center">
+                    -
+                  </td>
+                  <td className="border-r border-[#0170c0] px-3 py-2 text-center">
+                    -
+                  </td>
+                  <td className="flex justify-between px-3 py-2">
+                    <span>Rp</span>
+                    {formatNumber(nilaiDppNilaiLain)}
+                  </td>
+                </tr>
+              )}
+
+               {/* PPN */}
               {data.is_ppn11 === 1 && (
                 <tr className="border-[#0170c0] bg-zinc-50/30">
                   <td className="border-r border-[#0170c0] py-2 text-center">
                     {currentNo++}
                   </td>
                   <td className="border-r border-[#0170c0] px-3 py-2 font-medium uppercase">
-                    PPN 
+                   PPN
                   </td>
                   <td className="border-r border-[#0170c0] py-2 text-center">
                     -
@@ -252,6 +279,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   </td>
                 </tr>
               )}
+
 
               {/* PPH */}
               {data.is_pph23 === 1 && (
@@ -273,8 +301,6 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   </td>
                 </tr>
               )}
-
-            
             </tbody>
             <tfoot>
               <tr className="bg-[#0170c0] text-[8pt] font-bold text-white">
@@ -282,7 +308,7 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                   colSpan={4}
                   className="border-r border-[#0170c0] px-3 py-2 text-right"
                 >
-                  Total
+                  Total Tagihan
                 </td>
                 <td className="flex justify-between px-3 py-2">
                   <span>Rp</span> {formatNumber(data.total)}
@@ -291,6 +317,9 @@ export const InvoicePrint = ({ data }: { data: any }) => {
             </tfoot>
           </table>
         </div>
+
+        
+       
 
         {/* FOOTER KETENTUAN */}
         <div className="mb-6 px-10 text-[10pt]">
@@ -324,7 +353,6 @@ export const InvoicePrint = ({ data }: { data: any }) => {
                 </span>
               </p>
               <p className="mt-0.5">PT Peduli Lestari Indonesia</p>
-              
             </>
           ) : (
             <>
@@ -338,11 +366,16 @@ export const InvoicePrint = ({ data }: { data: any }) => {
           )}
         </div>
 
-        {/* PARAGRAF PENUTUP KONDISIONAL */}
+        {/* PARAGRAF PENUTUP */}
         <div className="mb-4 px-10 text-[10pt] leading-normal">
           {data.metode_pembayaran === "va" ? (
             <p>
-              Demikian <i>invoice</i> ini kami sampaikan. Pembayaran dilakukan melalui <i>Virtual Account</i> yang tercantum dan tidak melalui rekening bank perusahaan. Apabila VA telah melewati batas waktu pembayaran, penerbitan VA baru akan dikenakan biaya administrasi sesuai ketentuan. Mohon melakukan konfirmasi setelah pembayaran berhasil dilakukan. Terima kasih atas perhatian dan kerja samanya.
+              Demikian <i>invoice</i> ini kami sampaikan. Pembayaran dilakukan
+              melalui <i>Virtual Account</i> yang tercantum dan tidak melalui
+              rekening bank perusahaan. Apabila VA telah melewati batas waktu
+              pembayaran, penerbitan VA baru akan dikenakan biaya administrasi
+              sesuai ketentuan. Mohon melakukan konfirmasi setelah pembayaran
+              berhasil dilakukan. Terima kasih atas perhatian dan kerja samanya.
             </p>
           ) : (
             <p>

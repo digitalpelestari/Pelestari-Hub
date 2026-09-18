@@ -51,6 +51,7 @@ export default function CreateInvoicePage() {
         item_harga: 0,
       },
     ],
+    is_dpp: false,
     is_pph23: false,
     is_ppn11: false,
     is_pnbp: false,
@@ -86,13 +87,19 @@ export default function CreateInvoicePage() {
       0
     )
 
-    const pph = formData.is_pph23 ? subtotalDasar * 0.02 : 0
+    // Rumus DPP: (11/12) x total jumlah layanan
+    const dppNilai = formData.is_dpp ? (11 / 12) * subtotalDasar : subtotalDasar
+
+    // PPh 23: 2% dari DPP jika DPP aktif, atau dari subtotal jika DPP tidak aktif
+    const basisPajak = formData.is_dpp ? dppNilai : subtotalDasar
+    const pph = formData.is_pph23 ? basisPajak * 0.02 : 0
     const ppn = formData.is_ppn11 ? subtotalDasar * 0.11 : 0
     const nominal_pnbp = formData.is_pnbp ? totalPesertaAll * 600000 : 0
     const totalAkhir = subtotalDasar + ppn + nominal_pnbp - pph
 
     return {
       subtotalDasar,
+      dpp: dppNilai,
       pph,
       ppn,
       pnbp: nominal_pnbp,
@@ -582,6 +589,27 @@ export default function CreateInvoicePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {/* 1. CHECKBOX DPP (DI ATAS PPH) */}
+                <label className="flex cursor-pointer items-center justify-between rounded-lg border border-zinc-200/70 p-3 transition hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900/50">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="dpp"
+                      checked={formData.is_dpp}
+                      onCheckedChange={(c) => setFormData({ ...formData, is_dpp: !!c })}
+                    />
+                    <div>
+                      <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+                        DPP Nilai Lain
+                      </span>
+                      <p className="text-[10px] text-zinc-400">11/12 × Jumlah Layanan</p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-[10px]">
+                    11/12
+                  </Badge>
+                </label>
+
+                {/* 2. CHECKBOX PPH 23 */}
                 <label className="flex cursor-pointer items-center justify-between rounded-lg border border-zinc-200/70 p-3 transition hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900/50">
                   <div className="flex items-center gap-3">
                     <Checkbox
@@ -601,6 +629,7 @@ export default function CreateInvoicePage() {
                   </Badge>
                 </label>
 
+                {/* 3. CHECKBOX PPN 11% */}
                 <label className="flex cursor-pointer items-center justify-between rounded-lg border border-zinc-200/70 p-3 transition hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900/50">
                   <div className="flex items-center gap-3">
                     <Checkbox
@@ -620,6 +649,7 @@ export default function CreateInvoicePage() {
                   </Badge>
                 </label>
 
+                {/* 4. CHECKBOX PNBP */}
                 <label className="flex cursor-pointer items-center justify-between rounded-lg border border-blue-200/70 bg-blue-50/40 p-3 transition hover:bg-blue-50/80 dark:border-blue-900/50 dark:bg-blue-950/20">
                   <div className="flex items-center gap-3">
                     <Checkbox
@@ -641,7 +671,7 @@ export default function CreateInvoicePage() {
               </CardContent>
             </Card>
 
-            {/* RINGKASAN TAGIHAN (DENGAN RINCIAN ITEM TERPISAH) */}
+            {/* RINGKASAN TAGIHAN */}
             <Card className="border-zinc-200/80 bg-zinc-900 text-white shadow-lg dark:border-zinc-800">
               <CardHeader className="border-b border-zinc-800/80 pb-4">
                 <div className="flex items-center justify-between">
@@ -660,7 +690,6 @@ export default function CreateInvoicePage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4 pt-4">
-                {/* METRICS KECIL INFORMASI DINAMIS */}
                 <div className="grid grid-cols-2 gap-2 rounded-xl border border-zinc-800 bg-zinc-950/50 p-2.5">
                   <div className="flex items-center gap-2">
                     <Users className="h-3.5 w-3.5 text-zinc-500" />
@@ -682,7 +711,6 @@ export default function CreateInvoicePage() {
                   </div>
                 </div>
 
-                {/* RINCIAN DETAIL PER LAYANAN */}
                 <div className="space-y-2 rounded-xl border border-zinc-800/60 bg-zinc-950/30 p-3">
                   <p className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">
                     Rincian Item Layanan
@@ -714,7 +742,6 @@ export default function CreateInvoicePage() {
                   </div>
                 </div>
 
-                {/* BREAKDOWN PAJAK & TOTAL */}
                 <div className="space-y-2.5 text-xs text-zinc-400">
                   <div className="flex justify-between border-t border-zinc-800/80 pt-2.5">
                     <span className="font-medium text-zinc-300">Subtotal Dasar</span>
@@ -723,9 +750,16 @@ export default function CreateInvoicePage() {
                     </span>
                   </div>
 
+                  {formData.is_dpp && (
+                    <div className="flex justify-between text-amber-400">
+                      <span>DPP Nilai Lain (11/12)</span>
+                      <span className="font-mono font-medium">{formatIDR(calculation.dpp)}</span>
+                    </div>
+                  )}
+
                   {formData.is_pph23 && (
                     <div className="flex justify-between text-rose-400">
-                      <span>PPh 23 (2%)</span>
+                      <span>PPh 23 (2%{formData.is_dpp ? " dari DPP" : ""})</span>
                       <span className="font-mono font-medium">- {formatIDR(calculation.pph)}</span>
                     </div>
                   )}
@@ -747,7 +781,6 @@ export default function CreateInvoicePage() {
                   )}
                 </div>
 
-                {/* TOTAL AKHIR DISPLAY */}
                 <div className="border-t border-zinc-800 pt-4">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-medium text-zinc-400">Total Tagihan Akhir</span>
@@ -762,7 +795,6 @@ export default function CreateInvoicePage() {
               </CardContent>
             </Card>
 
-            {/* TOMBOL AKSI TERBITKAN DI BAWAH RINGKASAN */}
             <div className="space-y-2 pt-1">
               <Button
                 onClick={handleSubmit}
