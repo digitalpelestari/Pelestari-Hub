@@ -117,7 +117,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           items: [
             {
               title: "Riwayat Transaksi",
-              url: "/dashboard/finance/riwayat",
+              url: "/dashboard/finance/riwayat/transaksi",
+            },
+            {
+              title: "Rincian Direksi",
+              url: "/dashboard/finance/riwayat/rincian-direksi",
             },
           ],
         },
