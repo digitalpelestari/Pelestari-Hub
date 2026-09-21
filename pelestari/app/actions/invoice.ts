@@ -272,12 +272,11 @@ export async function updateInvoice(id: number, data: any) {
     const query = `
       UPDATE tb_invoice SET 
         batch = ?,
-        jenis_kegiatan = ?,
+        tanggal_jatuhtempo = ?,
         perusahaan_tujuan = ?,
         npwp = ?,
         alamat_perusahaan = ?,
         file_faktur = ?,
-        cl = ?,
         is_dpp = ?,
         is_pph23 = ?,
         is_ppn11 = ?,
@@ -294,12 +293,11 @@ export async function updateInvoice(id: number, data: any) {
 
     const values = [
       data.batch,
-      data.jenis_kegiatan,
+      data.tanggal_jatuhtempo || null,
       data.perusahaan_tujuan,
       data.npwp,
       data.alamat_perusahaan,
       data.file_faktur || null,
-      data.cl || null,
       data.is_dpp ? 1 : 0,
       data.is_pph23 ? 1 : 0,
       data.is_ppn11 ? 1 : 0,
@@ -341,14 +339,18 @@ export async function updateInvoice(id: number, data: any) {
     }
 
     await connection.commit();
+
     revalidatePath("/dashboard/finance/invoices");
 
     return {
       success: true,
+      message: "Invoice berhasil diperbarui.",
     };
   } catch (error: any) {
     await connection.rollback();
+
     console.error("UPDATE_INVOICE_ERROR:", error.message);
+
     return {
       success: false,
       message: error.message,
@@ -357,7 +359,6 @@ export async function updateInvoice(id: number, data: any) {
     connection.release();
   }
 }
-
 // =========================================================================
 // 6. FUNGSI: DETEKSI DETIL INVOICE BY ID
 // =========================================================================

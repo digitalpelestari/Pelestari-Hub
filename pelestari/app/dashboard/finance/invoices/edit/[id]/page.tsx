@@ -29,6 +29,24 @@ import Link from "next/link"
 import { getInvoiceById, updateInvoice } from "@/app/actions/invoice"
 import { swal } from "@/lib/sweetalert"
 
+function formatDateForInput(value: unknown): string {
+  if (!value) return ""
+
+  if (typeof value === "string") {
+    return value.substring(0, 10)
+  }
+
+  if (value instanceof Date) {
+    const year = value.getFullYear()
+    const month = String(value.getMonth() + 1).padStart(2, "0")
+    const day = String(value.getDate()).padStart(2, "0")
+
+    return `${year}-${month}-${day}`
+  }
+
+  return ""
+}
+
 export default function EditInvoicePage() {
   const router = useRouter()
   const params = useParams()
@@ -76,12 +94,9 @@ export default function EditInvoicePage() {
           setFormData({
             nomor_invoice: res.nomor_invoice ?? "",
             batch: res.batch ?? "",
-            tanggal: res.tanggal
-              ? new Date(res.tanggal).toISOString().split("T")[0]
-              : "",
-            tanggal_jatuhtempo: res.tanggal_jatuhtempo
-              ? new Date(res.tanggal_jatuhtempo).toISOString().split("T")[0]
-              : "",
+            tanggal: formatDateForInput(res.tanggal),
+
+            tanggal_jatuhtempo: formatDateForInput(res.tanggal_jatuhtempo),
             perusahaan_tujuan: res.perusahaan_tujuan ?? "",
             npwp: res.npwp ?? "",
             alamat_perusahaan: res.alamat_perusahaan ?? "",
