@@ -71,7 +71,7 @@ const formTransaksiKosong = (): FormTransaksi => ({
   tanggal: getTanggalHariIni(),
   keterangan: "",
   nominal: "",
-  tipe: "KREDIT",
+  tipe: "DEBIT",
 })
 
 /* ------------------------------------------------------------------ */
@@ -964,8 +964,8 @@ export default function RekonsiliasiBankHarian() {
                   }
                   className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400"
                 >
-                  <option value="KREDIT">KREDIT</option>
                   <option value="DEBIT">DEBIT</option>
+                  <option value="KREDIT">KREDIT</option>
                 </select>
               </div>
             </div>

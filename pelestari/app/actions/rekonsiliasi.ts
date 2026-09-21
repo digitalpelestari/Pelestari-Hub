@@ -27,7 +27,7 @@ export interface TransaksiRekonDTO {
   tanggal: string; // YYYY-MM-DD
   keterangan: string;
   nominal: number;
-    noAkun: string | null
+  noAkun: string | null
   tipe: TipeTransaksi;
   status: StatusRekon;
   /** id lawan transaksi yang sudah match: jurnal_item_id (sisi bank) / bank_transaksi_id (sisi GL) */
@@ -40,7 +40,7 @@ interface BankTransaksiRow extends RowDataPacket {
   keterangan: string;
   nominal: string;
   tipe: TipeTransaksi;
-    no_akun: string;
+  no_akun: string;
 
   jurnal_item_id: number | null; // hasil LEFT JOIN tb_rekonsiliasi
 }
@@ -306,17 +306,7 @@ export async function cocokkanTransaksi(
     }
 
     // ================================================================
-    // 6. Validasi tipe
-    // ================================================================
-    if (tipeGL !== bank.tipe) {
-      await connection.rollback()
-      throw new Error(
-        `Tipe transaksi tidak sesuai. Koran ${bank.tipe}, jurnal ${tipeGL}.`
-      )
-    }
-
-    // ================================================================
-    // 7. Validasi nominal
+    // 6. Validasi nominal
     // ================================================================
     if (nominalBank !== nominalGL) {
       await connection.rollback()
@@ -326,7 +316,7 @@ export async function cocokkanTransaksi(
     }
 
     // ================================================================
-    // 8. Semua valid → simpan pasangan
+    // 7. Semua valid → simpan pasangan
     // ================================================================
     await connection.execute<ResultSetHeader>(
       `
@@ -456,7 +446,6 @@ export async function cocokkanOtomatisHarian(
 
       const idx = glTersedia.findIndex(
         (gl) =>
-          gl.tipe === bank.tipe &&
           gl.nominal === Number(bank.nominal) &&
           gl.tanggal === tanggalBank
       )
@@ -523,7 +512,7 @@ export async function tutupBukuHarian(
     // 1. Cek transaksi bank yang belum terhubung
     // ================================================================
     const [akunRows] = await db.execute<RowDataPacket[]>(
-    `
+      `
         SELECT nama_akun
         FROM tb_akun
         WHERE no_akun = ?
@@ -628,7 +617,7 @@ export async function tambahTransaksiBank(data: {
 }) {
   if (
     data.noAkunBank !== KODE_AKUN_BANK.AKTIF &&
-    data.noAkunBank !== KODE_AKUN_BANK.PASIF && 
+    data.noAkunBank !== KODE_AKUN_BANK.PASIF &&
     data.noAkunBank !== KODE_AKUN_BANK.PETTY_CASH
   ) {
     return {
