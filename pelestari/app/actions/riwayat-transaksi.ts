@@ -91,7 +91,8 @@ export async function getJurnalList(
           )
         )
       `)
-      params.push(searchValue, searchValue, searchValue, searchValue, searchValue)
+      params.push(searchValue, searchValue, searchValue, searchValue, searchValue, searchValue
+      )
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
