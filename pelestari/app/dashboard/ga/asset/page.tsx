@@ -510,8 +510,8 @@ export default function GaAssetPage() {
                     required
                     className="w-full cursor-pointer rounded border bg-white p-2 font-semibold focus:outline-zinc-400"
                   >
-                    <option value="1">Kelompok 1</option>
-                    <option value="2">Kelompok 2</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
                   </select>
                 </div>
               </div>
