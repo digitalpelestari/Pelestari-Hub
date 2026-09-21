@@ -37,9 +37,12 @@ export default function BukuKasPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
-  const [selectedType, setSelectedType] = useState<"ALL" | "BK" | "BD" | "KK">("ALL")
+  const [selectedType, setSelectedType] = useState<"ALL" | "BK" | "BD" | "KK">(
+    "ALL"
+  )
   const [isExporting, setIsExporting] = useState(false)
   const [saldoKas, setSaldoKas] = useState(0)
+  const [sortOrder, setSortOrder] = useState<"terbaru" | "terlama">("terbaru")
 
   // --- Pagination state ---
   const [currentPage, setCurrentPage] = useState(1)
@@ -141,7 +144,12 @@ export default function BukuKasPage() {
     const sorted = [...rawJurnalList].sort((a: any, b: any) => {
       const dateA = new Date(a.tanggal).getTime()
       const dateB = new Date(b.tanggal).getTime()
-      return dateA === dateB ? a.id - b.id : dateA - dateB
+
+      if (dateA === dateB) {
+        return sortOrder === "terbaru" ? b.id - a.id : a.id - b.id
+      }
+
+      return sortOrder === "terbaru" ? dateB - dateA : dateA - dateB
     })
 
     let runningSaldo = 0
@@ -149,10 +157,13 @@ export default function BukuKasPage() {
     return sorted.map((jurnal: any) => {
       const items = Array.isArray(jurnal.items) ? jurnal.items : []
 
-      // Deteksi otomatis akun Kas & Bank berdasarkan kelompok akun
       const kasItem = items.find((i: any) => {
-        const kelompok = String(i.nama_kelompok || i.kelompok_biaya || "").toUpperCase()
+        const kelompok = String(
+          i.nama_kelompok || i.kelompok_biaya || ""
+        ).toUpperCase()
+
         const nama = String(i.nama_akun || "").toUpperCase()
+
         return (
           kelompok.includes("KAS") ||
           kelompok.includes("BANK") ||
@@ -162,13 +173,13 @@ export default function BukuKasPage() {
         )
       })
 
-      // Akun lawan transaksi
       const lawanItem = items.find((i: any) => i !== kasItem) || items[0] || {}
 
       const debit = kasItem ? Number(kasItem.debit) || 0 : 0
       const kredit = kasItem ? Number(kasItem.kredit) || 0 : 0
 
       runningSaldo = runningSaldo + debit - kredit
+
       const isTopUp = debit > 0
 
       return {
@@ -181,15 +192,16 @@ export default function BukuKasPage() {
           lawanItem.kelompok_biaya ||
           (isTopUp ? "Kas / Bank" : "Biaya Operasional"),
         jenis_biaya:
-          lawanItem.nama_akun || (isTopUp ? "Penerimaan / Top Up" : "Operasional"),
+          lawanItem.nama_akun ||
+          (isTopUp ? "Penerimaan / Top Up" : "Operasional"),
         keterangan: jurnal.keterangan || "-",
-        debit: debit,
-        kredit: kredit,
+        debit,
+        kredit,
         total_saldo: runningSaldo,
-        isTopUp: isTopUp,
+        isTopUp,
       }
     })
-  }, [rawJurnalList])
+  }, [rawJurnalList, sortOrder])
 
   const handleResetFilter = () => {
     setStartDate("")
@@ -238,11 +250,11 @@ export default function BukuKasPage() {
               <ReceiptText className="h-5 w-5" />
             </div>
             <h1 className="text-xl font-bold tracking-tight text-zinc-900">
-              Laporan Pengeluaran Kas (Petty Cash)
+              Laporan Riwayat Transaksi
             </h1>
           </div>
           <p className="mt-1 pl-9 text-xs text-zinc-500">
-            Rekapitulasi mutasi pengeluaran operasional dan top up saldo kas.
+            Daftar dan rincian transaksi yang telah tercatat.
           </p>
         </div>
 
@@ -289,7 +301,9 @@ export default function BukuKasPage() {
           <div className="flex items-center gap-1.5 overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-100/60 p-1">
             <div className="flex items-center gap-1 px-2 text-zinc-400">
               <Filter className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Tipe:</span>
+              <span className="text-[10px] font-bold tracking-wider uppercase">
+                Tipe:
+              </span>
             </div>
             <button
               type="button"
@@ -412,6 +426,23 @@ export default function BukuKasPage() {
           </Button>
         </div>
       </div>
+      <div className="flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50/50 px-3">
+        <span className="text-[10px] font-bold text-zinc-400 uppercase">
+          Urutan:
+        </span>
+
+        <select
+          value={sortOrder}
+          onChange={(e) => {
+            setSortOrder(e.target.value as "terbaru" | "terlama")
+            setCurrentPage(1)
+          }}
+          className="cursor-pointer bg-transparent text-xs font-semibold text-zinc-700 outline-none"
+        >
+          <option value="terbaru">Terbaru</option>
+          <option value="terlama">Terlama</option>
+        </select>
+      </div>
 
       {/* TABEL DATA MUTASI (STRUKTUR 10 KOLOM) */}
       <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
@@ -482,10 +513,10 @@ export default function BukuKasPage() {
                           row.no_registrasi.startsWith("BK")
                             ? "border border-rose-100 bg-rose-50 text-rose-700"
                             : row.no_registrasi.startsWith("BD")
-                            ? "border border-blue-100 bg-blue-50 text-blue-700"
-                            : row.no_registrasi.startsWith("KK")
-                            ? "border border-amber-100 bg-amber-50 text-amber-700"
-                            : "bg-zinc-100 text-zinc-700"
+                              ? "border border-blue-100 bg-blue-50 text-blue-700"
+                              : row.no_registrasi.startsWith("KK")
+                                ? "border border-amber-100 bg-amber-50 text-amber-700"
+                                : "bg-zinc-100 text-zinc-700"
                         }`}
                       >
                         {row.no_registrasi}
@@ -571,7 +602,9 @@ export default function BukuKasPage() {
                 <span className="font-semibold text-zinc-700">{startRow}</span>–
                 <span className="font-semibold text-zinc-700">{endRow}</span>{" "}
                 dari{" "}
-                <span className="font-semibold text-zinc-700">{totalItems}</span>{" "}
+                <span className="font-semibold text-zinc-700">
+                  {totalItems}
+                </span>{" "}
                 data
               </span>
 
@@ -582,7 +615,14 @@ export default function BukuKasPage() {
                 <select
                   value={pageSize}
                   onChange={(e) => {
-                    setPageSize(Number(e.target.value))
+                    const value = e.target.value
+
+                    if (value === "all") {
+                      setPageSize(pagination.total || 10)
+                    } else {
+                      setPageSize(Number(value))
+                    }
+
                     setCurrentPage(1)
                   }}
                   className="h-8 cursor-pointer rounded-lg border border-zinc-200 bg-white px-2 text-xs font-medium text-zinc-700 outline-none"
@@ -592,6 +632,8 @@ export default function BukuKasPage() {
                       {size}
                     </option>
                   ))}
+
+                  <option value="all">All</option>
                 </select>
               </div>
             </div>
