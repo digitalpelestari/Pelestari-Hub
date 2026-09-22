@@ -52,7 +52,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Karyawan",
       url: "#",
       icon: <Users />,
-      roles: ["ADMIN", "GA", "FINANCE", "MANAGER FINANCE", "HR", "PELATIHAN", "STAFF"],
+      roles: [
+        "ADMIN",
+        "GA",
+        "FINANCE",
+        "MANAGER FINANCE",
+        "HR",
+        "PELATIHAN",
+        "STAFF",
+      ],
       items: [
         {
           title: "Perjalanan Dinas",
@@ -119,10 +127,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               title: "Riwayat Transaksi",
               url: "/dashboard/finance/riwayat/transaksi",
             },
-            {
-              title: "Rincian Direksi",
-              url: "/dashboard/finance/riwayat/rincian-direksi",
-            },
           ],
         },
 
@@ -154,6 +158,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             {
               title: "Laporan Laba Rugi",
               url: "/dashboard/finance/laporan/lap-labarugi",
+            },
+            {
+              title: "Neraca Saldo",
+              url: "/dashboard/finance/laporan/neraca-saldo",
             },
             {
               title: "Cash Flow",
@@ -209,9 +217,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       icon: <Users />,
       roles: ["ADMIN", "HR", "GA"],
       items: [
-         { title: "Purchase Order", url: "/dashboard/ga/purchase-order" },
-            { title: "Asset", url: "/dashboard/ga/asset" },
-            { title: "Utilities", url: "/dashboard/ga/utilities" },
+        { title: "Purchase Order", url: "/dashboard/ga/purchase-order" },
+        { title: "Asset", url: "/dashboard/ga/asset" },
+        { title: "Utilities", url: "/dashboard/ga/utilities" },
       ],
     },
 
