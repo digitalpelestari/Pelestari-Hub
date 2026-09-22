@@ -216,7 +216,7 @@ export default function CreateInvoicePage() {
       router.push("/dashboard/finance/invoices")
       router.refresh()
     } else {
-      swal.error("Gagal Menerbitkan: " + res.message)
+      swal.error("Gagal Menerbitkan: " + res.error)
     }
 
     setLoading(false)
