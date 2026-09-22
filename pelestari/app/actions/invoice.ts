@@ -352,6 +352,41 @@ export async function createInvoice(formData: any) {
     }
 
     const pemohonId = pemohonRows[0].id;
+    // =========================================================
+    // CARI / BUAT PENERIMA JURNAL
+    // =========================================================
+
+    const namaPenerima = String(
+      formData.perusahaan_tujuan || ""
+    ).trim();
+
+    if (!namaPenerima) {
+      throw new Error("Perusahaan tujuan / penerima wajib diisi");
+    }
+
+    const [penerimaRows]: any = await connection.query(
+      `SELECT id
+   FROM tb_penerima
+   WHERE nama_penerima = ?
+   LIMIT 1`,
+      [namaPenerima]
+    );
+
+    let penerimaId: number;
+
+    if (penerimaRows.length > 0) {
+      // Penerima sudah ada
+      penerimaId = penerimaRows[0].id;
+    } else {
+      // Penerima belum ada → buat otomatis
+      const [penerimaResult]: any = await connection.query(
+        `INSERT INTO tb_penerima (nama_penerima)
+     VALUES (?)`,
+        [namaPenerima]
+      );
+
+      penerimaId = penerimaResult.insertId;
+    }
     const noRegistrasi = await generateNoRegistrasi(
       connection,
       formData.tanggal
@@ -381,7 +416,7 @@ export async function createInvoice(formData: any) {
         formData.nomor_invoice,
         keteranganJurnal,
         invoiceId,
-        null,
+        penerimaId,
         pemohonId,
       ]
     );
