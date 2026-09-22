@@ -16,6 +16,7 @@ import {
   ArrowDownCircle,
   Clock,
 } from "lucide-react"
+import { getDashboardSummary } from "@/app/actions/dashboard-finance"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -31,9 +32,6 @@ import {
   Legend,
 } from "recharts"
 
-// TODO: ganti dengan server action asli, mis. getDashboardSummary(), getBiayaBulanan(), getCashflowBulanan()
-// Struktur di bawah ini contoh (dummy) supaya UI bisa langsung dilihat.
-
 interface BiayaBulanan {
   bulan: string
   biaya: number
@@ -45,72 +43,26 @@ interface CashflowBulanan {
   keluar: number
 }
 
-const DUMMY_BIAYA: BiayaBulanan[] = [
-  { bulan: "Jan", biaya: 0 },
-  { bulan: "Feb", biaya: 0 },
-  { bulan: "Mar", biaya: 0 },
-  { bulan: "Apr", biaya: 0 },
-  { bulan: "Mei", biaya: 0 },
-  { bulan: "Jun", biaya: 0 },
-  { bulan: "Jul", biaya: 0 },
-  { bulan: "Agu", biaya: 0 },
-  { bulan: "Sep", biaya: 0 },
-]
-
-const DUMMY_CASHFLOW: CashflowBulanan[] = [
-  { bulan: "Jan", masuk: 0, keluar: 0 },
-  { bulan: "Feb", masuk: 0, keluar: 0 },
-  { bulan: "Mar", masuk: 0, keluar: 0 },
-  { bulan: "Apr", masuk: 0, keluar: 0 },
-  { bulan: "Mei", masuk: 0, keluar: 0 },
-  { bulan: "Jun", masuk: 0, keluar: 0 },
-  { bulan: "Jul", masuk: 0, keluar: 0 },
-  { bulan: "Agu", masuk: 0, keluar: 0 },
-  { bulan: "Sep", masuk: 0, keluar: 0 },
-]
-
-const DUMMY_TOTAL_PRODUKSI_TAHUNAN = 0 // contoh: jumlah peserta/unit produksi tahun berjalan
-const DUMMY_TOTAL_UTANG_OUTSTANDING = 0 // contoh: sisa piutang/utang belum tertagih
-
-// TODO: ganti dengan hasil query asli (mis. SUM nilai invoice per kategori tahun berjalan)
-const DUMMY_PELATIHAN = 0 // contoh: total nilai invoice kategori Pelatihan
-const DUMMY_KONSULTAN = 0 // contoh: total nilai invoice kategori Konsultan
-
-// TODO: ganti dengan hasil query asli (mis. SUM nominal Rupiah invoice per kategori tahun berjalan)
-const DUMMY_NILAI_PELATIHAN = 0 // contoh: total nominal invoice kategori Pelatihan
-const DUMMY_NILAI_KONSULTAN = 0 // contoh: total nominal invoice kategori Konsultan
-
-// TODO: ganti dengan hasil query asli (mis. SUM pembayaran yang sudah diterima tahun berjalan)
-const DUMMY_UANG_MASUK = 0 // contoh: total uang yang sudah masuk/dibayarkan dari invoice
-
 export default function Page() {
   const { data: session } = useSession()
   const [isBlurred, setIsBlurred] = useState(false)
+  const [loadingRingkasan, setLoadingRingkasan] = useState(true)
+  const [biayaBulanan, setBiayaBulanan] = useState<BiayaBulanan[]>([])
+  const [cashflowBulanan, setCashflowBulanan] = useState<CashflowBulanan[]>([])
 
-  // TODO: state ini nantinya diisi dari server action asli
-  const [loadingRingkasan, setLoadingRingkasan] = useState(false)
-  const [biayaBulanan, setBiayaBulanan] = useState<BiayaBulanan[]>(DUMMY_BIAYA)
-  const [cashflowBulanan, setCashflowBulanan] =
-    useState<CashflowBulanan[]>(DUMMY_CASHFLOW)
-  const [totalProduksiTahunan, setTotalProduksiTahunan] = useState(
-    DUMMY_TOTAL_PRODUKSI_TAHUNAN
-  )
-  const [totalUtangOutstanding, setTotalUtangOutstanding] = useState(
-    DUMMY_TOTAL_UTANG_OUTSTANDING
-  )
-  const [invoicePelatihan, setInvoicePelatihan] = useState(DUMMY_PELATIHAN)
-  const [invoiceKonsultan, setInvoiceKonsultan] = useState(DUMMY_KONSULTAN)
-  const [nilaiInvoicePelatihan, setNilaiInvoicePelatihan] = useState(
-    DUMMY_NILAI_PELATIHAN
-  )
-  const [nilaiInvoiceKonsultan, setNilaiInvoiceKonsultan] = useState(
-    DUMMY_NILAI_KONSULTAN
-  )
-  const [uangMasuk, setUangMasuk] = useState(DUMMY_UANG_MASUK)
+  const [invoicePelatihan, setInvoicePelatihan] = useState(0)
+  const [invoiceKonsultan, setInvoiceKonsultan] = useState(0)
+
+  const [nilaiInvoicePelatihan, setNilaiInvoicePelatihan] = useState(0)
+  const [nilaiInvoiceKonsultan, setNilaiInvoiceKonsultan] = useState(0)
+
+  const [uangMasuk, setUangMasuk] = useState(0)
 
   // Dihitung otomatis, tidak perlu state terpisah
   const totalInvoice = invoicePelatihan + invoiceKonsultan
+
   const totalNilaiInvoice = nilaiInvoicePelatihan + nilaiInvoiceKonsultan
+
   const sisaTagihan = totalNilaiInvoice - uangMasuk
 
   useEffect(() => {
@@ -162,25 +114,35 @@ export default function Page() {
     }
   }, [])
 
-  // TODO: fetch data ringkasan dashboard dari server action asli
-  // useEffect(() => {
-  //   const loadRingkasan = async () => {
-  //     setLoadingRingkasan(true)
-  //     const res = await getDashboardSummary()
-  //     if (res.success && res.data) {
-  //       setBiayaBulanan(res.data.biayaBulanan)
-  //       setCashflowBulanan(res.data.cashflowBulanan)
-  //       setTotalProduksiTahunan(res.data.totalProduksiTahunan)
-  //       setTotalUtangOutstanding(res.data.totalUtangOutstanding)
-  //       setInvoicePelatihan(res.data.invoicePelatihan)
-  //       setInvoiceKonsultan(res.data.invoiceKonsultan)
-  //       setUangMasuk(res.data.uangMasuk)
-  //     }
-  //     setLoadingRingkasan(false)
-  //   }
-  //   loadRingkasan()
-  // }, [])
+  useEffect(() => {
+    const loadRingkasan = async () => {
+      setLoadingRingkasan(true)
 
+      try {
+        const res = await getDashboardSummary()
+
+        if (res.success && res.data) {
+          setInvoicePelatihan(res.data.invoicePelatihan)
+          setInvoiceKonsultan(res.data.invoiceKonsultan)
+
+          setNilaiInvoicePelatihan(res.data.nilaiInvoicePelatihan)
+          setNilaiInvoiceKonsultan(res.data.nilaiInvoiceKonsultan)
+
+          setUangMasuk(res.data.uangMasuk)
+
+          // Data untuk grafik
+          setBiayaBulanan(res.data.biayaBulanan || [])
+          setCashflowBulanan(res.data.cashflowBulanan || [])
+        }
+      } catch (error) {
+        console.error("Gagal memuat dashboard:", error)
+      } finally {
+        setLoadingRingkasan(false)
+      }
+    }
+
+    loadRingkasan()
+  }, [])
   const formatIDR = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
