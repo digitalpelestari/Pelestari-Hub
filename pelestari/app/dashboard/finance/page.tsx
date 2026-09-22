@@ -46,42 +46,42 @@ interface CashflowBulanan {
 }
 
 const DUMMY_BIAYA: BiayaBulanan[] = [
-  { bulan: "Jan", biaya: 42000000 },
-  { bulan: "Feb", biaya: 38500000 },
-  { bulan: "Mar", biaya: 51200000 },
-  { bulan: "Apr", biaya: 47800000 },
-  { bulan: "Mei", biaya: 39900000 },
-  { bulan: "Jun", biaya: 55300000 },
-  { bulan: "Jul", biaya: 48700000 },
-  { bulan: "Agu", biaya: 43200000 },
-  { bulan: "Sep", biaya: 60100000 },
+  { bulan: "Jan", biaya: 0 },
+  { bulan: "Feb", biaya: 0 },
+  { bulan: "Mar", biaya: 0 },
+  { bulan: "Apr", biaya: 0 },
+  { bulan: "Mei", biaya: 0 },
+  { bulan: "Jun", biaya: 0 },
+  { bulan: "Jul", biaya: 0 },
+  { bulan: "Agu", biaya: 0 },
+  { bulan: "Sep", biaya: 0 },
 ]
 
 const DUMMY_CASHFLOW: CashflowBulanan[] = [
-  { bulan: "Jan", masuk: 65000000, keluar: 42000000 },
-  { bulan: "Feb", masuk: 58000000, keluar: 38500000 },
-  { bulan: "Mar", masuk: 72000000, keluar: 51200000 },
-  { bulan: "Apr", masuk: 61000000, keluar: 47800000 },
-  { bulan: "Mei", masuk: 55000000, keluar: 39900000 },
-  { bulan: "Jun", masuk: 80000000, keluar: 55300000 },
-  { bulan: "Jul", masuk: 69000000, keluar: 48700000 },
-  { bulan: "Agu", masuk: 63000000, keluar: 43200000 },
-  { bulan: "Sep", masuk: 88000000, keluar: 60100000 },
+  { bulan: "Jan", masuk: 0, keluar: 0 },
+  { bulan: "Feb", masuk: 0, keluar: 0 },
+  { bulan: "Mar", masuk: 0, keluar: 0 },
+  { bulan: "Apr", masuk: 0, keluar: 0 },
+  { bulan: "Mei", masuk: 0, keluar: 0 },
+  { bulan: "Jun", masuk: 0, keluar: 0 },
+  { bulan: "Jul", masuk: 0, keluar: 0 },
+  { bulan: "Agu", masuk: 0, keluar: 0 },
+  { bulan: "Sep", masuk: 0, keluar: 0 },
 ]
 
-const DUMMY_TOTAL_PRODUKSI_TAHUNAN = 1284 // contoh: jumlah peserta/unit produksi tahun berjalan
-const DUMMY_TOTAL_UTANG_OUTSTANDING = 214500000 // contoh: sisa piutang/utang belum tertagih
+const DUMMY_TOTAL_PRODUKSI_TAHUNAN = 0 // contoh: jumlah peserta/unit produksi tahun berjalan
+const DUMMY_TOTAL_UTANG_OUTSTANDING = 0 // contoh: sisa piutang/utang belum tertagih
 
 // TODO: ganti dengan hasil query asli (mis. SUM nilai invoice per kategori tahun berjalan)
-const DUMMY_PELATIHAN = 10 // contoh: total nilai invoice kategori Pelatihan
-const DUMMY_KONSULTAN = 4 // contoh: total nilai invoice kategori Konsultan
+const DUMMY_PELATIHAN = 0 // contoh: total nilai invoice kategori Pelatihan
+const DUMMY_KONSULTAN = 0 // contoh: total nilai invoice kategori Konsultan
 
 // TODO: ganti dengan hasil query asli (mis. SUM nominal Rupiah invoice per kategori tahun berjalan)
-const DUMMY_NILAI_PELATIHAN = 420000000 // contoh: total nominal invoice kategori Pelatihan
-const DUMMY_NILAI_KONSULTAN = 168000000 // contoh: total nominal invoice kategori Konsultan
+const DUMMY_NILAI_PELATIHAN = 0 // contoh: total nominal invoice kategori Pelatihan
+const DUMMY_NILAI_KONSULTAN = 0 // contoh: total nominal invoice kategori Konsultan
 
 // TODO: ganti dengan hasil query asli (mis. SUM pembayaran yang sudah diterima tahun berjalan)
-const DUMMY_UANG_MASUK = 350000000 // contoh: total uang yang sudah masuk/dibayarkan dari invoice
+const DUMMY_UANG_MASUK = 0 // contoh: total uang yang sudah masuk/dibayarkan dari invoice
 
 export default function Page() {
   const { data: session } = useSession()
