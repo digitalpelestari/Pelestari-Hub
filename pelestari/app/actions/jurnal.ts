@@ -33,7 +33,24 @@ interface JurnalPayload {
  * Kepala 4: Pendapatan/Penjualan (Kredit)
  */
 function isNormalDebit(noAkun: string): boolean {
-  const prefix = String(noAkun).trim().charAt(0);
+  const akun = String(noAkun).trim();
+
+  // Pengecualian eksplisit: akun-akun ini punya prefix yang secara generik
+  // akan salah diklasifikasikan sebagai Debit normal (prefix 7/8 = Beban),
+  // padahal saldo normalnya Kredit. Daftar ini HARUS tetap sinkron dengan
+  // fungsi isNormalDebit lokal di app/actions/invoice.ts (createInvoice),
+  // supaya posting saat invoice dibuat dan reversal saat jurnal dihapus/diedit
+  // menghitung arah saldo yang sama persis.
+  const KREDIT_NORMAL_OVERRIDE = new Set<string>([
+    "71106", // PPN
+    "81100", // PNBP
+  ]);
+
+  if (KREDIT_NORMAL_OVERRIDE.has(akun)) {
+    return false;
+  }
+
+  const prefix = akun.charAt(0);
   return prefix === "1" || prefix === "5" || prefix === "6" || prefix === "7" || prefix === "8" || prefix === "9";
 }
 
@@ -513,7 +530,6 @@ export async function getJurnalList(
 
     const [headers]: any = await db.query(headerQuery, headerParams);
 
-
     if (!headers || headers.length === 0) {
       return {
         success: true,
@@ -744,6 +760,7 @@ export async function updateJurnalItem(
             piutangKredit += Number(item.kredit) || 0;
           }
         }
+
         const netBayar = piutangKredit - piutangDebit;
         if (netBayar <= 0) continue;
 
@@ -1023,7 +1040,10 @@ export async function createJurnalUmum(payload: JurnalPayload) {
  * - Kalau match invoice: insert jurnal + items + saldo, lalu UPDATE tb_invoice (bayar_1/2, status Sebagian/Lunas)
  * - Kalau match po: insert jurnal + items + saldo, lalu UPDATE tb_po (bayar_1/2, status Sebagian/Lunas)
  * - Kalau bukan invoice/PO (referensi bebas): fallback ke createJurnalUmum biasa
- * - 🆕 VALIDASI: nominal pembayaran (netBayar) tidak boleh melebihi sisa tagihan
+ * - VALIDASI: nominal pembayaran (netBayar) tidak boleh melebihi sisa tagihan — HANYA saat transaksi
+ *   memang berupa "pembayaran" (Piutang di-Kredit / Utang di-Debit).
+ * - 🆕 Piutang di-Debit (invoice) kini TETAP VALID & tetap ditautkan ke invoice, hanya saja tidak
+ *   dihitung sebagai pembayaran sehingga status/bayar_1/bayar_2 invoice tidak diubah.
  */
 export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayload) {
 
@@ -1103,60 +1123,45 @@ export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayl
       }
     }
 
-    // 6. Deteksi arah transaksi:
-    //    - Untuk invoice (PIUTANG): targetKredit > 0 && targetDebit == 0 → BAYAR
-    //    - Untuk po (UTANG): targetDebit > 0 && targetKredit == 0 → BAYAR
-    //    - targetKredit == 0 && targetDebit == 0 → tidak ada akun target, error
+    // 6. Wajib ada akun target (Piutang/Utang) tersentuh di jurnal, entah Debit maupun Kredit
     if (targetKredit === 0 && targetDebit === 0) {
       await connection.rollback();
       return {
         success: false,
         message:
           (lookup.found === "invoice"
-            ? "Untuk pembayaran invoice, harap isi akun Piutang (Kredit) dan Bank/Kas (Debit)!"
-            : "Untuk pembayaran PO, harap isi akun Utang (Debit) dan Bank/Kas (Kredit)!") +
+            ? "Untuk transaksi yang terhubung ke invoice, harap isi akun Piutang (Debit atau Kredit)!"
+            : "Untuk transaksi yang terhubung ke PO, harap isi akun Utang (Debit atau Kredit)!") +
           " Transaksi dibatalkan.",
       };
     }
 
-    const isPembayaran = targetAkunKeyword === "PIUTANG"
-      ? targetKredit > 0 && targetDebit === 0
-      : targetDebit > 0 && targetKredit === 0;
-
-    if (!isPembayaran) {
-      await connection.rollback();
-      return {
-        success: false,
-        message:
-          "Koreksi / pembatalan bayar tidak dapat dilakukan lewat Kasir. " +
-          "Silakan hubungi admin untuk adjustment manual.",
-      };
-    }
-
+    // netBayar > 0  => arah "pembayaran" (Piutang Kredit / Utang Debit) -> piutang/utang berkurang
+    // netBayar <= 0 => arah "penambahan" (Piutang Debit / Utang Kredit) -> piutang/utang bertambah
+    //                  TETAP VALID & tetap ditautkan ke invoice/PO, tapi TIDAK dihitung sebagai pembayaran
     const netBayar = targetAkunKeyword === "PIUTANG"
       ? targetKredit - targetDebit
       : targetDebit - targetKredit;
 
-    if (netBayar <= 0) {
-      await connection.rollback();
-      return await createJurnalUmum(payload);
-    }
+    const isPembayaran = netBayar > 0;
 
-    // 6b. VALIDASI OVERPAYMENT: netBayar tidak boleh melebihi sisa tagihan
-    const sisaTagihan = totalRef - bayar1Lama - bayar2Lama;
-    // Toleransi kecil untuk pembulatan angka desimal/rupiah
-    const EPSILON = 1;
+    // 6b. VALIDASI OVERPAYMENT: hanya berlaku untuk arah pembayaran
+    if (isPembayaran) {
+      const sisaTagihan = totalRef - bayar1Lama - bayar2Lama;
+      // Toleransi kecil untuk pembulatan angka desimal/rupiah
+      const EPSILON = 1;
 
-    if (netBayar > sisaTagihan + EPSILON) {
-      await connection.rollback();
-      const jenisRef = lookup.found === "invoice" ? "invoice" : "PO";
-      return {
-        success: false,
-        message:
-          `Nominal pembayaran (Rp ${netBayar.toLocaleString("id-ID")}) melebihi sisa tagihan ${jenisRef} ` +
-          `${refNomor} (Rp ${sisaTagihan.toLocaleString("id-ID")}). ` +
-          `Mohon periksa kembali nominal debit/kredit yang diinput.`,
-      };
+      if (netBayar > sisaTagihan + EPSILON) {
+        await connection.rollback();
+        const jenisRef = lookup.found === "invoice" ? "invoice" : "PO";
+        return {
+          success: false,
+          message:
+            `Nominal pembayaran (Rp ${netBayar.toLocaleString("id-ID")}) melebihi sisa tagihan ${jenisRef} ` +
+            `${refNomor} (Rp ${sisaTagihan.toLocaleString("id-ID")}). ` +
+            `Mohon periksa kembali nominal debit/kredit yang diinput.`,
+        };
+      }
     }
 
     // 7. Insert header jurnal
@@ -1195,8 +1200,21 @@ export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayl
       await applySaldoAkun(connection, item.accountCode, debitVal, kreditVal, false);
     }
 
-    // 9. Update referensi (invoice atau po)
+    // 9. Update referensi (invoice atau po) — hanya jika arah transaksinya "pembayaran"
     if (lookup.found === "invoice") {
+      if (!isPembayaran) {
+        await connection.commit();
+        revalidatePath("/dashboard/finance/pos/jurnal");
+        revalidatePath("/dashboard/finance/riwayat");
+        revalidatePath("/dashboard/finance/invoices");
+        revalidatePath(`/dashboard/finance/invoices/${refId}`);
+
+        return {
+          success: true,
+          message: `Jurnal tersimpan & tetap terhubung ke invoice ${refNomor}. Piutang bertambah (Debit), status pembayaran invoice tidak diubah.`,
+        };
+      }
+
       const totalBayarSetelah = bayar1Lama + bayar2Lama + netBayar;
       const isLunas = totalBayarSetelah >= totalRef;
       newStatus = isLunas ? "Lunas" : "Sebagian";
@@ -1229,6 +1247,19 @@ export async function createJurnalDenganReferensiInvoiceOnly(payload: JurnalPayl
       };
     } else {
       // lookup.found === "po"
+      if (!isPembayaran) {
+        await connection.commit();
+        revalidatePath("/dashboard/finance/pos/jurnal");
+        revalidatePath("/dashboard/finance/riwayat");
+        revalidatePath("/dashboard/ga/purchase-order");
+        revalidatePath(`/dashboard/finance/pos/kasir`);
+
+        return {
+          success: true,
+          message: `Jurnal tersimpan & tetap terhubung ke PO ${refNomor}. Utang bertambah (Kredit), status pembayaran PO tidak diubah.`,
+        };
+      }
+
       const totalBayarSetelah = bayar1Lama + bayar2Lama + netBayar;
       const isLunas = totalBayarSetelah >= totalRef;
       newStatus = isLunas ? "Lunas" : "Sebagian";

@@ -170,6 +170,19 @@ async function generateNoRegistrasi(connection: any, tanggal: string) {
   return `BD_${String(nomorUrut).padStart(3, "0")}/${bulan}/${tahun}`;
 }
 
+function isNormalDebit(noAkun: string): boolean {
+  const prefix = String(noAkun).trim().charAt(0);
+
+  return (
+    prefix === "1" ||
+    prefix === "5" ||
+    prefix === "6" ||
+    prefix === "7" ||
+    prefix === "8" ||
+    prefix === "9"
+  );
+}
+
 // =========================================================================
 // 3. FUNGSI: TAMBAH INVOICE FORM
 // =========================================================================
@@ -547,28 +560,54 @@ export async function createInvoice(formData: any) {
         `Jurnal tidak balance. Debit: ${totalDebit}, Kredit: ${totalKredit}`
       );
     }
-
     // =========================================================
     // 9. UPDATE SALDO TB_AKUN
     // =========================================================
 
-    for (const detail of jurnalDetails) {
-      const perubahanSaldo =
-        detail.debit - detail.kredit;
+    function isNormalDebit(noAkun: string): boolean {
+      const akun = String(noAkun).trim();
 
-      if (perubahanSaldo !== 0) {
+      // AKUN NORMAL DEBIT
+      if (
+        akun === "12100" || // Piutang
+        akun === "14001"    // PPh 23
+      ) {
+        return true;
+      }
+
+      // AKUN NORMAL KREDIT
+      if (
+        akun === "41001" || // Pendapatan Pelatihan
+        akun === "41002" || // Pendapatan Konsultan
+        akun === "71106" || // PPN
+        akun === "81100"    // PNBP
+      ) {
+        return false;
+      }
+
+      // Default
+      return true;
+    }
+
+    for (const detail of jurnalDetails) {
+      const normalDebit = isNormalDebit(detail.no_akun);
+
+      const nilaiSaldo = normalDebit
+        ? detail.debit - detail.kredit
+        : detail.kredit - detail.debit;
+
+      if (nilaiSaldo !== 0) {
         await connection.query(
           `UPDATE tb_akun
-           SET saldo = saldo + ?
-           WHERE no_akun = ?`,
+       SET saldo = saldo + ?
+       WHERE no_akun = ?`,
           [
-            perubahanSaldo,
+            nilaiSaldo,
             detail.no_akun,
           ]
         );
       }
     }
-
     // =========================================================
     // 10. COMMIT
     // =========================================================
