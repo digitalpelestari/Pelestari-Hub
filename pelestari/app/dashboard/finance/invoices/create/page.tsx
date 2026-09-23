@@ -268,7 +268,6 @@ export default function CreateInvoicePage() {
                   </Label>
                   <Input
                     value={formData.nomor_invoice}
-                    readOnly
                     className="h-10 bg-zinc-50 font-mono text-xs font-semibold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
                   />
                 </div>

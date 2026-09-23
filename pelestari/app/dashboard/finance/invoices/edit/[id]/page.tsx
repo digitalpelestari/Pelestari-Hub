@@ -303,7 +303,6 @@ export default function EditInvoicePage() {
                   </Label>
                   <Input
                     value={formData.nomor_invoice}
-                    readOnly
                     className="h-11 border-dashed bg-zinc-100 font-mono font-bold"
                   />
                 </div>
