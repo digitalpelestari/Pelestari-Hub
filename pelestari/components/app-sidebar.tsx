@@ -208,6 +208,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             },
           ],
         },
+        {
+          title: "Closing Entries",
+          url: "/dashboard/finance/closing-entries",
+          icon: <PackageSearch />,
+          roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+        },
       ],
     },
     // GA DROPDOWN

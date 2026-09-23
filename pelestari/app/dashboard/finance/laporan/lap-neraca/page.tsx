@@ -1,11 +1,17 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useMemo } from "react"
 import { getNeracaData, NeracaData } from "@/app/actions/neraca"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { FileSpreadsheet, RefreshCw, Scale } from "lucide-react"
+
+interface AccountItem {
+  no_akun: string
+  nama_akun: string
+  saldo: number
+}
 
 export default function NeracaPage() {
   const [data, setData] = useState<NeracaData | null>(null)
@@ -38,6 +44,127 @@ export default function NeracaPage() {
 
     return isNegative ? `(${formatted})` : formatted
   }
+
+  // Gabungkan seluruh item akun untuk kemudahan query berdasarkan no_akun
+  const allAccounts = useMemo(() => {
+    if (!data) return []
+    const combined: AccountItem[] = [
+      ...(data.aktivaLancar || []),
+      ...(data.hartaTetap || []),
+      ...(data.kewajiban || []),
+      ...(data.ekuitas || []),
+      // Jika backend Anda sudah menyertakan investasi langsung di data:
+      ...((data as any).investasi || [])
+    ]
+    return combined
+  }, [data])
+
+  // Helper pencarian saldo per akun
+  const getAccount = (noAkun: string, fallbackName: string): AccountItem => {
+    const found = allAccounts.find(
+      (acc) => String(acc.no_akun).trim() === String(noAkun).trim()
+    )
+    return {
+      no_akun: noAkun,
+      nama_akun: found?.nama_akun || fallbackName,
+      saldo: found ? Number(found.saldo) : 0
+    }
+  }
+
+  // --- PEMETAAN SISI KIRI (AKTIVA) ---
+  // A. Aset Lancar (Kas/Bank & Piutang)
+  const asetLancarList = useMemo(() => [
+    getAccount("11300", "Bank Pasif"),
+    getAccount("11200", "Bank Aktif"),
+    getAccount("11100", "Kas (Petty Cash)"),
+    getAccount("12100", "Piutang Usaha"),
+    getAccount("12102", "Piutang Pegawai"),
+    getAccount("12103", "Piutang Pihak Berelasi")
+  ], [allAccounts])
+
+  // B. Harta Tetap (Akumulasi & Aset Tetap)
+  const hartaTetapList = useMemo(() => {
+    // 15105: Akumulasi Penyusutan (bersifat kontra-aset/mengurangi nilai)
+    const penyusutan = getAccount("15105", "Akumulasi Penyusutan Aset Tetap")
+    
+    // Gabungan nilai aset tetap berwujud/peralatan/kendaraan/furniture
+    const asetTetapAccounts = ["15200", "15300", "15400", "15500"]
+    const totalNilaiAset = allAccounts
+      .filter((a) => asetTetapAccounts.includes(String(a.no_akun).trim()))
+      .reduce((sum, item) => sum + Number(item.saldo || 0), 0)
+
+    return [
+      {
+        no_akun: "15000-GRP",
+        nama_akun: "Aset Tetap",
+        saldo: totalNilaiAset
+      },
+      {
+        ...penyusutan,
+        nama_akun: "Penyusutan Aset",
+        // Nilai penyusutan umumnya mengurangi aset
+        saldo: penyusutan.saldo > 0 ? -penyusutan.saldo : penyusutan.saldo
+      }
+    ]
+  }, [allAccounts])
+
+  // C. Investasi
+  const investasiList = useMemo(() => [
+    getAccount("16100", "Investasi Properti"),
+    getAccount("16101", "Investasi Logam Mulia")
+  ], [allAccounts])
+
+  // --- PEMETAAN SISI KANAN (PASIVA) ---
+  // A. Kewajiban / Utang
+  const kewajibanList = useMemo(() => {
+    // Utang Usaha (21100 Utang Vendor, 33-0001 Utang Belum Dibayar)
+    const akunUtangUsaha = ["21100", "33-0001"]
+    const totalUtangUsaha = allAccounts
+      .filter((a) => akunUtangUsaha.includes(String(a.no_akun).trim()))
+      .reduce((sum, item) => sum + Number(item.saldo || 0), 0)
+
+    // Utang Pajak (22100, 22101, 22102, 22103, 22104)
+    const totalUtangPajak = allAccounts
+      .filter((a) => String(a.no_akun).startsWith("221"))
+      .reduce((sum, item) => sum + Number(item.saldo || 0), 0)
+
+    return [
+      {
+        no_akun: "21000-GRP",
+        nama_akun: "Utang Usaha",
+        saldo: totalUtangUsaha
+      },
+      {
+        no_akun: "22000-GRP",
+        nama_akun: "Utang Pajak",
+        saldo: totalUtangPajak
+      }
+    ]
+  }, [allAccounts])
+
+  // B. Modal / Ekuitas
+  const modalList = useMemo(() => [
+    getAccount("13001", "Modal"),
+    getAccount("13003", "Laba Tahun Berjalan"),
+    getAccount("13002", "Laba Ditahan"),
+    {
+      ...getAccount("31101", "Dividen"),
+      // Saldo dividen bersifat pengurang ekuitas
+      saldo: getAccount("31101", "Dividen").saldo > 0 
+        ? -getAccount("31101", "Dividen").saldo 
+        : getAccount("31101", "Dividen").saldo
+    }
+  ], [allAccounts])
+
+  // Perhitungan Subtotal dan Grand Total
+  const totalAsetLancar = asetLancarList.reduce((acc, curr) => acc + curr.saldo, 0)
+  const totalHartaTetap = hartaTetapList.reduce((acc, curr) => acc + curr.saldo, 0)
+  const totalInvestasi = investasiList.reduce((acc, curr) => acc + curr.saldo, 0)
+  const totalAktiva = totalAsetLancar + totalHartaTetap + totalInvestasi
+
+  const totalKewajiban = kewajibanList.reduce((acc, curr) => acc + curr.saldo, 0)
+  const totalModal = modalList.reduce((acc, curr) => acc + curr.saldo, 0)
+  const totalPasiva = totalKewajiban + totalModal
 
   if (loading) {
     return (
@@ -87,7 +214,7 @@ export default function NeracaPage() {
         </div>
       </div>
 
-      {/* 2. AREA KERTAS DATA NERACA */}
+      {/* AREA KERTAS DATA NERACA */}
       <Card className="border border-zinc-200 shadow-none rounded-sm bg-white w-full overflow-hidden">
         <CardHeader className="text-left border-b border-zinc-200 bg-zinc-50/50 py-5 px-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -125,27 +252,21 @@ export default function NeracaPage() {
                       A. ASET LANCAR
                     </TableCell>
                   </TableRow>
-                  
-                  {data?.aktivaLancar && data.aktivaLancar.length > 0 ? (
-                    data.aktivaLancar.map((item) => (
-                      <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
-                        <TableCell className="pl-12 py-2.5 text-zinc-700 font-medium">
-                          <span>{item.nama_akun}</span>
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">{formatRupiah(item.saldo)}</TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow className="border-none hover:bg-transparent">
-                      <TableCell className="pl-12 py-3 text-zinc-400 italic font-medium" colSpan={2}>
-                        Tidak ada data aset lancar.
+                  {asetLancarList.map((item) => (
+                    <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
+                      <TableCell className="pl-12 py-2 text-zinc-700 font-medium">
+                        {item.nama_akun}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">
+                        {formatRupiah(item.saldo)}
                       </TableCell>
                     </TableRow>
-                  )}
-                  
+                  ))}
                   <TableRow className="border-b border-zinc-100 bg-zinc-50/30">
-                    <TableCell className="pl-8 py-2.5 text-zinc-500 italic font-medium">Total Aset Lancar</TableCell>
-                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">{formatRupiah(data?.totalAktivaLancar || 0)}</TableCell>
+                    <TableCell className="pl-8 py-2 text-zinc-500 italic font-medium">Total Aset Lancar</TableCell>
+                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">
+                      {formatRupiah(totalAsetLancar)}
+                    </TableCell>
                   </TableRow>
 
                   {/* B. HARTA TETAP */}
@@ -154,23 +275,44 @@ export default function NeracaPage() {
                       B. HARTA TETAP
                     </TableCell>
                   </TableRow>
-                  {data && data.hartaTetap.length > 0 ? (
-                    data.hartaTetap.map((item) => (
-                      <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
-                        <TableCell className="pl-12 py-2.5 text-zinc-700 font-medium">
-                          <span>{item.nama_akun}</span>
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">{formatRupiah(item.saldo)}</TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow className="border-none hover:bg-transparent">
-                      <TableCell className="pl-12 py-3 text-zinc-400 italic font-medium" colSpan={2}>Tidak ada data harta tetap terdaftar.</TableCell>
+                  {hartaTetapList.map((item) => (
+                    <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
+                      <TableCell className="pl-12 py-2 text-zinc-700 font-medium">
+                        {item.nama_akun}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">
+                        {formatRupiah(item.saldo)}
+                      </TableCell>
                     </TableRow>
-                  )}
+                  ))}
+                  <TableRow className="border-b border-zinc-100 bg-zinc-50/30">
+                    <TableCell className="pl-8 py-2 text-zinc-500 italic font-medium">Total Harta Tetap</TableCell>
+                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">
+                      {formatRupiah(totalHartaTetap)}
+                    </TableCell>
+                  </TableRow>
+
+                  {/* C. INVESTASI */}
+                  <TableRow className="hover:bg-transparent border-none">
+                    <TableCell className="pl-6 pt-4 text-zinc-900 font-extrabold uppercase text-[10px] tracking-wide" colSpan={2}>
+                      C. INVESTASI
+                    </TableCell>
+                  </TableRow>
+                  {investasiList.map((item) => (
+                    <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
+                      <TableCell className="pl-12 py-2 text-zinc-700 font-medium">
+                        {item.nama_akun}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">
+                        {formatRupiah(item.saldo)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                   <TableRow className="border-b border-zinc-200 bg-zinc-50/30">
-                    <TableCell className="pl-8 py-2.5 text-zinc-500 italic font-medium">Total Harta Tetap</TableCell>
-                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">{formatRupiah(data?.totalHartaTetap || 0)}</TableCell>
+                    <TableCell className="pl-8 py-2 text-zinc-500 italic font-medium">Total Investasi</TableCell>
+                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">
+                      {formatRupiah(totalInvestasi)}
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -186,41 +328,39 @@ export default function NeracaPage() {
                     </TableCell>
                   </TableRow>
 
-                  {/* KEWAJIBAN */}
+                  {/* A. KEWAJIBAN */}
                   <TableRow className="hover:bg-transparent border-none">
                     <TableCell className="pl-6 pt-3 text-zinc-900 font-extrabold uppercase text-[10px] tracking-wide" colSpan={2}>
-                      A. KEWAJIBAN / HUTANG
+                      A. KEWAJIBAN / UTANG
                     </TableCell>
                   </TableRow>
-                  {data && data.kewajiban.length > 0 ? (
-                    data.kewajiban.map((item) => (
-                      <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
-                        <TableCell className="pl-12 py-2.5 text-zinc-700 font-medium">
-                          <span>{item.nama_akun}</span>
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">{formatRupiah(item.saldo)}</TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow className="border-none hover:bg-transparent">
-                      <TableCell className="pl-12 py-3 text-zinc-400 italic font-medium" colSpan={2}>Perusahaan bersih dari kewajiban hutang usaha.</TableCell>
+                  {kewajibanList.map((item) => (
+                    <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
+                      <TableCell className="pl-12 py-2 text-zinc-700 font-medium">
+                        {item.nama_akun}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">
+                        {formatRupiah(item.saldo)}
+                      </TableCell>
                     </TableRow>
-                  )}
+                  ))}
                   <TableRow className="border-b border-zinc-100 bg-zinc-50/30">
-                    <TableCell className="pl-8 py-2.5 text-zinc-500 italic font-medium">Total Kewajiban</TableCell>
-                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">{formatRupiah(data?.totalKewajiban || 0)}</TableCell>
+                    <TableCell className="pl-8 py-2 text-zinc-500 italic font-medium">Total Kewajiban</TableCell>
+                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">
+                      {formatRupiah(totalKewajiban)}
+                    </TableCell>
                   </TableRow>
 
-                  {/* EKUITAS */}
+                  {/* B. EKUITAS / MODAL */}
                   <TableRow className="hover:bg-transparent border-none">
                     <TableCell className="pl-6 pt-4 text-zinc-900 font-extrabold uppercase text-[10px] tracking-wide" colSpan={2}>
-                      B. EKUITAS (MODAL & LABA)
+                      B. MODAL
                     </TableCell>
                   </TableRow>
-                  {data?.ekuitas.map((item) => (
+                  {modalList.map((item) => (
                     <TableRow key={item.no_akun} className="hover:bg-zinc-50/30 border-none transition-colors">
-                      <TableCell className="pl-12 py-2.5 text-zinc-700 font-medium">
-                        <span>{item.nama_akun}</span>
+                      <TableCell className="pl-12 py-2 text-zinc-700 font-medium">
+                        {item.nama_akun}
                       </TableCell>
                       <TableCell className="text-right font-mono text-zinc-900 pr-8 text-sm">
                         {formatRupiah(item.saldo)}
@@ -228,8 +368,10 @@ export default function NeracaPage() {
                     </TableRow>
                   ))}
                   <TableRow className="border-b border-zinc-200 bg-zinc-50/30">
-                    <TableCell className="pl-8 py-2.5 text-zinc-500 italic font-medium">Total Ekuitas Perusahaan</TableCell>
-                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">{formatRupiah(data?.totalEkuitas || 0)}</TableCell>
+                    <TableCell className="pl-8 py-2 text-zinc-500 italic font-medium">Total Modal & Ekuitas</TableCell>
+                    <TableCell className="text-right font-mono text-zinc-700 pr-8 font-black text-sm">
+                      {formatRupiah(totalModal)}
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -242,13 +384,13 @@ export default function NeracaPage() {
             <div className="flex items-center justify-between py-4 px-6">
               <span className="uppercase tracking-widest text-[10px]">TOTAL AKTIVA (JUMLAH ASET)</span>
               <span className="font-mono text-emerald-400 text-base border-b-4 border-double border-emerald-400 pb-0.5">
-                {formatRupiah(data?.totalAktiva || 0)}
+                {formatRupiah(totalAktiva)}
               </span>
             </div>
             <div className="flex items-center justify-between py-4 px-6">
               <span className="uppercase tracking-widest text-[10px]">TOTAL PASIVA (KEWAJIBAN & EKUITAS)</span>
               <span className="font-mono text-emerald-400 text-base border-b-4 border-double border-emerald-400 pb-0.5">
-                {formatRupiah(data?.totalPasiva || 0)}
+                {formatRupiah(totalPasiva)}
               </span>
             </div>
           </div>
@@ -258,7 +400,7 @@ export default function NeracaPage() {
       {/* FOOTER TIMESTAMPS */}
       <div className="text-[9px] font-bold text-zinc-400 flex justify-between px-2 uppercase italic tracking-wider">
         <p>* Sistem Neraca Terintegrasi</p>
-        <p>Status Neraca: Balanced Statement</p>
+        <p>Status Neraca: {totalAktiva === totalPasiva ? "Balanced Statement" : "Unbalanced Statement"}</p>
       </div>
     </div>
   )
