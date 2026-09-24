@@ -38,7 +38,7 @@ export async function getJurnalList(
   page?: number,
   pageSize?: number,
   search?: string,
-  tipe?: "ALL" | "BK" | "BD" | "KK"
+  tipe?: "ALL" | "BK" | "BD" | "KK" | "KD"
 ) {
   try {
     const cleanStart = cleanParam(startDate)

@@ -118,14 +118,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
         // RIWAYAT TRANSAKSI
         {
-          title: "Riwayat Transaksi",
+          title: "General Ledger",
           url: "#",
           icon: <History />,
           roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
           items: [
             {
-              title: "Riwayat Transaksi",
-              url: "/dashboard/finance/riwayat/transaksi",
+              title: "General Ledger",
+              url: "/dashboard/finance/riwayat/general-ledger",
             },
           ],
         },

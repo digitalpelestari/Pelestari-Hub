@@ -37,9 +37,9 @@ export default function BukuKasPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
-  const [selectedType, setSelectedType] = useState<"ALL" | "BK" | "BD" | "KK">(
-    "ALL"
-  )
+  const [selectedType, setSelectedType] = useState<
+    "ALL" | "BK" | "BD" | "KK" | "KD"
+  >("ALL")
   const [isExporting, setIsExporting] = useState(false)
   const [saldoKas, setSaldoKas] = useState(0)
   const [sortOrder, setSortOrder] = useState<"terbaru" | "terlama">("terbaru")
@@ -250,11 +250,11 @@ export default function BukuKasPage() {
               <ReceiptText className="h-5 w-5" />
             </div>
             <h1 className="text-xl font-bold tracking-tight text-zinc-900">
-              Laporan Riwayat Transaksi
+              General Ledger
             </h1>
           </div>
           <p className="mt-1 pl-9 text-xs text-zinc-500">
-            Daftar dan rincian transaksi yang telah tercatat.
+            Buku besar seluruh akun berdasarkan jurnal yang tercatat.
           </p>
         </div>
 
@@ -360,6 +360,20 @@ export default function BukuKasPage() {
               }`}
             >
               KK
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedType("KD")
+                setCurrentPage(1)
+              }}
+              className={`rounded-md px-3 py-1.5 text-xs font-bold transition-all ${
+                selectedType === "KD"
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "text-zinc-500 hover:text-emerald-600"
+              }`}
+            >
+              KD
             </button>
           </div>
         </div>
@@ -516,7 +530,9 @@ export default function BukuKasPage() {
                               ? "border border-blue-100 bg-blue-50 text-blue-700"
                               : row.no_registrasi.startsWith("KK")
                                 ? "border border-amber-100 bg-amber-50 text-amber-700"
-                                : "bg-zinc-100 text-zinc-700"
+                                : row.no_registrasi.startsWith("KD")
+                                  ? "border border-emerald-100 bg-emerald-50 text-emerald-700"
+                                  : "bg-zinc-100 text-zinc-700"
                         }`}
                       >
                         {row.no_registrasi}
