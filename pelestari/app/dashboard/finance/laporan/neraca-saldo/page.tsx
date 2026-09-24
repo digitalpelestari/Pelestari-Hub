@@ -79,34 +79,22 @@ export default function NeracaSaldoPage() {
     }
   }
 
-  /*
-   * Load seluruh data ketika halaman pertama kali dibuka.
-   */
   useEffect(() => {
     loadData("", "")
   }, [])
 
-  /*
-   * Filter otomatis ketika kedua tanggal sudah dipilih.
-   */
   useEffect(() => {
     if (tanggalMulai && tanggalSelesai) {
       loadData(tanggalMulai, tanggalSelesai)
     }
   }, [tanggalMulai, tanggalSelesai])
 
-  /*
-   * Reset filter ke seluruh periode.
-   */
   function handleReset() {
     setTanggalMulai("")
     setTanggalSelesai("")
     loadData("", "")
   }
 
-  /*
-   * Format angka menjadi Rupiah.
-   */
   function formatRupiah(value: number) {
     const isNegative = value < 0
 
@@ -122,42 +110,96 @@ export default function NeracaSaldoPage() {
 
   /*
    * Hanya tampilkan akun yang memiliki
-   * transaksi debit atau kredit.
+   * saldo awal atau pergerakan.
    */
-  const filteredData = data.filter(
-    (item) =>
-      Number(item.debit || 0) !== 0 ||
-      Number(item.kredit || 0) !== 0
-  )
+  const filteredData = data.filter((item) => {
+    const saldoAwalDebit = Number(
+      item.saldo_awal_debit || 0
+    )
+
+    const saldoAwalKredit = Number(
+      item.saldo_awal_kredit || 0
+    )
+
+    const pergerakanDebit = Number(
+      item.pergerakan_debit || 0
+    )
+
+    const pergerakanKredit = Number(
+      item.pergerakan_kredit || 0
+    )
+
+    const saldoAkhirDebit = Number(
+      item.saldo_akhir_debit || 0
+    )
+
+    const saldoAkhirKredit = Number(
+      item.saldo_akhir_kredit || 0
+    )
+
+    return (
+      saldoAwalDebit !== 0 ||
+      saldoAwalKredit !== 0 ||
+      pergerakanDebit !== 0 ||
+      pergerakanKredit !== 0 ||
+      saldoAkhirDebit !== 0 ||
+      saldoAkhirKredit !== 0
+    )
+  })
 
   /*
-   * Total debit.
+   * TOTAL SALDO AWAL
    */
-  const totalDebit = data.reduce(
+  const totalSaldoAwalDebit = data.reduce(
     (total, item) =>
-      total + Number(item.debit || 0),
+      total + Number(item.saldo_awal_debit || 0),
+    0
+  )
+
+  const totalSaldoAwalKredit = data.reduce(
+    (total, item) =>
+      total + Number(item.saldo_awal_kredit || 0),
     0
   )
 
   /*
-   * Total kredit.
+   * TOTAL PERGERAKAN
    */
-  const totalKredit = data.reduce(
+  const totalPergerakanDebit = data.reduce(
     (total, item) =>
-      total + Number(item.kredit || 0),
+      total + Number(item.pergerakan_debit || 0),
+    0
+  )
+
+  const totalPergerakanKredit = data.reduce(
+    (total, item) =>
+      total + Number(item.pergerakan_kredit || 0),
     0
   )
 
   /*
-   * Selisih debit dan kredit.
+   * TOTAL SALDO AKHIR
    */
-  const selisih = totalDebit - totalKredit
+  const totalSaldoAkhirDebit = data.reduce(
+    (total, item) =>
+      total + Number(item.saldo_akhir_debit || 0),
+    0
+  )
 
-  const isBalance = selisih === 0
+  const totalSaldoAkhirKredit = data.reduce(
+    (total, item) =>
+      total + Number(item.saldo_akhir_kredit || 0),
+    0
+  )
 
   /*
-   * Loading.
+   * Balance berdasarkan saldo akhir.
    */
+  const selisih =
+    totalSaldoAkhirDebit - totalSaldoAkhirKredit
+
+  const isBalance = Math.abs(selisih) < 0.01
+
   if (loading) {
     return (
       <div className="flex h-96 w-full items-center justify-center gap-3 bg-white text-xs font-black tracking-widest text-zinc-400 uppercase italic">
@@ -170,9 +212,7 @@ export default function NeracaSaldoPage() {
   return (
     <div className="w-full space-y-6 p-6 font-sans text-zinc-900">
 
-      {/* =====================================================
-          HEADER UTAMA
-      ===================================================== */}
+      {/* HEADER */}
       <div className="flex w-full flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
 
         <div className="space-y-1">
@@ -220,10 +260,7 @@ export default function NeracaSaldoPage() {
         </div>
       </div>
 
-
-      {/* =====================================================
-          FILTER PERIODE
-      ===================================================== */}
+      {/* FILTER */}
       <Card className="w-full rounded-sm border border-zinc-200 bg-white shadow-none">
 
         <CardHeader className="border-b border-zinc-200 bg-zinc-50/50 px-6 py-4">
@@ -238,9 +275,7 @@ export default function NeracaSaldoPage() {
 
           <div className="flex flex-col gap-4 md:flex-row md:items-end">
 
-            {/* Tanggal Mulai */}
             <div className="w-full md:w-56">
-
               <label className="mb-2 block text-[10px] font-black tracking-wider text-zinc-500 uppercase">
                 Tanggal Mulai
               </label>
@@ -254,13 +289,9 @@ export default function NeracaSaldoPage() {
                 }
                 className="h-10 rounded-sm border-zinc-300 text-xs"
               />
-
             </div>
 
-
-            {/* Tanggal Selesai */}
             <div className="w-full md:w-56">
-
               <label className="mb-2 block text-[10px] font-black tracking-wider text-zinc-500 uppercase">
                 Tanggal Selesai
               </label>
@@ -274,11 +305,8 @@ export default function NeracaSaldoPage() {
                 }
                 className="h-10 rounded-sm border-zinc-300 text-xs"
               />
-
             </div>
 
-
-            {/* Reset */}
             <Button
               variant="outline"
               onClick={handleReset}
@@ -298,49 +326,78 @@ export default function NeracaSaldoPage() {
         </CardContent>
       </Card>
 
-
-      {/* =====================================================
-          STATUS / SUMMARY
-      ===================================================== */}
+      {/* SUMMARY */}
       <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-3">
 
-        {/* TOTAL DEBIT */}
         <Card className="rounded-sm border border-zinc-200 bg-white shadow-none">
-
           <CardContent className="p-5">
 
             <p className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">
-              Total Debit
+              Saldo Awal
             </p>
 
-            <p className="mt-2 font-mono text-xl font-black text-zinc-900">
-              {formatRupiah(totalDebit)}
-            </p>
+            <div className="mt-2 grid grid-cols-2 gap-4">
+
+              <div>
+                <p className="text-[9px] font-bold text-zinc-400 uppercase">
+                  Debit
+                </p>
+
+                <p className="font-mono text-sm font-black">
+                  {formatRupiah(totalSaldoAwalDebit)}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[9px] font-bold text-zinc-400 uppercase">
+                  Kredit
+                </p>
+
+                <p className="font-mono text-sm font-black">
+                  {formatRupiah(totalSaldoAwalKredit)}
+                </p>
+              </div>
+
+            </div>
 
           </CardContent>
         </Card>
 
-
-        {/* TOTAL KREDIT */}
         <Card className="rounded-sm border border-zinc-200 bg-white shadow-none">
-
           <CardContent className="p-5">
 
             <p className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">
-              Total Kredit
+              Pergerakan
             </p>
 
-            <p className="mt-2 font-mono text-xl font-black text-zinc-900">
-              {formatRupiah(totalKredit)}
-            </p>
+            <div className="mt-2 grid grid-cols-2 gap-4">
+
+              <div>
+                <p className="text-[9px] font-bold text-zinc-400 uppercase">
+                  Debit
+                </p>
+
+                <p className="font-mono text-sm font-black">
+                  {formatRupiah(totalPergerakanDebit)}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[9px] font-bold text-zinc-400 uppercase">
+                  Kredit
+                </p>
+
+                <p className="font-mono text-sm font-black">
+                  {formatRupiah(totalPergerakanKredit)}
+                </p>
+              </div>
+
+            </div>
 
           </CardContent>
         </Card>
 
-
-        {/* STATUS */}
         <Card className="rounded-sm border border-zinc-200 bg-white shadow-none">
-
           <CardContent className="p-5">
 
             <p className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">
@@ -380,10 +437,7 @@ export default function NeracaSaldoPage() {
 
       </div>
 
-
-      {/* =====================================================
-          ERROR
-      ===================================================== */}
+      {/* ERROR */}
       {error && (
         <Card className="rounded-sm border-red-200 bg-red-50 shadow-none">
 
@@ -400,13 +454,9 @@ export default function NeracaSaldoPage() {
         </Card>
       )}
 
-
-      {/* =====================================================
-          LAPORAN NERACA SALDO
-      ===================================================== */}
+      {/* TABLE */}
       <Card className="w-full overflow-hidden rounded-sm border border-zinc-200 bg-white shadow-none">
 
-        {/* Header laporan */}
         <CardHeader className="border-b border-zinc-200 bg-zinc-50/50 px-6 py-5">
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -445,31 +495,79 @@ export default function NeracaSaldoPage() {
 
         </CardHeader>
 
-
         <CardContent className="w-full p-0">
 
           <div className="w-full overflow-x-auto">
 
-            <Table className="w-full">
+            <Table className="w-full min-w-[1100px]">
 
-              {/* Header tabel */}
+              {/* HEADER */}
               <TableHeader>
 
-                <TableRow className="border-b border-zinc-300 bg-zinc-100/80 hover:bg-zinc-100/80">
+                {/* HEADER UTAMA */}
+                <TableRow className="border-b border-zinc-300 bg-zinc-100 hover:bg-zinc-100">
 
-                  <TableHead className="w-[140px] px-6 py-3 text-[10px] font-black tracking-wider text-zinc-900 uppercase">
+                  <TableHead
+                    rowSpan={2}
+                    className="w-[120px] border-r border-zinc-300 px-4 py-3 text-center text-[10px] font-black tracking-wider text-zinc-900 uppercase"
+                  >
                     No. Akun
                   </TableHead>
 
-                  <TableHead className="px-6 py-3 text-[10px] font-black tracking-wider text-zinc-900 uppercase">
+                  <TableHead
+                    rowSpan={2}
+                    className="min-w-[220px] border-r border-zinc-300 px-4 py-3 text-left text-[10px] font-black tracking-wider text-zinc-900 uppercase"
+                  >
                     Nama Akun
                   </TableHead>
 
-                  <TableHead className="w-[240px] px-6 py-3 text-right text-[10px] font-black tracking-wider text-zinc-900 uppercase">
+                  <TableHead
+                    colSpan={2}
+                    className="border-r border-zinc-300 px-4 py-3 text-center text-[10px] font-black tracking-wider text-zinc-900 uppercase"
+                  >
+                    Saldo Awal
+                  </TableHead>
+
+                  <TableHead
+                    colSpan={2}
+                    className="border-r border-zinc-300 px-4 py-3 text-center text-[10px] font-black tracking-wider text-zinc-900 uppercase"
+                  >
+                    Pergerakan
+                  </TableHead>
+
+                  <TableHead
+                    colSpan={2}
+                    className="px-4 py-3 text-center text-[10px] font-black tracking-wider text-zinc-900 uppercase"
+                  >
+                    Saldo Akhir
+                  </TableHead>
+
+                </TableRow>
+
+                {/* SUB HEADER */}
+                <TableRow className="border-b border-zinc-300 bg-zinc-50 hover:bg-zinc-50">
+
+                  <TableHead className="border-r border-zinc-200 px-4 py-2 text-right text-[9px] font-black text-zinc-600 uppercase">
                     Debit
                   </TableHead>
 
-                  <TableHead className="w-[240px] px-6 py-3 text-right text-[10px] font-black tracking-wider text-zinc-900 uppercase">
+                  <TableHead className="border-r border-zinc-300 px-4 py-2 text-right text-[9px] font-black text-zinc-600 uppercase">
+                    Kredit
+                  </TableHead>
+
+                  <TableHead className="border-r border-zinc-200 px-4 py-2 text-right text-[9px] font-black text-zinc-600 uppercase">
+                    Debit
+                  </TableHead>
+
+                  <TableHead className="border-r border-zinc-300 px-4 py-2 text-right text-[9px] font-black text-zinc-600 uppercase">
+                    Kredit
+                  </TableHead>
+
+                  <TableHead className="border-r border-zinc-200 px-4 py-2 text-right text-[9px] font-black text-zinc-600 uppercase">
+                    Debit
+                  </TableHead>
+
+                  <TableHead className="px-4 py-2 text-right text-[9px] font-black text-zinc-600 uppercase">
                     Kredit
                   </TableHead>
 
@@ -477,7 +575,7 @@ export default function NeracaSaldoPage() {
 
               </TableHeader>
 
-
+              {/* BODY */}
               <TableBody className="text-xs text-zinc-800">
 
                 {filteredData.length === 0 ? (
@@ -485,7 +583,7 @@ export default function NeracaSaldoPage() {
                   <TableRow className="hover:bg-transparent">
 
                     <TableCell
-                      colSpan={4}
+                      colSpan={8}
                       className="h-40 text-center text-xs text-zinc-400 italic"
                     >
                       Tidak ada data neraca saldo.
@@ -502,23 +600,55 @@ export default function NeracaSaldoPage() {
                       className="border-b border-zinc-100 transition-colors hover:bg-zinc-50/50"
                     >
 
-                      <TableCell className="px-6 py-3 font-mono text-xs font-bold text-zinc-700">
+                      {/* NO AKUN */}
+                      <TableCell className="border-r border-zinc-100 px-4 py-3 font-mono text-xs font-bold text-zinc-700">
                         {item.no_akun}
                       </TableCell>
 
-                      <TableCell className="px-6 py-3 font-medium text-zinc-700">
+                      {/* NAMA */}
+                      <TableCell className="border-r border-zinc-100 px-4 py-3 font-medium text-zinc-700">
                         {item.nama_akun}
                       </TableCell>
 
-                      <TableCell className="px-6 py-3 text-right font-mono text-sm font-semibold text-zinc-900">
-                        {item.debit > 0
-                          ? formatRupiah(item.debit)
+                      {/* SALDO AWAL - DEBIT */}
+                      <TableCell className="px-4 py-3 text-right font-mono text-xs font-semibold text-zinc-900">
+                        {Number(item.saldo_awal_debit || 0) !== 0
+                          ? formatRupiah(Number(item.saldo_awal_debit))
                           : "-"}
                       </TableCell>
 
-                      <TableCell className="px-6 py-3 text-right font-mono text-sm font-semibold text-zinc-900">
-                        {item.kredit > 0
-                          ? formatRupiah(item.kredit)
+                      {/* SALDO AWAL - KREDIT */}
+                      <TableCell className="border-r border-zinc-200 px-4 py-3 text-right font-mono text-xs font-semibold text-zinc-900">
+                        {Number(item.saldo_awal_kredit || 0) !== 0
+                          ? formatRupiah(Number(item.saldo_awal_kredit))
+                          : "-"}
+                      </TableCell>
+
+                      {/* PERGERAKAN - DEBIT */}
+                      <TableCell className="px-4 py-3 text-right font-mono text-xs font-semibold text-zinc-900">
+                        {Number(item.pergerakan_debit || 0) !== 0
+                          ? formatRupiah(Number(item.pergerakan_debit))
+                          : "-"}
+                      </TableCell>
+
+                      {/* PERGERAKAN - KREDIT */}
+                      <TableCell className="border-r border-zinc-200 px-4 py-3 text-right font-mono text-xs font-semibold text-zinc-900">
+                        {Number(item.pergerakan_kredit || 0) !== 0
+                          ? formatRupiah(Number(item.pergerakan_kredit))
+                          : "-"}
+                      </TableCell>
+
+                      {/* SALDO AKHIR - DEBIT */}
+                      <TableCell className="px-4 py-3 text-right font-mono text-xs font-semibold text-zinc-900">
+                        {Number(item.saldo_akhir_debit || 0) !== 0
+                          ? formatRupiah(Number(item.saldo_akhir_debit))
+                          : "-"}
+                      </TableCell>
+
+                      {/* SALDO AKHIR - KREDIT */}
+                      <TableCell className="px-4 py-3 text-right font-mono text-xs font-semibold text-zinc-900">
+                        {Number(item.saldo_akhir_kredit || 0) !== 0
+                          ? formatRupiah(Number(item.saldo_akhir_kredit))
                           : "-"}
                       </TableCell>
 
@@ -527,7 +657,6 @@ export default function NeracaSaldoPage() {
                   ))
                 )}
 
-
                 {/* TOTAL */}
                 {filteredData.length > 0 && (
 
@@ -535,17 +664,36 @@ export default function NeracaSaldoPage() {
 
                     <TableCell
                       colSpan={2}
-                      className="px-6 py-4 text-xs font-black tracking-widest text-zinc-900 uppercase"
+                      className="border-r border-zinc-300 px-4 py-4 text-xs font-black tracking-widest text-zinc-900 uppercase"
                     >
                       TOTAL NERACA SALDO
                     </TableCell>
 
-                    <TableCell className="px-6 py-4 text-right font-mono text-sm font-black text-zinc-900">
-                      {formatRupiah(totalDebit)}
+                    {/* SALDO AWAL */}
+                    <TableCell className="px-4 py-4 text-right font-mono text-xs font-black text-zinc-900">
+                      {formatRupiah(totalSaldoAwalDebit)}
                     </TableCell>
 
-                    <TableCell className="px-6 py-4 text-right font-mono text-sm font-black text-zinc-900">
-                      {formatRupiah(totalKredit)}
+                    <TableCell className="border-r border-zinc-300 px-4 py-4 text-right font-mono text-xs font-black text-zinc-900">
+                      {formatRupiah(totalSaldoAwalKredit)}
+                    </TableCell>
+
+                    {/* PERGERAKAN */}
+                    <TableCell className="px-4 py-4 text-right font-mono text-xs font-black text-zinc-900">
+                      {formatRupiah(totalPergerakanDebit)}
+                    </TableCell>
+
+                    <TableCell className="border-r border-zinc-300 px-4 py-4 text-right font-mono text-xs font-black text-zinc-900">
+                      {formatRupiah(totalPergerakanKredit)}
+                    </TableCell>
+
+                    {/* SALDO AKHIR */}
+                    <TableCell className="px-4 py-4 text-right font-mono text-xs font-black text-zinc-900">
+                      {formatRupiah(totalSaldoAkhirDebit)}
+                    </TableCell>
+
+                    <TableCell className="px-4 py-4 text-right font-mono text-xs font-black text-zinc-900">
+                      {formatRupiah(totalSaldoAkhirKredit)}
                     </TableCell>
 
                   </TableRow>
@@ -562,10 +710,7 @@ export default function NeracaSaldoPage() {
 
       </Card>
 
-
-      {/* =====================================================
-          FOOTER
-      ===================================================== */}
+      {/* FOOTER */}
       <div className="flex justify-between px-2 text-[9px] font-bold tracking-wider text-zinc-400 uppercase">
 
         <p>
