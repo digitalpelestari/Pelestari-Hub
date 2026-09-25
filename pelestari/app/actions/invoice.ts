@@ -68,8 +68,8 @@ export async function importInvoices(dataArray: any[]) {
 
       const jumlahPeserta1 = Number(item.jumlah_peserta) || 0;
       const hargaPeserta1 = Number(item.harga_peserta) || 0;
-      const keterangan1 = item.jenis_kegiatan || item.keterangan || "-";
-
+      const keterangan1 =
+        `${item.jenis_kegiatan || item.keterangan || "-"} - Batch ${item.batch || "-"}`;
       if (keterangan1 || jumlahPeserta1 > 0 || hargaPeserta1 > 0) {
         await connection.query(
           `INSERT INTO tb_invoice_details (
@@ -262,7 +262,7 @@ export async function createInvoice(formData: any) {
           ) VALUES (?, ?, ?, ?)`,
           [
             invoiceId,
-            item.item_deskripsi,
+            `${item.item_deskripsi || "-"} - Batch ${formData.batch || "-"}`,
             item.item_jumlah || 0,
             item.item_harga || 0,
           ]
@@ -464,7 +464,7 @@ export async function createInvoice(formData: any) {
       no_akun: "12100",
       debit: total,
       kredit: 0,
-      keterangan: `Piutang Invoice ${formData.nomor_invoice}`,
+      keterangan: `Piutang Invoice ${formData.nomor_invoice} - Batch ${formData.batch || "-"}`,
     });
 
     /*
