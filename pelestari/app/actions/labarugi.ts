@@ -6,7 +6,7 @@ export interface SubAkunItem {
   no_akun: string;
   nama_akun: string;
   kelompok_biaya_id: number | string | null;
-  kelompok_biaya: string; // Langsung berisi teks seperti "Biaya Pokok Pelatihan", "Biaya Operasional Kantor", dll.
+  kelompok_biaya: string;
   saldo: number;
 }
 
@@ -39,56 +39,79 @@ export async function getLabaRugiData(
   month: string = "all"
 ): Promise<LabaRugiData> {
   try {
-    // 1. PENDAPATAN INVOICE
-    let queryInvoice = `
+    // 1. PENDAPATAN DARI JURNAL (akun 4xxx)
+    const queryPendapatan = `
       SELECT 
-        LOWER(jenis_kegiatan) as kegiatan,
-        SUM(COALESCE(total, 0)) as total_invoice_keluar
-      FROM tb_invoice
-      WHERE YEAR(created_at) = ?
+        ji.no_akun,
+        a.nama_akun,
+        SUM(ji.kredit) - SUM(ji.debit) AS saldo
+      FROM tb_jurnal_item ji
+      INNER JOIN tb_jurnal j ON j.id = ji.jurnal_id
+      INNER JOIN tb_akun a ON a.no_akun = ji.no_akun
+      WHERE ji.no_akun LIKE '4%'
+        AND YEAR(j.tanggal) = ?
+        ${month !== "all" ? "AND MONTH(j.tanggal) = ?" : ""}
+      GROUP BY ji.no_akun, a.nama_akun
     `;
-    const invoiceParams: any[] = [year];
 
+    const pendapatanParams: any[] = [year];
     if (month !== "all") {
-      queryInvoice += ` AND MONTH(created_at) = ?`;
-      invoiceParams.push(month);
+      pendapatanParams.push(month);
     }
 
-    queryInvoice += ` GROUP BY jenis_kegiatan`;
-    const [invoiceRows]: any = await db.query(queryInvoice, invoiceParams);
+    const [pendapatanRows]: any = await db.query(queryPendapatan, pendapatanParams);
 
     let pendapatanPelatihan = 0;
     let pendapatanKonsultan = 0;
 
-    invoiceRows.forEach((row: any) => {
-      const namaKegiatan = row.kegiatan || "";
-      if (namaKegiatan.includes("pelatihan")) {
-        pendapatanPelatihan += Number(row.total_invoice_keluar) || 0;
-      } else if (namaKegiatan.includes("konsultan") || namaKegiatan.includes("konsultasi")) {
-        pendapatanKonsultan += Number(row.total_invoice_keluar) || 0;
+    pendapatanRows.forEach((row: any) => {
+      const namaAkun = (row.nama_akun || "").toLowerCase();
+      const saldo = Number(row.saldo) || 0;
+
+      if (namaAkun.includes("pelatihan")) {
+        pendapatanPelatihan += saldo;
+      } else if (namaAkun.includes("konsultan") || namaAkun.includes("konsultasi")) {
+        pendapatanKonsultan += saldo;
       }
+      // "Pendapatan Lain-lain" (41102) sengaja tidak masuk kategori manapun,
+      // sama seperti perilaku original dengan tb_invoice
     });
 
     const totalPendapatan = pendapatanPelatihan + pendapatanKonsultan;
 
-    // 2. QUERY MASTER AKUN + JOIN KE TABEL KELOMPOK BIAYA
-    // Sesuaikan nama tabel 'tb_kelompok_biaya' jika di database kamu bernama 'kelompok_biaya'
+    // 2. QUERY MASTER AKUN + SALDO DARI JURNAL (BEBAN, SESUAI PERIODE)
     const queryAkun = `
       SELECT 
         a.no_akun,
         a.nama_akun,
         a.kelompok_biaya_id,
         COALESCE(kb.kelompok_biaya, 'Biaya Operasional Kantor') AS kelompok_biaya,
-        a.saldo
+        COALESCE(jd.total_debit, 0) - COALESCE(jd.total_kredit, 0) AS saldo
       FROM tb_akun a
       LEFT JOIN tb_kelompok_biaya kb ON a.kelompok_biaya_id = kb.id
+      LEFT JOIN (
+        SELECT 
+          ji.no_akun,
+          SUM(ji.debit) AS total_debit,
+          SUM(ji.kredit) AS total_kredit
+        FROM tb_jurnal_item ji
+        INNER JOIN tb_jurnal j ON j.id = ji.jurnal_id
+        WHERE YEAR(j.tanggal) = ?
+        ${month !== "all" ? "AND MONTH(j.tanggal) = ?" : ""}
+        GROUP BY ji.no_akun
+      ) jd ON jd.no_akun = a.no_akun
       WHERE a.no_akun NOT LIKE '1%' 
         AND a.no_akun NOT LIKE '2%'
         AND a.no_akun NOT LIKE '3%'
         AND a.no_akun NOT LIKE '4%' 
     `;
 
-    const [akunRows]: any = await db.query(queryAkun);
+    const akunParams: any[] = [year];
+    if (month !== "all") {
+      akunParams.push(month);
+    }
+
+    const [akunRows]: any = await db.query(queryAkun, akunParams);
 
     const mapBeban = new Map<string, AkunItem>();
     const mapPenyusutan = new Map<string, AkunItem>();
