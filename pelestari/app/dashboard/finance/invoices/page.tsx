@@ -642,8 +642,16 @@ export default function InvoiceListPage() {
                       <TableHead className="w-[120px] border-r font-bold text-zinc-700">
                         Jatuh Tempo
                       </TableHead>
+                      {/* KOLOM BARU: UMUR PIUTANG */}
+                      <TableHead className="w-[110px] border-r text-center font-bold text-zinc-700">
+                        Umur Piutang
+                      </TableHead>
                       <TableHead className="border-r font-bold text-zinc-700">
                         Tujuan
+                      </TableHead>
+                      {/* KOLOM BARU: JENIS KEGIATAN */}
+                      <TableHead className="w-[140px] border-r font-bold text-zinc-700">
+                        Jenis Kegiatan
                       </TableHead>
                       <TableHead className="border-r font-bold text-zinc-700">
                         Layanan
@@ -678,12 +686,6 @@ export default function InvoiceListPage() {
                             <div className="mt-1 text-[10px] font-normal tracking-tighter text-zinc-400 uppercase">
                               Mulai: {inv.tanggal}
                             </div>
-                            <div className="mt-1 text-[10px] font-normal tracking-tighter text-zinc-400 uppercase">
-                              Umur Piutang:{" "}
-                              {inv.status === "Lunas"
-                                ? "Lunas"
-                                : `${inv.umur_piutang} Hari`}
-                            </div>
                           </TableCell>
 
                           <TableCell className="border-r py-5 text-center font-bold text-zinc-700">
@@ -702,6 +704,25 @@ export default function InvoiceListPage() {
                             </div>
                           </TableCell>
 
+                          {/* KOLOM BARU: UMUR PIUTANG */}
+                          <TableCell className="border-r py-5 text-center">
+                            {inv.status === "Lunas" ? (
+                              <span className="text-[11px] text-zinc-300">
+                                —
+                              </span>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className={`rounded-sm text-[10px] font-black ${
+                                  inv.umur_piutang > 30
+                                    ? "border-red-200 bg-red-50 text-red-600"
+                                    : "border-amber-200 bg-amber-50 text-amber-600"
+                                }`}
+                              >
+                                {inv.umur_piutang} Hari
+                              </Badge>
+                            )}
+                          </TableCell>
                           <TableCell className="border-r py-5">
                             <div className="mb-1 text-[12px] font-bold text-zinc-900">
                               {inv.perusahaan_tujuan}
@@ -710,7 +731,15 @@ export default function InvoiceListPage() {
                               NPWP: {inv.npwp}
                             </div>
                           </TableCell>
-
+                          {/* KOLOM BARU: JENIS KEGIATAN */}
+                          <TableCell className="border-r py-5">
+                            <Badge
+                              variant="outline"
+                              className="rounded-sm border-zinc-200 bg-zinc-50 text-[10px] font-bold text-zinc-700 capitalize"
+                            >
+                              {inv.jenis_kegiatan || "-"}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="border-r bg-zinc-50/30 py-5">
                             <div className="flex flex-col gap-2">
                               {inv.items && inv.items.length > 0 ? (
@@ -980,7 +1009,7 @@ export default function InvoiceListPage() {
                     ) : (
                       <TableRow>
                         <TableCell
-                          colSpan={10}
+                          colSpan={12}
                           className="py-24 text-center font-sans text-zinc-400 italic"
                         >
                           Tidak ada data invoice yang ditemukan dalam database.

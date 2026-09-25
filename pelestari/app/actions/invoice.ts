@@ -827,13 +827,16 @@ export async function getInvoices() {
     }
 
     const dataLengkap = Array.from(invoiceMap.values()).map((inv: any) => {
-      const tglInvoice = new Date(inv.tanggal);
+      const tglJatuhTempo = new Date(inv.tanggal_jatuhtempo);
       const tglSekarang = new Date();
-      const selisihMilidetik = tglSekarang.getTime() - tglInvoice.getTime();
+
+      const selisihMilidetik = tglSekarang.getTime() - tglJatuhTempo.getTime();
       const hitungHari = Math.floor(selisihMilidetik / (1000 * 60 * 60 * 24));
 
       return {
         ...inv,
+        // Kalau belum lewat jatuh tempo (hitungHari negatif/0), umur piutang = 0
+        // Kalau sudah lewat, umur piutang = jumlah hari keterlambatan
         umur_piutang: hitungHari > 0 ? hitungHari : 0,
       };
     });
