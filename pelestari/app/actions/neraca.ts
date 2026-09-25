@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { getLabaRugiData } from "@/app/actions/labarugi";
 
 export interface NeracaItem {
   no_akun: string;
@@ -13,6 +14,8 @@ export interface NeracaData {
   totalAktivaLancar: number;
   hartaTetap: NeracaItem[];
   totalHartaTetap: number;
+  investasi: NeracaItem[];
+  totalInvestasi: number;
   totalAktiva: number;
   kewajiban: NeracaItem[];
   totalKewajiban: number;
@@ -21,129 +24,100 @@ export interface NeracaData {
   totalPasiva: number;
 }
 
-export async function getNeracaData(year: string = "2026"): Promise<NeracaData> {
+export async function getNeracaData(
+  year: string = "2026",
+  month: string = "all"
+): Promise<NeracaData> {
   try {
+    const selectedYear = parseInt(year);
+    const selectedMonth = month === "all" ? 12 : parseInt(month);
+
     // ----------------------------------------------------------------
-    // 1. HITUNG OMSET DAN LABA BERSIH REALTIME
+    // 1. HITUNG OMSET & PIUTANG KUMULATIF S/D BULAN TERPILIH
     // ----------------------------------------------------------------
-    const [invoiceRows]: any = await db.query(
-      `SELECT SUM(COALESCE(total, 0)) as total_omset FROM tb_invoice WHERE YEAR(created_at) = ?`,
-      [year]
-    );
-    const [paidInvoiceRows]: any = await db.query(
-      `SELECT SUM(COALESCE(bayar_1, 0) + COALESCE(bayar_2, 0)) as total_paid FROM tb_invoice WHERE YEAR(created_at) = ?`,
-      [year]
-    );
+    let invoiceQuery = `SELECT SUM(COALESCE(total, 0)) as total_omset FROM tb_invoice WHERE YEAR(created_at) = ?`;
+    let paidInvoiceQuery = `SELECT SUM(COALESCE(bayar_1, 0) + COALESCE(bayar_2, 0)) as total_paid FROM tb_invoice WHERE YEAR(created_at) = ?`;
+    const invoiceParams: any[] = [selectedYear];
+    const paidInvoiceParams: any[] = [selectedYear];
+
+    if (month !== "all") {
+      // Hanya ambil transaksi sampai bulan yang dipilih (misal: Januari <= 1)
+      invoiceQuery += ` AND MONTH(created_at) <= ?`;
+      paidInvoiceQuery += ` AND MONTH(created_at) <= ?`;
+      invoiceParams.push(selectedMonth);
+      paidInvoiceParams.push(selectedMonth);
+    }
+
+    const [invoiceRows]: any = await db.query(invoiceQuery, invoiceParams);
+    const [paidInvoiceRows]: any = await db.query(paidInvoiceQuery, paidInvoiceParams);
 
     const totalOmsetInvoice = Number(invoiceRows[0]?.total_omset) || 0;
     const totalUangDiterima = Number(paidInvoiceRows[0]?.total_paid) || 0;
-    const piutangDagangRealtime = totalOmsetInvoice - totalUangDiterima;
 
-    const [bebanRows]: any = await db.query(
-      `SELECT SUM(saldo) as total_beban FROM tb_akun WHERE saldo <> 0 AND (no_akun LIKE '2%' OR no_akun LIKE '3%' OR no_akun LIKE '4%' OR no_akun LIKE '5%')`
-    );
-    const totalBeban = Math.abs(Number(bebanRows[0]?.total_beban) || 0);
-    const labaBerjalanRealtime = totalOmsetInvoice - totalBeban;
+    // Piutang riil per akhir bulan yang dipilih
+    const piutangDagangRealtime = Math.max(0, totalOmsetInvoice - totalUangDiterima);
 
     // ----------------------------------------------------------------
-    // 2. HITUNG TOTAL NILAI PEROLEHAN ASET KANTOR DARI tb_asset
+    // 2. HITUNG LABA BERSIH SESUAI PERIODE DARI getLabaRugiData
+    // ----------------------------------------------------------------
+    const labaRugiData = await getLabaRugiData(year, month);
+    const labaBerjalanRealtime = Number(labaRugiData?.labaBersih || 0);
+
+    // ----------------------------------------------------------------
+    // 3. HITUNG PENYUSUTAN ASET TETAP BERDASARKAN BULAN TERPILIH
     // ----------------------------------------------------------------
     let totalHargaAset = 0;
     let totalPenyusutanAset = 0;
 
     try {
       const [asetRows]: any = await db.query(`
-  SELECT
-    harga_beli,
-    jenis_asset,
-    kelompok_komersial,
-    bulan_perolehan,
-    tahun_perolehan
-  FROM tb_asset
-  WHERE jenis_asset = 'Aset Tetap'
-`);
+        SELECT
+          harga_beli,
+          jenis_asset,
+          kelompok_komersial,
+          bulan_perolehan,
+          tahun_perolehan
+        FROM tb_asset
+        WHERE jenis_asset = 'Aset Tetap'
+      `);
 
       const bulanMap: { [key: string]: number } = {
-        Januari: 1,
-        Februari: 2,
-        Maret: 3,
-        April: 4,
-        Mei: 5,
-        Juni: 6,
-        Juli: 7,
-        Agustus: 8,
-        September: 9,
-        Oktober: 10,
-        November: 11,
-        Desember: 12,
+        Januari: 1, Februari: 2, Maret: 3, April: 4, Mei: 5, Juni: 6,
+        Juli: 7, Agustus: 8, September: 9, Oktober: 10, November: 11, Desember: 12,
       };
 
-      const sekarang = new Date();
-      const bulanSekarang = sekarang.getMonth() + 1;
-      const tahunSekarang = sekarang.getFullYear();
-
-      asetRows.forEach((asset: any) => {
+      (asetRows || []).forEach((asset: any) => {
         const hargaBeli = Number(asset.harga_beli) || 0;
-
-        // harga_beli adalah total nilai perolehan
         const nilaiPerolehan = hargaBeli;
-
         totalHargaAset += nilaiPerolehan;
 
-        // Umur ekonomis mengikuti kelompok komersial yang tersimpan
-        const umurEkonomis =
-          Number(asset.kelompok_komersial) || 4;
+        const umurEkonomis = Number(asset.kelompok_komersial) || 4;
+        const penyusutanTahunan = nilaiPerolehan / umurEkonomis;
+        const penyusutanBulanan = penyusutanTahunan / 12;
 
-        // Penyusutan garis lurus per tahun
-        const penyusutanTahunan =
-          nilaiPerolehan / umurEkonomis;
+        const bulanPerolehan = bulanMap[asset.bulan_perolehan] || 1;
+        const tahunPerolehan = Number(asset.tahun_perolehan) || selectedYear;
 
-        // Penyusutan per bulan
-        const penyusutanBulanan =
-          penyusutanTahunan / 12;
-
-        const bulanPerolehan =
-          bulanMap[asset.bulan_perolehan] || 1;
-
-        const tahunPerolehan =
-          Number(asset.tahun_perolehan) || tahunSekarang;
-
-        // Bulan perolehan TIDAK dihitung
         let jumlahBulan = 0;
 
-        if (tahunPerolehan < tahunSekarang) {
-          jumlahBulan =
-            (tahunSekarang - tahunPerolehan) * 12 +
-            (bulanSekarang - bulanPerolehan);
-        } else if (tahunPerolehan === tahunSekarang) {
-          jumlahBulan =
-            bulanSekarang - bulanPerolehan;
+        if (tahunPerolehan < selectedYear) {
+          jumlahBulan = (selectedYear - tahunPerolehan) * 12 + (selectedMonth - bulanPerolehan);
+        } else if (tahunPerolehan === selectedYear) {
+          jumlahBulan = selectedMonth - bulanPerolehan;
         }
 
-        // Aset yang belum diperoleh belum mengalami penyusutan
         if (
-          tahunPerolehan > tahunSekarang ||
-          (
-            tahunPerolehan === tahunSekarang &&
-            bulanPerolehan > bulanSekarang
-          )
+          tahunPerolehan > selectedYear ||
+          (tahunPerolehan === selectedYear && bulanPerolehan > selectedMonth)
         ) {
           jumlahBulan = 0;
         }
 
         jumlahBulan = Math.max(0, jumlahBulan);
+        const maksimalBulan = umurEkonomis * 12;
+        jumlahBulan = Math.min(jumlahBulan, maksimalBulan);
 
-        // Maksimal sesuai umur ekonomis
-        const maksimalBulan =
-          umurEkonomis * 12;
-
-        jumlahBulan =
-          Math.min(jumlahBulan, maksimalBulan);
-
-        // Akumulasi penyusutan
-        const akumulasiPenyusutan =
-          penyusutanBulanan * jumlahBulan;
-
+        const akumulasiPenyusutan = penyusutanBulanan * jumlahBulan;
         totalPenyusutanAset += akumulasiPenyusutan;
       });
     } catch (e) {
@@ -151,7 +125,7 @@ export async function getNeracaData(year: string = "2026"): Promise<NeracaData> 
     }
 
     // ----------------------------------------------------------------
-    // 3. AMBIL DATA MASTER AKUN
+    // 4. AMBIL DATA MASTER DARI tb_akun
     // ----------------------------------------------------------------
     const [akunRows]: any = await db.query(
       `SELECT no_akun, nama_akun, saldo FROM tb_akun ORDER BY no_akun ASC`
@@ -165,91 +139,109 @@ export async function getNeracaData(year: string = "2026"): Promise<NeracaData> 
     let totalKewajiban = 0;
     let totalEkuitas = 0;
 
-    const listAktivaLancar = ["11100", "11200", "12100", "12102", "12103"];
-
-    // Map penampung saldo akun harta tetap khusus
     let saldoInvestasiProperti = 0;
     let saldoLogamMulia = 0;
     let saldoKendaraan = 0;
-    let saldoPenyusutanAset = 0;
     let saldoPenyusutanKendaraan = 0;
 
-    akunRows.forEach((row: any) => {
+    (akunRows || []).forEach((row: any) => {
       const noAkun = String(row.no_akun).trim();
-      const namaAkunLower = String(row.nama_akun).toLowerCase();
       let nominal = Number(row.saldo) || 0;
 
-      if (noAkun === "12100" && piutangDagangRealtime > 0) {
+      // KUNCI PERBAIKAN:
+      // Akun 12100 selalu mengambil nilai realtime hasil filter bulan invoice
+      if (noAkun === "12100") {
         nominal = piutangDagangRealtime;
       }
 
-      const item: NeracaItem = {
-        no_akun: noAkun,
-        nama_akun: row.nama_akun,
-        saldo: nominal
-      };
+      // Abaikan akun nominal laba rugi & akun perantara closing
+      if (
+        noAkun.startsWith("4") ||
+        noAkun.startsWith("5") ||
+        noAkun.startsWith("6") ||
+        noAkun === "13004"
+      ) {
+        return;
+      }
 
-      // 1. AKTIVA LANCAR (11xxx & 12xxx)
-      if (listAktivaLancar.includes(noAkun) || noAkun.startsWith("11") || noAkun.startsWith("12")) {
-        item.saldo = Math.abs(item.saldo);
+      // 1. Akun Khusus (Investasi & Kendaraan)
+      if (noAkun === "16100") {
+        saldoInvestasiProperti = Math.abs(nominal);
+      } else if (noAkun === "16101") {
+        saldoLogamMulia = Math.abs(nominal);
+      } else if (noAkun === "15300") {
+        saldoKendaraan = Math.abs(nominal);
+      } else if (noAkun === "15400") {
+        saldoPenyusutanKendaraan = nominal > 0 ? -nominal : nominal;
+      }
+      // 2. Aktiva Lancar (Kas/Bank 11xxx, Piutang 12xxx)
+      else if (noAkun.startsWith("11") || noAkun.startsWith("12")) {
+        const item: NeracaItem = {
+          no_akun: noAkun,
+          nama_akun: row.nama_akun,
+          saldo: Math.abs(nominal),
+        };
         aktivaLancar.push(item);
         totalAktivaLancar += item.saldo;
       }
-      // 2. TANGKAP SALDO UNTUK HARTA TETAP KHUSUS
-      else if (noAkun.startsWith("1")) {
-        if (namaAkunLower.includes("properti") || (namaAkunLower.includes("investasi") && !namaAkunLower.includes("logam"))) {
-          saldoInvestasiProperti += Math.abs(nominal);
-        } else if (namaAkunLower.includes("logam") || namaAkunLower.includes("emas")) {
-          saldoLogamMulia += Math.abs(nominal);
-        } else if (namaAkunLower.includes("kendaraan") && !namaAkunLower.includes("penyusutan") && !namaAkunLower.includes("akumulasi")) {
-          saldoKendaraan += Math.abs(nominal);
-        } else if (
-          namaAkunLower.includes("penyusutan") ||
-          namaAkunLower.includes("akumulasi")
-        ) {
-          if (namaAkunLower.includes("kendaraan")) {
-            saldoPenyusutanKendaraan +=
-              nominal > 0 ? -nominal : nominal;
-          }
-        }
-      }
-      // 3. KEWAJIBAN / HUTANG (2xxx)
-      else if (noAkun.startsWith("2")) {
-        item.saldo = Math.abs(item.saldo);
+      // 3. Kewajiban (2xxx atau 33xxx)
+      else if (noAkun.startsWith("2") || noAkun.startsWith("33")) {
+        const item: NeracaItem = {
+          no_akun: noAkun,
+          nama_akun: row.nama_akun,
+          saldo: Math.abs(nominal),
+        };
         kewajiban.push(item);
         totalKewajiban += item.saldo;
       }
-      // 4. EKUITAS (3xxx)
-      else if (noAkun.startsWith("3")) {
-        item.saldo = Math.abs(item.saldo);
+      // 4. Modal / Ekuitas (13001, 13002, 31xxx)
+      else if (
+        noAkun === "13001" ||
+        noAkun === "13002" ||
+        (noAkun.startsWith("3") && !noAkun.startsWith("33"))
+      ) {
+        if (noAkun === "13003") return; // Laba tahun berjalan ditambahkan khusus di bawah
+
+        const item: NeracaItem = {
+          no_akun: noAkun,
+          nama_akun: row.nama_akun,
+          saldo: noAkun === "31101" ? -Math.abs(nominal) : Math.abs(nominal),
+        };
         ekuitas.push(item);
         totalEkuitas += item.saldo;
       }
     });
 
     // ----------------------------------------------------------------
-    // 4. SUSUN HARTA TETAP SESUAI URUTAN TERBARU
+    // 5. INVESTASI (16100 & 16101)
     // ----------------------------------------------------------------
-    const hartaTetap: NeracaItem[] = [
+    const investasi: NeracaItem[] = [
       {
-        no_akun: "14100",
+        no_akun: "16100",
         nama_akun: "Investasi Properti",
         saldo: saldoInvestasiProperti,
       },
       {
-        no_akun: "14200",
+        no_akun: "16101",
         nama_akun: "Logam Mulia",
         saldo: saldoLogamMulia,
       },
+    ];
+    const totalInvestasi = investasi.reduce((sum, item) => sum + item.saldo, 0);
+
+    // ----------------------------------------------------------------
+    // 6. HARTA TETAP (15200, 15105, 15300, 15400)
+    // ----------------------------------------------------------------
+    const hartaTetap: NeracaItem[] = [
       {
-        no_akun: "15100",
-        nama_akun: "Aset Kantor",
+        no_akun: "15200",
+        nama_akun: "Aset Tetap",
         saldo: totalHargaAset,
       },
       {
-        no_akun: "15200",
+        no_akun: "15105",
         nama_akun: "Penyusutan Aset",
-        saldo: -totalPenyusutanAset,
+        saldo: -Math.round(totalPenyusutanAset),
       },
       {
         no_akun: "15300",
@@ -262,40 +254,47 @@ export async function getNeracaData(year: string = "2026"): Promise<NeracaData> 
         saldo: saldoPenyusutanKendaraan,
       },
     ];
-
     const totalHartaTetap = hartaTetap.reduce((sum, item) => sum + item.saldo, 0);
 
     // ----------------------------------------------------------------
-    // 5. MENGHITUNG EKUITAS LABA BERJALAN
+    // 7. LABA TAHUN BERJALAN (13003)
     // ----------------------------------------------------------------
-    if (labaBerjalanRealtime !== 0) {
-      ekuitas.push({
-        no_akun: "3200",
-        nama_akun: "Laba Tahun Berjalan",
-        saldo: labaBerjalanRealtime
-      });
-      totalEkuitas += labaBerjalanRealtime;
-    }
+    ekuitas.push({
+      no_akun: "13003",
+      nama_akun: "Laba Tahun Berjalan",
+      saldo: labaBerjalanRealtime,
+    });
+    totalEkuitas += labaBerjalanRealtime;
 
     return {
       aktivaLancar,
       totalAktivaLancar,
       hartaTetap,
       totalHartaTetap,
-      totalAktiva: totalAktivaLancar + totalHartaTetap,
+      investasi,
+      totalInvestasi,
+      totalAktiva: totalAktivaLancar + totalHartaTetap + totalInvestasi,
       kewajiban,
       totalKewajiban,
       ekuitas,
       totalEkuitas,
-      totalPasiva: totalKewajiban + totalEkuitas
+      totalPasiva: totalKewajiban + totalEkuitas,
     };
   } catch (error) {
     console.error("Gagal memuat neraca balance sheet:", error);
     return {
-      aktivaLancar: [], totalAktivaLancar: 0,
-      hartaTetap: [], totalHartaTetap: 0, totalAktiva: 0,
-      kewajiban: [], totalKewajiban: 0,
-      ekuitas: [], totalEkuitas: 0, totalPasiva: 0
+      aktivaLancar: [],
+      totalAktivaLancar: 0,
+      hartaTetap: [],
+      totalHartaTetap: 0,
+      investasi: [],
+      totalInvestasi: 0,
+      totalAktiva: 0,
+      kewajiban: [],
+      totalKewajiban: 0,
+      ekuitas: [],
+      totalEkuitas: 0,
+      totalPasiva: 0,
     };
   }
 }
