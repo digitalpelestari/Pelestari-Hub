@@ -213,6 +213,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           url: "/dashboard/finance/closing-entries",
           icon: <PackageSearch />,
           roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+          items: [
+            {
+              title: "Bulanan",
+              url: "/dashboard/finance/closing-entries/bulanan",
+            },
+            {
+              title: "Tahunan",
+              url: "/dashboard/finance/closing-entries/tahunan",
+            },
+          ],
         },
       ],
     },

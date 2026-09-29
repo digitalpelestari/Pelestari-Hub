@@ -48,9 +48,10 @@ export async function getLabaRugiData(
       FROM tb_jurnal_item ji
       INNER JOIN tb_jurnal j ON j.id = ji.jurnal_id
       INNER JOIN tb_akun a ON a.no_akun = ji.no_akun
-      WHERE ji.no_akun LIKE '4%'
-        AND YEAR(j.tanggal) = ?
-        ${month !== "all" ? "AND MONTH(j.tanggal) = ?" : ""}
+    WHERE ji.no_akun LIKE '4%'
+  AND YEAR(j.tanggal) = ?
+  AND j.no_registrasi NOT LIKE 'CL_%'
+  ${month !== "all" ? "AND MONTH(j.tanggal) = ?" : ""}
       GROUP BY ji.no_akun, a.nama_akun
     `;
 
@@ -96,8 +97,9 @@ export async function getLabaRugiData(
           SUM(ji.kredit) AS total_kredit
         FROM tb_jurnal_item ji
         INNER JOIN tb_jurnal j ON j.id = ji.jurnal_id
-        WHERE YEAR(j.tanggal) = ?
-        ${month !== "all" ? "AND MONTH(j.tanggal) = ?" : ""}
+       WHERE YEAR(j.tanggal) = ?
+  AND j.no_registrasi NOT LIKE 'CL_%'
+  ${month !== "all" ? "AND MONTH(j.tanggal) = ?" : ""}
         GROUP BY ji.no_akun
       ) jd ON jd.no_akun = a.no_akun
       WHERE a.no_akun NOT LIKE '1%' 
