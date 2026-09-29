@@ -34,59 +34,68 @@ export interface LabaRugiData {
   labaBersih: number;
 }
 
+// Akun yang sengaja tidak dihitung di laba rugi.
+// 71106 (PPN) dikecualikan sementara karena di jurnal invoice dipakai sebagai
+// PPN keluaran (kredit). Kosongkan array ini kalau sudah dirapikan.
+const AKUN_DIKECUALIKAN: string[] = ["71106"];
+
 export async function getLabaRugiData(
   year: string = "2026",
   month: string = "all"
 ): Promise<LabaRugiData> {
   try {
-    // 1. PENDAPATAN DARI JURNAL (akun 4xxx)
+    const monthNum = month !== "all" ? Number(month) : null;
+    const yearNum = Number(year);
+
+    // 1. PENDAPATAN DARI tb_invoice (basis akrual, periode = tb_invoice.tanggal)
+    // Pendapatan = DPP saja. PPN, PPh 23 dan PNBP BUKAN pendapatan.
+    // total = DPP + PPN 11% - PPh 23 (2%) + nominal_pnbp, jadi kolom total tidak dipakai.
     const queryPendapatan = `
-      SELECT 
-        ji.no_akun,
-        a.nama_akun,
-        SUM(ji.kredit) - SUM(ji.debit) AS saldo
-      FROM tb_jurnal_item ji
-      INNER JOIN tb_jurnal j ON j.id = ji.jurnal_id
-      INNER JOIN tb_akun a ON a.no_akun = ji.no_akun
-    WHERE ji.no_akun LIKE '4%'
-  AND YEAR(j.tanggal) = ?
-  AND j.no_registrasi NOT LIKE 'CL_%'
-  ${month !== "all" ? "AND MONTH(j.tanggal) = ?" : ""}
-      GROUP BY ji.no_akun, a.nama_akun
+      SELECT
+        i.jenis_kegiatan,
+        SUM(
+          COALESCE(i.jumlah_peserta, 0)   * COALESCE(i.harga_peserta, 0) +
+          COALESCE(i.jumlah_peserta_2, 0) * COALESCE(i.harga_peserta_2, 0) +
+          COALESCE(d.dpp_detail, 0)
+        ) AS saldo
+      FROM tb_invoice i
+      LEFT JOIN (
+        SELECT invoice_id, SUM(item_jumlah * item_harga) AS dpp_detail
+        FROM tb_invoice_details
+        GROUP BY invoice_id
+      ) d ON d.invoice_id = i.id
+      WHERE YEAR(i.tanggal) = ?
+        ${monthNum ? "AND MONTH(i.tanggal) = ?" : ""}
+      GROUP BY i.jenis_kegiatan
     `;
 
-    const pendapatanParams: any[] = [year];
-    if (month !== "all") {
-      pendapatanParams.push(month);
-    }
-
+    const pendapatanParams: any[] = monthNum ? [yearNum, monthNum] : [yearNum];
     const [pendapatanRows]: any = await db.query(queryPendapatan, pendapatanParams);
 
     let pendapatanPelatihan = 0;
     let pendapatanKonsultan = 0;
 
     pendapatanRows.forEach((row: any) => {
-      const namaAkun = (row.nama_akun || "").toLowerCase();
+      const jenis = String(row.jenis_kegiatan || "").toLowerCase();
       const saldo = Number(row.saldo) || 0;
 
-      if (namaAkun.includes("pelatihan")) {
+      if (jenis === "pelatihan") {
         pendapatanPelatihan += saldo;
-      } else if (namaAkun.includes("konsultan") || namaAkun.includes("konsultasi")) {
+      } else if (jenis === "konsultan") {
         pendapatanKonsultan += saldo;
       }
-      // "Pendapatan Lain-lain" (41102) sengaja tidak masuk kategori manapun,
-      // sama seperti perilaku original dengan tb_invoice
+      // jenis_kegiatan kosong/NULL sengaja tidak dihitung
     });
 
     const totalPendapatan = pendapatanPelatihan + pendapatanKonsultan;
 
-    // 2. QUERY MASTER AKUN + SALDO DARI JURNAL (BEBAN, SESUAI PERIODE)
+    // 2. BEBAN (5xxxx, 6xxxx, 7xxxx, 8xxxx) DARI JURNAL SESUAI PERIODE
     const queryAkun = `
       SELECT 
         a.no_akun,
         a.nama_akun,
         a.kelompok_biaya_id,
-        COALESCE(kb.kelompok_biaya, 'Biaya Operasional Kantor') AS kelompok_biaya,
+        COALESCE(kb.kelompok_biaya, 'Tanpa Kelompok') AS kelompok_biaya,
         COALESCE(jd.total_debit, 0) - COALESCE(jd.total_kredit, 0) AS saldo
       FROM tb_akun a
       LEFT JOIN tb_kelompok_biaya kb ON a.kelompok_biaya_id = kb.id
@@ -97,9 +106,9 @@ export async function getLabaRugiData(
           SUM(ji.kredit) AS total_kredit
         FROM tb_jurnal_item ji
         INNER JOIN tb_jurnal j ON j.id = ji.jurnal_id
-       WHERE YEAR(j.tanggal) = ?
-  AND j.no_registrasi NOT LIKE 'CL_%'
-  ${month !== "all" ? "AND MONTH(j.tanggal) = ?" : ""}
+        WHERE YEAR(j.tanggal) = ?
+          AND (j.no_registrasi IS NULL OR j.no_registrasi NOT LIKE 'CL\\_%')
+          ${monthNum ? "AND MONTH(j.tanggal) = ?" : ""}
         GROUP BY ji.no_akun
       ) jd ON jd.no_akun = a.no_akun
       WHERE a.no_akun NOT LIKE '1%' 
@@ -108,11 +117,7 @@ export async function getLabaRugiData(
         AND a.no_akun NOT LIKE '4%' 
     `;
 
-    const akunParams: any[] = [year];
-    if (month !== "all") {
-      akunParams.push(month);
-    }
-
+    const akunParams: any[] = monthNum ? [yearNum, monthNum] : [yearNum];
     const [akunRows]: any = await db.query(queryAkun, akunParams);
 
     const mapBeban = new Map<string, AkunItem>();
@@ -159,21 +164,24 @@ export async function getLabaRugiData(
       const noAkun = String(row.no_akun || "");
       const kelompokId = row.kelompok_biaya_id ?? null;
       const kelompokBiaya = (row.kelompok_biaya || "").trim();
-      const saldo = Math.abs(Number(row.saldo) || 0);
-      const namaAkunLower = namaAkun.toLowerCase();
+      const saldo = Number(row.saldo) || 0; // tanpa Math.abs
 
       if (saldo === 0) return;
+      if (AKUN_DIKECUALIKAN.includes(noAkun)) return;
 
-      if (namaAkunLower.includes("pnbp") || namaAkunLower.includes("pajak terhutang")) {
+      const isPajak = noAkun.startsWith("71") || noAkun.startsWith("81");
+      const isPenyusutan = namaAkun.toLowerCase().includes("penyusutan");
+
+      if (isPajak) {
         totalPnbpDanPajak += saldo;
         insertIntoMap(mapPajak, namaAkun, noAkun, namaAkun, kelompokId, kelompokBiaya, saldo);
-      } else if (namaAkunLower.includes("penyusutan")) {
+      } else if (isPenyusutan) {
         totalPenyusutan += saldo;
         insertIntoMap(mapPenyusutan, namaAkun, noAkun, namaAkun, kelompokId, kelompokBiaya, saldo);
       } else {
         subTotalBeban += saldo;
-        const groupName = namaAkun;
-        insertIntoMap(mapBeban, groupName, noAkun, namaAkun, kelompokId, kelompokBiaya, saldo);
+        // group berdasarkan kelompok biaya
+        insertIntoMap(mapBeban, kelompokBiaya, noAkun, namaAkun, kelompokId, kelompokBiaya, saldo);
       }
     });
 
