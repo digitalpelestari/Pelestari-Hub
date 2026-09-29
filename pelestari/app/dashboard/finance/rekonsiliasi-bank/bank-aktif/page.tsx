@@ -14,6 +14,7 @@ import {
   simpanRekonsiliasi,
   getRekonsiliasi,
 } from "@/app/actions/rekonsiliasi"
+import { swal } from "@/lib/sweetalert"
 
 const NO_AKUN_BANK_AKTIF = "11200"
 
@@ -87,13 +88,13 @@ export default function RekonsiliasiBankHarian() {
         setData(null)
 
         if (result.message) {
-          alert(result.message)
+          await swal.error(result.message)
         }
       }
     } catch (error) {
       console.error("Gagal mengambil saldo akun:", error)
       setData(null)
-      alert("Gagal mengambil saldo akun.")
+      await swal.error("Gagal mengambil saldo akun.")
     } finally {
       setLoading(false)
     }
@@ -115,17 +116,21 @@ export default function RekonsiliasiBankHarian() {
 
   async function handleSimpan() {
     if (!data) {
-      alert("Data saldo akun belum tersedia.")
+      await swal.warning("Data saldo akun belum tersedia.")
       return
     }
 
     if (!sudahDiisi || saldoBank === null) {
-      alert("Silakan masukkan saldo rekening koran terlebih dahulu.")
+      await swal.warning(
+        "Silakan masukkan saldo rekening koran terlebih dahulu."
+      )
       return
     }
 
     if (!sudahBalance) {
-      alert("Saldo belum balance. Rekonsiliasi belum dapat disimpan.")
+      await swal.warning(
+        "Saldo belum balance. Rekonsiliasi belum dapat disimpan."
+      )
       return
     }
 
@@ -139,14 +144,14 @@ export default function RekonsiliasiBankHarian() {
       })
 
       if (!result.success) {
-        alert(result.message ?? "Gagal menyimpan rekonsiliasi.")
+        await swal.error(result.message ?? "Gagal menyimpan rekonsiliasi.")
         return
       }
 
-      alert(result.message)
+      await swal.success(result.message)
     } catch (error) {
       console.error("Gagal menyimpan rekonsiliasi:", error)
-      alert("Gagal menyimpan rekonsiliasi.")
+      await swal.error("Gagal menyimpan rekonsiliasi.")
     } finally {
       setSaving(false)
     }
