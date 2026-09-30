@@ -9,7 +9,13 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card"
 import {
   ArrowLeft,
   Save,
@@ -63,7 +69,20 @@ export default function CreateInvoicePage() {
       try {
         const nextId = await getNextInvoiceNumber()
         const now = new Date()
-        const roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
+        const roman = [
+          "I",
+          "II",
+          "III",
+          "IV",
+          "V",
+          "VI",
+          "VII",
+          "VIII",
+          "IX",
+          "X",
+          "XI",
+          "XII",
+        ]
         const romanMonth = roman[now.getMonth()]
         const year = now.getFullYear()
         const formattedNumber = nextId.toString().padStart(3, "0")
@@ -78,7 +97,9 @@ export default function CreateInvoicePage() {
 
   const calculation = useMemo(() => {
     const subtotalDasar = formData.items.reduce(
-      (total, item) => total + (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0),
+      (total, item) =>
+        total +
+        (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0),
       0
     )
 
@@ -189,10 +210,15 @@ export default function CreateInvoicePage() {
       !formData.tanggal_jatuhtempo ||
       formData.items.length === 0 ||
       formData.items.some(
-        (item) => !item.item_deskripsi.trim() || Number(item.item_jumlah) <= 0 || Number(item.item_harga) <= 0
+        (item) =>
+          !item.item_deskripsi.trim() ||
+          Number(item.item_jumlah) <= 0 ||
+          Number(item.item_harga) <= 0
       )
     ) {
-      swal.warning("Pastikan Perusahaan, Jatuh Tempo, dan minimal 1 layanan dengan harga valid telah diisi!")
+      swal.warning(
+        "Pastikan Perusahaan, Jatuh Tempo, dan minimal 1 layanan dengan harga valid telah diisi!"
+      )
       return
     }
 
@@ -241,7 +267,8 @@ export default function CreateInvoicePage() {
               Buat Invoice Baru
             </h1>
             <p className="text-sm text-zinc-500">
-              Isi parameter tagihan, rincian biaya pelatihan, dan kelengkapan administrasi.
+              Isi parameter tagihan, rincian biaya pelatihan, dan kelengkapan
+              administrasi.
             </p>
           </div>
         </div>
@@ -268,6 +295,12 @@ export default function CreateInvoicePage() {
                   </Label>
                   <Input
                     value={formData.nomor_invoice}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        nomor_invoice: e.target.value,
+                      }))
+                    }
                     className="h-10 bg-zinc-50 font-mono text-xs font-semibold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
                   />
                 </div>
@@ -278,7 +311,9 @@ export default function CreateInvoicePage() {
                   <Input
                     placeholder="Contoh: 01"
                     value={formData.batch}
-                    onChange={(e) => setFormData({ ...formData, batch: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, batch: e.target.value })
+                    }
                     className="h-10"
                   />
                 </div>
@@ -298,7 +333,9 @@ export default function CreateInvoicePage() {
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => setFormData({ ...formData, jenis_kegiatan: item.id })}
+                        onClick={() =>
+                          setFormData({ ...formData, jenis_kegiatan: item.id })
+                        }
                         className={`flex h-11 items-center justify-center rounded-xl border text-sm font-medium transition-all ${
                           isActive
                             ? "border-zinc-900 bg-zinc-900 text-white shadow-sm dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
@@ -320,7 +357,9 @@ export default function CreateInvoicePage() {
                   <Input
                     type="date"
                     value={formData.tanggal}
-                    onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, tanggal: e.target.value })
+                    }
                     className="h-10"
                   />
                 </div>
@@ -332,7 +371,10 @@ export default function CreateInvoicePage() {
                     type="date"
                     value={formData.tanggal_jatuhtempo}
                     onChange={(e) =>
-                      setFormData({ ...formData, tanggal_jatuhtempo: e.target.value })
+                      setFormData({
+                        ...formData,
+                        tanggal_jatuhtempo: e.target.value,
+                      })
                     }
                     className="h-10 border-zinc-200 focus-visible:ring-zinc-950"
                   />
@@ -355,13 +397,17 @@ export default function CreateInvoicePage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                    Nama Perusahaan / Instansi <span className="text-rose-500">*</span>
+                    Nama Perusahaan / Instansi{" "}
+                    <span className="text-rose-500">*</span>
                   </Label>
                   <Input
                     placeholder="PT / CV..."
                     value={formData.perusahaan_tujuan}
                     onChange={(e) =>
-                      setFormData({ ...formData, perusahaan_tujuan: e.target.value })
+                      setFormData({
+                        ...formData,
+                        perusahaan_tujuan: e.target.value,
+                      })
                     }
                     className="h-10"
                   />
@@ -373,7 +419,9 @@ export default function CreateInvoicePage() {
                   <Input
                     placeholder="00.000.000.0-000.000"
                     value={formData.npwp}
-                    onChange={(e) => setFormData({ ...formData, npwp: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, npwp: e.target.value })
+                    }
                     className="h-10 font-mono text-xs"
                   />
                 </div>
@@ -386,7 +434,10 @@ export default function CreateInvoicePage() {
                   placeholder="Gedung, Jalan, Kota, Kode Pos"
                   value={formData.alamat_perusahaan}
                   onChange={(e) =>
-                    setFormData({ ...formData, alamat_perusahaan: e.target.value })
+                    setFormData({
+                      ...formData,
+                      alamat_perusahaan: e.target.value,
+                    })
                   }
                   className="min-h-[85px] resize-none"
                 />
@@ -418,7 +469,9 @@ export default function CreateInvoicePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {formData.items.map((item, index) => {
-                const itemSubtotal = (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0)
+                const itemSubtotal =
+                  (Number(item.item_jumlah) || 0) *
+                  (Number(item.item_harga) || 0)
                 return (
                   <div
                     key={index}
@@ -467,7 +520,9 @@ export default function CreateInvoicePage() {
                               updateItem(
                                 index,
                                 "item_jumlah",
-                                e.target.value === "" ? 0 : parseFloat(e.target.value) || 0
+                                e.target.value === ""
+                                  ? 0
+                                  : parseFloat(e.target.value) || 0
                               )
                             }
                             className="h-10 bg-white dark:bg-zinc-950"
@@ -481,7 +536,12 @@ export default function CreateInvoicePage() {
                           <Input
                             type="text"
                             inputMode="decimal"
-                            value={item.item_harga !== undefined && item.item_harga !== null ? item.item_harga : ""}
+                            value={
+                              item.item_harga !== undefined &&
+                              item.item_harga !== null
+                                ? item.item_harga
+                                : ""
+                            }
                             placeholder="0"
                             onChange={(e) => {
                               // Ganti koma jadi titik agar valid float JS
@@ -491,7 +551,9 @@ export default function CreateInvoicePage() {
                                 updateItem(
                                   index,
                                   "item_harga",
-                                  val === "" || val === "." ? 0 : parseFloat(val)
+                                  val === "" || val === "."
+                                    ? 0
+                                    : parseFloat(val)
                                 )
                               }
                             }}
@@ -539,7 +601,9 @@ export default function CreateInvoicePage() {
                   {uploadingCL ? (
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 className="h-7 w-7 animate-spin text-zinc-600" />
-                      <p className="text-xs font-medium text-zinc-600">Mengunggah berkas ke R2...</p>
+                      <p className="text-xs font-medium text-zinc-600">
+                        Mengunggah berkas ke R2...
+                      </p>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-2">
@@ -609,13 +673,17 @@ export default function CreateInvoicePage() {
                     <Checkbox
                       id="dpp"
                       checked={formData.is_dpp}
-                      onCheckedChange={(c) => setFormData({ ...formData, is_dpp: !!c })}
+                      onCheckedChange={(c) =>
+                        setFormData({ ...formData, is_dpp: !!c })
+                      }
                     />
                     <div>
                       <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
                         DPP Nilai Lain
                       </span>
-                      <p className="text-[10px] text-zinc-400">11/12 × Jumlah Layanan</p>
+                      <p className="text-[10px] text-zinc-400">
+                        11/12 × Jumlah Layanan
+                      </p>
                     </div>
                   </div>
                   <Badge variant="outline" className="text-[10px]">
@@ -629,13 +697,17 @@ export default function CreateInvoicePage() {
                     <Checkbox
                       id="pph"
                       checked={formData.is_pph23}
-                      onCheckedChange={(c) => setFormData({ ...formData, is_pph23: !!c })}
+                      onCheckedChange={(c) =>
+                        setFormData({ ...formData, is_pph23: !!c })
+                      }
                     />
                     <div>
                       <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
                         PPh 23 (2%)
                       </span>
-                      <p className="text-[10px] text-zinc-400">Pemotongan pajak jasa</p>
+                      <p className="text-[10px] text-zinc-400">
+                        Pemotongan pajak jasa
+                      </p>
                     </div>
                   </div>
                   <Badge variant="outline" className="text-[10px]">
@@ -649,13 +721,17 @@ export default function CreateInvoicePage() {
                     <Checkbox
                       id="ppn"
                       checked={formData.is_ppn11}
-                      onCheckedChange={(c) => setFormData({ ...formData, is_ppn11: !!c })}
+                      onCheckedChange={(c) =>
+                        setFormData({ ...formData, is_ppn11: !!c })
+                      }
                     />
                     <div>
                       <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
                         PPN (11%)
                       </span>
-                      <p className="text-[10px] text-zinc-400">Pajak Pertambahan Nilai</p>
+                      <p className="text-[10px] text-zinc-400">
+                        Pajak Pertambahan Nilai
+                      </p>
                     </div>
                   </div>
                   <Badge variant="outline" className="text-[10px]">
@@ -669,7 +745,9 @@ export default function CreateInvoicePage() {
                     <Checkbox
                       id="pnbp"
                       checked={formData.is_pnbp}
-                      onCheckedChange={(c) => setFormData({ ...formData, is_pnbp: !!c })}
+                      onCheckedChange={(c) =>
+                        setFormData({ ...formData, is_pnbp: !!c })
+                      }
                     />
                     <div>
                       <span className="text-xs font-semibold text-blue-900 dark:text-blue-200">
@@ -680,7 +758,9 @@ export default function CreateInvoicePage() {
                       </p>
                     </div>
                   </div>
-                  <Badge className="bg-blue-600 text-[10px] text-white">Sertifikasi</Badge>
+                  <Badge className="bg-blue-600 text-[10px] text-white">
+                    Sertifikasi
+                  </Badge>
                 </label>
               </CardContent>
             </Card>
@@ -731,7 +811,9 @@ export default function CreateInvoicePage() {
                   </p>
                   <div className="divide-y divide-zinc-800/60">
                     {formData.items.map((item, index) => {
-                      const itemSubtotal = (Number(item.item_jumlah) || 0) * (Number(item.item_harga) || 0)
+                      const itemSubtotal =
+                        (Number(item.item_jumlah) || 0) *
+                        (Number(item.item_harga) || 0)
                       return (
                         <div
                           key={index}
@@ -739,15 +821,17 @@ export default function CreateInvoicePage() {
                             index !== 0 ? "pt-2" : ""
                           } pb-1.5`}
                         >
-                          <div className="flex-1 min-w-0">
+                          <div className="min-w-0 flex-1">
                             <p className="truncate font-medium text-zinc-200">
-                              {item.item_deskripsi.trim() || `Layanan #${index + 1}`}
+                              {item.item_deskripsi.trim() ||
+                                `Layanan #${index + 1}`}
                             </p>
-                            <p className="text-[11px] text-zinc-500 font-mono">
-                              {item.item_jumlah || 0} peserta × {formatIDR(Number(item.item_harga) || 0)}
+                            <p className="font-mono text-[11px] text-zinc-500">
+                              {item.item_jumlah || 0} peserta ×{" "}
+                              {formatIDR(Number(item.item_harga) || 0)}
                             </p>
                           </div>
-                          <span className="font-mono font-medium text-zinc-200 whitespace-nowrap">
+                          <span className="font-mono font-medium whitespace-nowrap text-zinc-200">
                             {formatIDR(itemSubtotal)}
                           </span>
                         </div>
@@ -758,7 +842,9 @@ export default function CreateInvoicePage() {
 
                 <div className="space-y-2.5 text-xs text-zinc-400">
                   <div className="flex justify-between border-t border-zinc-800/80 pt-2.5">
-                    <span className="font-medium text-zinc-300">Subtotal Dasar</span>
+                    <span className="font-medium text-zinc-300">
+                      Subtotal Dasar
+                    </span>
                     <span className="font-mono font-semibold text-zinc-200">
                       {formatIDR(calculation.subtotalDasar)}
                     </span>
@@ -767,21 +853,29 @@ export default function CreateInvoicePage() {
                   {formData.is_dpp && (
                     <div className="flex justify-between text-amber-400">
                       <span>DPP Nilai Lain (11/12)</span>
-                      <span className="font-mono font-medium">{formatIDR(calculation.dpp)}</span>
+                      <span className="font-mono font-medium">
+                        {formatIDR(calculation.dpp)}
+                      </span>
                     </div>
                   )}
 
                   {formData.is_pph23 && (
                     <div className="flex justify-between text-rose-400">
-                      <span>PPh 23 (2%{formData.is_dpp ? " dari DPP" : ""})</span>
-                      <span className="font-mono font-medium">- {formatIDR(calculation.pph)}</span>
+                      <span>
+                        PPh 23 (2%{formData.is_dpp ? " dari DPP" : ""})
+                      </span>
+                      <span className="font-mono font-medium">
+                        - {formatIDR(calculation.pph)}
+                      </span>
                     </div>
                   )}
 
                   {formData.is_ppn11 && (
                     <div className="flex justify-between text-blue-400">
                       <span>PPN 11%</span>
-                      <span className="font-mono font-medium">+ {formatIDR(calculation.ppn)}</span>
+                      <span className="font-mono font-medium">
+                        + {formatIDR(calculation.ppn)}
+                      </span>
                     </div>
                   )}
 
@@ -797,7 +891,9 @@ export default function CreateInvoicePage() {
 
                 <div className="border-t border-zinc-800 pt-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-medium text-zinc-400">Total Tagihan Akhir</span>
+                    <span className="text-[11px] font-medium text-zinc-400">
+                      Total Tagihan Akhir
+                    </span>
                     <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-400">
                       Net Amount
                     </span>
