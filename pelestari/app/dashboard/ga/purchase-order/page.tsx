@@ -1284,8 +1284,7 @@ export default function PurchaseOrderPage() {
 
                               {akunList.map((akun) => (
                                 <option value={akun.no_akun}>
-                                  {akun.no_akun} — {akun.nama_akun} —{" "}
-                                  {akun.nama_kelompok}
+                                  {akun.nama_akun} ({akun.nama_kelompok})
                                 </option>
                               ))}
                             </select>

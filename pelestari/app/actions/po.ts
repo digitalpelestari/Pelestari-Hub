@@ -5,19 +5,22 @@ import { revalidatePath } from "next/cache";
 
 // =========================================================================
 // HELPER: CEK POSISI NORMAL AKUN
-// Harus sama dengan logic di jurnal.ts
+// =========================================================================
+//
+// Normal Debit:
+// 1xxxx = Aset
+// 5xxxx = Biaya
+// 6xxxx = Biaya
+// 7xxxx = Biaya/Pajak sesuai COA
+// 8xxxx = Biaya/Pajak sesuai COA
+// 9xxxx = Biaya/Pajak sesuai COA
+//
+// PPN Masukan yang digunakan dalam PO adalah akun 14004,
+// sehingga normalnya DEBIT karena merupakan aset/pajak masukan.
+//
 // =========================================================================
 function isNormalDebit(noAkun: string): boolean {
   const akun = String(noAkun).trim();
-
-  const KREDIT_NORMAL_OVERRIDE = new Set<string>([
-    "71106", // PPN
-    "81100", // PNBP
-  ]);
-
-  if (KREDIT_NORMAL_OVERRIDE.has(akun)) {
-    return false;
-  }
 
   const prefix = akun.charAt(0);
 
@@ -89,6 +92,7 @@ export async function getPurchaseOrdersAction() {
 // =========================================================================
 // ACTION: AMBIL DAFTAR AKUN COA UNTUK ITEM PO
 // =========================================================================
+//
 // Akun yang diperbolehkan sebagai akun pembelian:
 // - 15200 Aset Tetap
 // - 15300 Aset Non Tetap
@@ -100,8 +104,8 @@ export async function getPurchaseOrdersAction() {
 // - 641xx
 // - 650xx
 //
-// Akun seperti kas, bank, utang, modal, pendapatan, PPN, dll tidak
-// ditampilkan karena bukan akun pembelian item PO.
+// PPN TIDAK dipilih sebagai akun item.
+// PPN otomatis menggunakan akun 14004.
 // =========================================================================
 export async function getAkunPembelianAction() {
   try {
@@ -111,50 +115,49 @@ export async function getAkunPembelianAction() {
         nama_akun,
         kelompok_biaya_id
       FROM tb_akun
-      WHERE is_aktif = 1
-        AND (
-          no_akun IN ('15200', '15300')
-          OR no_akun LIKE '511%'
-          OR no_akun LIKE '521%'
-          OR no_akun LIKE '531%'
-          OR no_akun LIKE '611%'
-          OR no_akun LIKE '621%'
-          OR no_akun LIKE '641%'
-          OR no_akun LIKE '650%'
-        )
+      WHERE (
+        no_akun IN ('15200', '15300')
+        OR no_akun LIKE '511%'
+        OR no_akun LIKE '521%'
+        OR no_akun LIKE '531%'
+        OR no_akun LIKE '611%'
+        OR no_akun LIKE '621%'
+        OR no_akun LIKE '641%'
+        OR no_akun LIKE '650%'
+      )
       ORDER BY no_akun ASC
-    `)
+    `);
 
     const [kelompokRows]: any = await db.execute(`
       SELECT
         id,
         kelompok_biaya
       FROM tb_kelompok_biaya
-    `)
+    `);
 
     const data = akunRows.map((akun: any) => {
       const kelompok = kelompokRows.find(
         (k: any) => Number(k.id) === Number(akun.kelompok_biaya_id)
-      )
+      );
 
       return {
         ...akun,
         nama_kelompok: kelompok?.kelompok_biaya || "-",
-      }
-    })
+      };
+    });
 
     return {
       success: true,
       data,
-    }
+    };
   } catch (error: any) {
-    console.error("GET_AKUN_PEMBELIAN_ERROR:", error)
+    console.error("GET_AKUN_PEMBELIAN_ERROR:", error);
 
     return {
       success: false,
       message: error.message,
       data: [],
-    }
+    };
   }
 }
 
@@ -272,26 +275,6 @@ export async function createPurchaseOrderAction(payload: any) {
     // ================================================================
     // VALIDASI AKUN PEMBELIAN
     // ================================================================
-    //
-    // Hanya akun berikut yang boleh digunakan:
-    //
-    // 15200
-    // 15300
-    // 511xx
-    // 521xx
-    // 531xx
-    // 611xx
-    // 621xx
-    // 641xx
-    // 650xx
-    //
-    // Dengan whitelist ini:
-    // 11100, 11200, 11300 -> ditolak
-    // 14004 -> ditolak
-    // 21100 -> ditolak
-    // 410xx -> ditolak
-    // dll.
-    // ================================================================
 
     const isAllowedPurchaseAccount = (
       noAkun: string
@@ -364,8 +347,6 @@ export async function createPurchaseOrderAction(payload: any) {
 
     // ================================================================
     // HITUNG ULANG TOTAL DARI ITEM
-    //
-    // Jangan sepenuhnya percaya nominal dari FE.
     // ================================================================
 
     const calculatedSubTotal = items.reduce(
@@ -494,18 +475,6 @@ export async function createPurchaseOrderAction(payload: any) {
 
     // ================================================================
     // C. AGREGASI DEBIT BERDASARKAN AKUN
-    //
-    // Contoh:
-    //
-    // Laptop       15200 = 10 jt
-    // Printer      15200 = 5 jt
-    // Cetak        62102 = 2 jt
-    //
-    // Jurnal:
-    //
-    // Dr 15200 = 15 jt
-    // Dr 62102 = 2 jt
-    // Cr 21100 = 17 jt
     // ================================================================
 
     const debitByAccount =
@@ -528,7 +497,15 @@ export async function createPurchaseOrderAction(payload: any) {
     }
 
     // ================================================================
-    // D. VALIDASI AKUN PPN
+    // D. VALIDASI AKUN PPN MASUKAN
+    // ================================================================
+    //
+    // PPN Masukan menggunakan:
+    //
+    // 14004 = PPN Masukan
+    //
+    // PPN Masukan dicatat DEBIT.
+    //
     // ================================================================
 
     if (calculatedPpn > 0) {
@@ -539,7 +516,7 @@ export async function createPurchaseOrderAction(payload: any) {
              nama_akun,
              is_aktif
            FROM tb_akun
-           WHERE no_akun = '14004'
+           WHERE no_akun = '71106'
            LIMIT 1`
         );
 
@@ -548,7 +525,7 @@ export async function createPurchaseOrderAction(payload: any) {
         ppnRows.length === 0
       ) {
         throw new Error(
-          "Akun 14004 PPN MASUKAN tidak ditemukan."
+          "Akun 71106 PPN tidak ditemukan."
         );
       }
 
@@ -556,7 +533,7 @@ export async function createPurchaseOrderAction(payload: any) {
         Number(ppnRows[0].is_aktif) !== 1
       ) {
         throw new Error(
-          "Akun 14004 PPN MASUKAN sedang tidak aktif."
+          "Akun 71106 PPN sedang tidak aktif."
         );
       }
     }
@@ -656,6 +633,7 @@ export async function createPurchaseOrderAction(payload: any) {
         ]
       );
 
+      // Akun pembelian = DEBIT
       await applySaldoAkun(
         connection,
         noAkun,
@@ -670,22 +648,37 @@ export async function createPurchaseOrderAction(payload: any) {
     // ================================================================
     // G. DEBIT PPN MASUKAN
     // ================================================================
+    //
+    // Contoh:
+    //
+    // Subtotal       = 10.000.000
+    // PPN            = 1.100.000
+    // Total           = 11.100.000
+    //
+    // Jurnal:
+    //
+    // Dr 511xx        10.000.000
+    // Dr 14004         1.100.000
+    // Cr 21100        11.100.000
+    //
+    // ================================================================
 
     if (calculatedPpn > 0) {
       await connection.query(
         jurnalItemQuery,
         [
           jurnalId,
-          "14004",
+          "71106",
           calculatedPpn,
           0,
-          `PPN Masukan PO ${nomor_po}`
+          `PPN PO ${nomor_po}`
         ]
       );
 
+      // PPN Masukan = DEBIT
       await applySaldoAkun(
         connection,
-        "14004",
+        "71106",
         calculatedPpn,
         0,
         false
@@ -821,10 +814,6 @@ export async function updatePaymentStatusAction(
 
     // ================================================================
     // AKUN PEMBAYARAN YANG DIPERBOLEHKAN
-    //
-    // 11100 = Petty Cash
-    // 11200 = Bank Aktif
-    // 11300 = Bank Pasif
     // ================================================================
 
     const allowedPaymentAccounts = [
@@ -988,12 +977,6 @@ export async function updatePaymentStatusAction(
 
     // ================================================================
     // CARI JURNAL PEMBAYARAN PO
-    //
-    // PO-123
-    // = Jurnal pengakuan utang
-    //
-    // PO-PAY-123
-    // = Jurnal pembayaran utang
     // ================================================================
 
     const noRegistrasiPayment =
@@ -1032,10 +1015,6 @@ export async function updatePaymentStatusAction(
           [paymentJurnalId]
         );
 
-      // ==============================================================
-      // REVERSAL SALDO
-      // ==============================================================
-
       for (const item of paymentItems) {
         await applySaldoAkun(
           connection,
@@ -1046,19 +1025,11 @@ export async function updatePaymentStatusAction(
         );
       }
 
-      // ==============================================================
-      // HAPUS DETAIL JURNAL
-      // ==============================================================
-
       await connection.query(
         `DELETE FROM tb_jurnal_item
          WHERE jurnal_id = ?`,
         [paymentJurnalId]
       );
-
-      // ==============================================================
-      // HAPUS HEADER JURNAL
-      // ==============================================================
 
       await connection.query(
         `DELETE FROM tb_jurnal
@@ -1090,14 +1061,6 @@ export async function updatePaymentStatusAction(
 
     // ================================================================
     // JIKA BELUM BAYAR
-    //
-    // Tidak membuat jurnal pembayaran.
-    //
-    // Jurnal PO awal tetap:
-    //
-    // Dr Pembelian
-    // Dr PPN Masukan
-    // Cr Utang Vendor
     // ================================================================
 
     if (
@@ -1168,21 +1131,11 @@ export async function updatePaymentStatusAction(
 
     // ================================================================
     // BUAT JURNAL PEMBAYARAN
-    //
-    // Bank Aktif:
-    //
-    // Dr 21100 Utang Vendor
-    // Cr 11200 Bank Aktif
-    //
-    // Bank Pasif:
+    // ================================================================
     //
     // Dr 21100 Utang Vendor
-    // Cr 11300 Bank Pasif
+    // Cr 11100/11200/11300 Kas/Bank
     //
-    // Petty Cash:
-    //
-    // Dr 21100 Utang Vendor
-    // Cr 11100 Petty Cash
     // ================================================================
 
     const [jurnalPaymentResult]: any =
@@ -1400,23 +1353,26 @@ export async function deletePurchaseOrderAction(
     await connection.beginTransaction();
 
     // ================================================================
-    // CARI JURNAL PO
+    // CARI SEMUA JURNAL PO
+    // ================================================================
+    //
+    // PO-xxx      = jurnal pengakuan pembelian
+    // PO-PAY-xxx  = jurnal pembayaran
+    //
+    // Keduanya harus direversal ketika PO dihapus.
     // ================================================================
 
     const [jurnalRows]: any =
       await connection.query(
         `SELECT id
          FROM tb_jurnal
-         WHERE po_id = ?
-         LIMIT 1`,
+         WHERE po_id = ?`,
         [id_po]
       );
 
-    if (jurnalRows.length > 0) {
+    for (const jurnal of jurnalRows) {
       const jurnalId =
-        Number(
-          jurnalRows[0].id
-        );
+        Number(jurnal.id);
 
       // ==============================================================
       // AMBIL ITEM JURNAL
