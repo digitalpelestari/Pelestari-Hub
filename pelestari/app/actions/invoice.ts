@@ -440,8 +440,8 @@ export async function createInvoice(
           formData.jenis_kegiatan,
           formData.tanggal_jatuhtempo || null,
           formData.perusahaan_tujuan,
-          formData.npwp || null,
-          formData.alamat_perusahaan || null,
+          formData.npwp || "-",
+          formData.alamat_perusahaan || "-",
           formData.file_faktur || null,
           formData.cl || null,
           formData.is_dpp ? 1 : 0,
@@ -1261,9 +1261,8 @@ export async function updateInvoice(
         data.tanggal_jatuhtempo ||
         null,
         perusahaanTujuan,
-        data.npwp || null,
-        data.alamat_perusahaan ||
-        null,
+        data.npwp || "-",
+        data.alamat_perusahaan || "-",
         data.file_faktur ||
         null,
         data.cl || null,
