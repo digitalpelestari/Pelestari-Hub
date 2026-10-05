@@ -32,6 +32,7 @@ import {
   exportToPdf,
   exportSinglePoToExcel,
   exportSinglePoToPdf,
+  printSinglePo,
 } from "@/app/utils/poExport"
 
 import { swal } from "@/lib/sweetalert"
@@ -189,6 +190,352 @@ export default function PurchaseOrderPage() {
     } else {
       swal.error("Gagal mengambil rincian item barang")
     }
+  }
+
+  const handlePrintPO = () => {
+    if (!detailPo) return
+
+    const printWindow = window.open("", "_blank", "width=1000,height=800")
+
+    if (!printWindow) {
+      swal.error("Popup print diblokir browser. Silakan izinkan popup.")
+      return
+    }
+
+    const formatRupiah = (value: number) =>
+      Number(value || 0).toLocaleString("id-ID")
+
+    const formatTanggal = (value: string) =>
+      new Date(value).toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      })
+
+    const itemsHtml = detailItems
+      .map(
+        (item: any, index: number) => `
+        <tr>
+          <td class="center">${index + 1}</td>
+          <td>${item.transaksi || "-"}</td>
+          <td class="center">${item.ukuran || "-"}</td>
+          <td class="center">${item.quantity || 0}</td>
+          <td class="right">Rp ${formatRupiah(item.unit_price)}</td>
+          <td class="right">Rp ${formatRupiah(item.total)}</td>
+        </tr>
+      `
+      )
+      .join("")
+
+    printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Purchase Order - ${detailPo.nomor_po}</title>
+
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #111827;
+            margin: 0;
+            padding: 30px;
+            font-size: 12px;
+          }
+
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #111827;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+          }
+
+          .company-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+          }
+
+          .company-info {
+            color: #4b5563;
+            line-height: 1.5;
+          }
+
+          .document-title {
+            text-align: right;
+          }
+
+          .document-title h1 {
+            margin: 0;
+            font-size: 22px;
+          }
+
+          .document-title p {
+            margin: 5px 0 0;
+            font-weight: bold;
+          }
+
+          .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 20px;
+          }
+
+          .info-box {
+            border: 1px solid #d1d5db;
+            padding: 12px;
+          }
+
+          .info-title {
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            font-size: 11px;
+            color: #374151;
+          }
+
+          .info-content {
+            line-height: 1.6;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+          }
+
+          th,
+          td {
+            border: 1px solid #9ca3af;
+            padding: 8px;
+          }
+
+          th {
+            background: #f3f4f6;
+            font-weight: bold;
+            text-align: center;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .right {
+            text-align: right;
+          }
+
+          .bottom-section {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 30px;
+            margin-top: 20px;
+          }
+
+          .delivery {
+            border: 1px solid #d1d5db;
+            padding: 12px;
+          }
+
+          .summary {
+            border: 1px solid #9ca3af;
+          }
+
+          .summary-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 9px 12px;
+            border-bottom: 1px solid #d1d5db;
+          }
+
+          .summary-row:last-child {
+            border-bottom: none;
+          }
+
+          .summary-total {
+            background: #111827;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+          }
+
+          .signature {
+            margin-top: 70px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            text-align: center;
+            gap: 80px;
+          }
+
+          .signature-space {
+            height: 70px;
+          }
+
+          @media print {
+            body {
+              padding: 0;
+            }
+
+            @page {
+              size: A4;
+              margin: 15mm;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+
+        <div class="header">
+          <div>
+            <div class="company-name">
+              PT Peduli Lestari Indonesia
+            </div>
+
+            <div class="company-info">
+              NPWP : 0423 0271 5040 4000<br>
+              Jalan Raya Jakarta - Bogor Nomor 77 Rt. 001/008<br>
+              Kedung Halang, Bogor Utara, Kota Bogor, Jawa Barat
+            </div>
+          </div>
+
+          <div class="document-title">
+            <h1>PURCHASE ORDER</h1>
+            <p>${detailPo.nomor_po}</p>
+            <p>${formatTanggal(detailPo.tanggal_po)}</p>
+          </div>
+        </div>
+
+        <div class="info-grid">
+
+          <div class="info-box">
+            <div class="info-title">
+              Vendor Target
+            </div>
+
+            <div class="info-content">
+              <strong>${detailPo.vendor_nama || "-"}</strong><br>
+              PIC Hub: ${detailPo.vendor_pic || "-"}<br>
+              Email: ${detailPo.vendor_email || "-"}
+            </div>
+          </div>
+
+          <div class="info-box">
+            <div class="info-title">
+              Informasi Pembayaran
+            </div>
+
+            <div class="info-content">
+              Status: <strong>${detailPo.status_pembayaran || "-"}</strong><br>
+              Tempo: ${detailPo.tempo_hari || 0} hari<br>
+              Jatuh Tempo: ${
+                detailPo.jatuh_tempo ? formatTanggal(detailPo.jatuh_tempo) : "-"
+              }<br>
+              ${
+                detailPo.tanggal_bayar_1
+                  ? `Tanggal Bayar: ${formatTanggal(detailPo.tanggal_bayar_1)}`
+                  : ""
+              }
+            </div>
+          </div>
+
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th width="5%">No</th>
+              <th>Transaksi / Deskripsi Barang</th>
+              <th width="12%">Ukuran</th>
+              <th width="10%">Qty</th>
+              <th width="18%">Harga Satuan</th>
+              <th width="20%">Total</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
+
+        <div class="bottom-section">
+
+          <div class="delivery">
+            <div class="info-title">
+              Alamat Pengantaran
+            </div>
+
+            <div class="info-content">
+              ${detailPo.alamat_pengantaran || "-"}
+              <br><br>
+              <strong>Penerima:</strong>
+              ${detailPo.penerima_nama || "-"}
+            </div>
+          </div>
+
+          <div class="summary">
+
+            <div class="summary-row">
+              <strong>Sub Total</strong>
+              <span>
+                Rp ${formatRupiah(detailPo.sub_total)}
+              </span>
+            </div>
+
+            <div class="summary-row">
+              <strong>PPN 11%</strong>
+              <span>
+                Rp ${formatRupiah(detailPo.ppn)}
+              </span>
+            </div>
+
+            <div class="summary-row summary-total">
+              <span>TOTAL AKHIR</span>
+              <span>
+                Rp ${formatRupiah(detailPo.total_harga)}
+              </span>
+            </div>
+
+          </div>
+
+        </div>
+
+        <div class="signature">
+
+          <div>
+            <strong>Dibuat Oleh</strong>
+            <div class="signature-space"></div>
+            <strong>HRGA / Procurement</strong>
+          </div>
+
+          <div>
+            <strong>Disetujui Oleh</strong>
+            <div class="signature-space"></div>
+            <strong>Management</strong>
+          </div>
+
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+
+            window.onafterprint = function() {
+              window.close();
+            };
+          };
+        </script>
+
+      </body>
+    </html>
+  `)
+
+    printWindow.document.close()
   }
 
   // =========================================================
@@ -696,6 +1043,13 @@ export default function PurchaseOrderPage() {
               </span>
 
               <div className="mr-4 ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => printSinglePo(detailPo, detailItems)}
+                  className="flex items-center gap-1 rounded bg-zinc-700 px-2.5 py-1 text-[10px] font-bold text-white uppercase transition-colors hover:bg-zinc-800"
+                >
+                  <Printer className="h-3 w-3" />
+                  Print
+                </button>
                 <button
                   type="button"
                   onClick={() => exportSinglePoToExcel(detailPo, detailItems)}
