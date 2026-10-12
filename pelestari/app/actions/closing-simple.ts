@@ -21,46 +21,68 @@ const BULAN_NAMES: Record<string, string> = {
 
 /**
  * ============================================================
- * HELPER
+ * NORMAL BALANCE
  * ============================================================
- */
-
-/**
- * Menentukan saldo normal akun.
- *
- * true  = Debit
- * false = Kredit
  */
 function isNormalDebit(noAkun: string): boolean {
     const akun = String(noAkun).trim()
 
-    if (akun === "12100" || akun === "14001") {
+    /**
+     * Debit-normal:
+     * - 12100 Piutang
+     * - 14001 PPh23
+     * - 5xxx Beban
+     * - 6xxx Beban
+     * - 31101 Dividen
+     */
+    if (
+        akun === "12100" ||
+        akun === "14001"
+    ) {
         return true
     }
 
+    /**
+     * Kredit-normal:
+     * - seluruh 4xxx Pendapatan
+     * - 71106 PPN
+     * - 81100 PNBP
+     * - 13002 Laba Ditahan
+     * - 13003 Laba Tahun Berjalan
+     * - 13004 Ikhtisar Laba/Rugi
+     */
     if (
-        akun === "41001" ||
-        akun === "41002" ||
+        akun.startsWith("4") ||
         akun === "71106" ||
         akun === "81100" ||
+        akun === "13002" ||
         akun === "13003" ||
         akun === "13004"
     ) {
         return false
     }
 
+    /**
+     * Default:
+     * akun normal debit.
+     */
     return true
 }
 
 /**
- * Hitung perubahan saldo tb_akun berdasarkan jurnal.
+ * ============================================================
+ * CALCULATE SALDO DELTA
+ * ============================================================
  */
 function calculateSaldoDelta(
     noAkun: string,
     debit: number,
     kredit: number
 ): number {
-    if (isNormalDebit(noAkun)) {
+
+    if (
+        isNormalDebit(noAkun)
+    ) {
         return debit - kredit
     }
 
@@ -68,48 +90,62 @@ function calculateSaldoDelta(
 }
 
 /**
- * Format rupiah.
+ * ============================================================
+ * FORMAT RUPIAH
+ * ============================================================
  */
-function formatRupiah(value: number): string {
-    const amount = Math.abs(Number(value || 0))
+function formatRupiah(
+    value: number
+): string {
+
+    const amount =
+        Math.abs(
+            Number(value || 0)
+        )
 
     return `Rp ${amount.toLocaleString("id-ID")}`
 }
 
 /**
- * Mendapatkan tanggal terakhir suatu periode.
+ * ============================================================
+ * GET CLOSING DATE
+ * ============================================================
  */
 function getClosingDate(
     year: string,
     month: string
 ): string {
-    const date = new Date(
-        Number(year),
-        Number(month),
-        0
-    )
+
+    const date =
+        new Date(
+            Number(year),
+            Number(month),
+            0
+        )
 
     return (
         `${date.getFullYear()}-` +
-        `${String(date.getMonth() + 1).padStart(2, "0")}-` +
-        `${String(date.getDate()).padStart(2, "0")}`
+        `${String(
+            date.getMonth() + 1
+        ).padStart(2, "0")}-` +
+        `${String(
+            date.getDate()
+        ).padStart(2, "0")}`
     )
 }
 
 /**
  * ============================================================
- * PREVIEW
+ * PREVIEW IKHTISAR
  * ============================================================
- */
-
-/**
- * Preview Laba Rugi sebelum closing.
  */
 export async function getPreviewIkhtisar(
     year: string,
     month: string
 ) {
+
     try {
+
         const reportData =
             await getLabaRugiData(
                 year,
@@ -157,26 +193,41 @@ export async function getPreviewIkhtisar(
         let saldo13003 = 0
         let saldo13004 = 0
 
-        if (Array.isArray(rows)) {
-            for (const row of rows) {
+        if (
+            Array.isArray(rows)
+        ) {
+
+            for (
+                const row of rows
+            ) {
+
                 if (
-                    String(row.no_akun) === "13003"
+                    String(row.no_akun) ===
+                    "13003"
                 ) {
+
                     saldo13003 =
-                        Number(row.saldo || 0)
+                        Number(
+                            row.saldo || 0
+                        )
                 }
 
                 if (
-                    String(row.no_akun) === "13004"
+                    String(row.no_akun) ===
+                    "13004"
                 ) {
+
                     saldo13004 =
-                        Number(row.saldo || 0)
+                        Number(
+                            row.saldo || 0
+                        )
                 }
             }
         }
 
         return {
             success: true,
+
             data: {
                 totalPendapatan,
                 totalBeban,
@@ -185,7 +236,9 @@ export async function getPreviewIkhtisar(
                 saldo13004,
             },
         }
+
     } catch (error: any) {
+
         console.error(
             "Gagal membaca preview laba rugi:",
             error
@@ -202,33 +255,26 @@ export async function getPreviewIkhtisar(
 
 /**
  * ============================================================
- * AMBIL DETAIL CLOSING
+ * GET CLOSING ACCOUNTS
  * ============================================================
  *
- * Sumber:
- *   tb_jurnal + tb_jurnal_item
- *
  * Pendapatan:
- *   Akun 4xxx
+ * - 4xxx
  *
  * Beban:
- *   Akun 5xxx
- *   Akun 6xxx
- *   Akun 71106
- *   Akun 81100
+ * - 5xxx
+ * - 6xxx
+ * - 71102 Pajak
  *
- * Penting:
- *   Jurnal closing dengan no_registrasi CL_%
- *   tidak boleh ikut dihitung.
- *
- * PPN dan PNBP dalam laporan Laba Rugi diperlakukan
- * sebagai BEBAN walaupun transaksi asalnya berada
- * di sisi KREDIT.
+ * Tidak termasuk:
+ * - 71106 PPN
+ * - 81100 PNBP
  */
 async function getClosingAccounts(
     year: string,
     month: string
 ) {
+
     const startDate =
         new Date(
             Number(year),
@@ -259,14 +305,16 @@ async function getClosingAccounts(
             WHERE j.tanggal >= ?
               AND j.tanggal < ?
 
-              -- Jangan ikutkan jurnal closing
-              AND j.no_registrasi NOT LIKE 'CL_%'
+              AND (
+                    j.no_registrasi IS NULL
+                    OR j.no_registrasi NOT LIKE 'CL\\_%'
+              )
 
               AND (
                     ji.no_akun LIKE '4%'
                     OR ji.no_akun LIKE '5%'
                     OR ji.no_akun LIKE '6%'
-                    OR ji.no_akun IN ('71106', '81100')
+                    OR ji.no_akun = '71102'
               )
 
             GROUP BY
@@ -289,17 +337,19 @@ async function getClosingAccounts(
         nilai: number
     }[] = []
 
-    for (const row of rows) {
+    for (
+        const row of rows
+    ) {
+
         const noAkun =
-            String(row.no_akun)
+            String(
+                row.no_akun
+            )
 
         const namaAkun =
             String(
                 row.nama_akun ?? ""
             ).trim()
-
-        const namaAkunLower =
-            namaAkun.toLowerCase()
 
         const debit =
             Number(
@@ -311,40 +361,24 @@ async function getClosingAccounts(
                 row.total_kredit ?? 0
             )
 
-        // ========================================================
-        // PENDAPATAN
-        //
-        // Sama persis dengan Laba Rugi:
-        //
-        // Kredit - Debit
-        // ========================================================
-
+        /**
+         * ========================================================
+         * PENDAPATAN
+         * ========================================================
+         *
+         * Semua akun 4xxx adalah pendapatan.
+         */
         if (
             noAkun.startsWith("4")
         ) {
+
             const nilai =
                 kredit - debit
 
-            /**
-             * Laba Rugi hanya memasukkan:
-             *
-             * - Pendapatan Pelatihan
-             * - Pendapatan Konsultan/Konsultasi
-             */
             if (
-                (
-                    namaAkunLower.includes(
-                        "pelatihan"
-                    ) ||
-                    namaAkunLower.includes(
-                        "konsultan"
-                    ) ||
-                    namaAkunLower.includes(
-                        "konsultasi"
-                    )
-                ) &&
                 nilai > 0
             ) {
+
                 accounts.push({
                     noAkun,
                     namaAkun,
@@ -356,28 +390,25 @@ async function getClosingAccounts(
             continue
         }
 
-        // ========================================================
-        // BEBAN
-        // ========================================================
-
-        let nilai =
+        /**
+         * ========================================================
+         * BEBAN
+         * ========================================================
+         *
+         * Debit - Kredit.
+         *
+         * Termasuk:
+         * - 5xxx
+         * - 6xxx
+         * - 71102
+         */
+        const nilai =
             debit - kredit
 
-        /**
-         * PPN & PNBP:
-         *
-         * Laba Rugi memperlakukan akun ini
-         * sebagai beban credit-normal.
-         */
         if (
-            noAkun === "71106" ||
-            noAkun === "81100"
+            nilai > 0
         ) {
-            nilai =
-                kredit - debit
-        }
 
-        if (nilai > 0) {
             accounts.push({
                 noAkun,
                 namaAkun,
@@ -395,7 +426,6 @@ async function getClosingAccounts(
  * INSERT JURNAL
  * ============================================================
  */
-
 async function insertJurnal(
     connection: any,
     tanggal: string,
@@ -403,6 +433,7 @@ async function insertJurnal(
     noReferensi: string,
     keterangan: string
 ): Promise<number> {
+
     const [result]: any =
         await connection.query(
             `
@@ -428,7 +459,9 @@ async function insertJurnal(
 }
 
 /**
- * Insert item jurnal.
+ * ============================================================
+ * INSERT JURNAL ITEMS
+ * ============================================================
  */
 async function insertJurnalItems(
     connection: any,
@@ -440,7 +473,11 @@ async function insertJurnalItems(
         keterangan: string
     }[]
 ) {
-    for (const item of items) {
+
+    for (
+        const item of items
+    ) {
+
         await connection.query(
             `
             INSERT INTO tb_jurnal_item (
@@ -464,7 +501,9 @@ async function insertJurnalItems(
 }
 
 /**
- * Update saldo tb_akun mengikuti normal balance.
+ * ============================================================
+ * UPDATE SALDO AKUN
+ * ============================================================
  */
 async function updateAccountSaldo(
     connection: any,
@@ -472,6 +511,7 @@ async function updateAccountSaldo(
     debit: number,
     kredit: number
 ) {
+
     const delta =
         calculateSaldoDelta(
             noAkun,
@@ -479,7 +519,9 @@ async function updateAccountSaldo(
             kredit
         )
 
-    if (delta === 0) {
+    if (
+        delta === 0
+    ) {
         return
     }
 
@@ -499,26 +541,25 @@ async function updateAccountSaldo(
 
 /**
  * ============================================================
- * EXECUTE TWO STEP CLOSING
+ * CLOSING BULANAN
  * ============================================================
  */
 export async function executeTwoStepClosing(
     year: string,
     month: string
 ) {
+
     const connection =
         await db.getConnection()
 
-    let transactionStarted = false
+    let transactionStarted =
+        false
 
     try {
+
         const monthLabel =
             BULAN_NAMES[month] ||
             `Bulan ${month}`
-
-        // ========================================================
-        // 1. AMBIL LAPORAN LABA RUGI
-        // ========================================================
 
         const reportData =
             await getLabaRugiData(
@@ -553,6 +594,7 @@ export async function executeTwoStepClosing(
         if (
             labaBersih === 0
         ) {
+
             return {
                 success: false,
                 message:
@@ -560,10 +602,6 @@ export async function executeTwoStepClosing(
                     `adalah Rp 0. Tidak ada closing yang perlu diproses.`,
             }
         }
-
-        // ========================================================
-        // 2. DETAIL YANG AKAN DITUTUP
-        // ========================================================
 
         const closingAccounts =
             await getClosingAccounts(
@@ -574,6 +612,7 @@ export async function executeTwoStepClosing(
         if (
             closingAccounts.length === 0
         ) {
+
             return {
                 success: false,
                 message:
@@ -612,21 +651,22 @@ export async function executeTwoStepClosing(
             totalPendapatanDetail -
             totalBebanDetail
 
-        // ========================================================
-        // 3. VALIDASI DENGAN LAPORAN LABA RUGI
-        // ========================================================
-
         if (
             Math.abs(
                 totalPendapatanDetail -
                 totalPendapatanReport
             ) > 1
         ) {
+
             throw new Error(
                 `Total pendapatan detail tidak sama dengan ` +
                 `Laporan Laba Rugi. ` +
-                `Laporan: ${formatRupiah(totalPendapatanReport)}, ` +
-                `Detail: ${formatRupiah(totalPendapatanDetail)}.`
+                `Laporan: ${formatRupiah(
+                    totalPendapatanReport
+                )}, ` +
+                `Detail: ${formatRupiah(
+                    totalPendapatanDetail
+                )}.`
             )
         }
 
@@ -636,11 +676,16 @@ export async function executeTwoStepClosing(
                 totalBebanReport
             ) > 1
         ) {
+
             throw new Error(
                 `Total beban detail tidak sama dengan ` +
                 `Laporan Laba Rugi. ` +
-                `Laporan: ${formatRupiah(totalBebanReport)}, ` +
-                `Detail: ${formatRupiah(totalBebanDetail)}.`
+                `Laporan: ${formatRupiah(
+                    totalBebanReport
+                )}, ` +
+                `Detail: ${formatRupiah(
+                    totalBebanDetail
+                )}.`
             )
         }
 
@@ -650,23 +695,33 @@ export async function executeTwoStepClosing(
                 labaBersih
             ) > 1
         ) {
+
             throw new Error(
                 `Laba Bersih detail tidak sama dengan ` +
                 `Laporan Laba Rugi. ` +
-                `Laporan: ${formatRupiah(labaBersih)}, ` +
-                `Detail: ${formatRupiah(labaBersihDetail)}.`
+                `Laporan: ${formatRupiah(
+                    labaBersih
+                )}, ` +
+                `Detail: ${formatRupiah(
+                    labaBersihDetail
+                )}.`
             )
         }
 
-        // ========================================================
-        // 4. IDENTITAS CLOSING
-        // ========================================================
-
         const periode =
-            `${year}-${String(month).padStart(2, "0")}`
+            `${year}-${String(
+                month
+            ).padStart(2, "0")}`
 
         const noRegistrasi =
-            `CL_${String(month).padStart(2, "0")}/${String(year).slice(-2)}`
+            `CL_${String(
+                month
+            ).padStart(
+                2,
+                "0"
+            )}/${String(
+                year
+            ).slice(-2)}`
 
         const tanggalClosing =
             getClosingDate(
@@ -676,10 +731,6 @@ export async function executeTwoStepClosing(
 
         const keterangan =
             `Closing Laba Rugi ${monthLabel} ${year}`
-
-        // ========================================================
-        // 5. CEK DUPLIKASI
-        // ========================================================
 
         const [
             existingClosing,
@@ -697,9 +748,12 @@ export async function executeTwoStepClosing(
             )
 
         if (
-            Array.isArray(existingClosing) &&
+            Array.isArray(
+                existingClosing
+            ) &&
             existingClosing.length > 0
         ) {
+
             return {
                 success: false,
                 message:
@@ -707,17 +761,10 @@ export async function executeTwoStepClosing(
             }
         }
 
-        // ========================================================
-        // 6. BEGIN TRANSACTION
-        // ========================================================
-
         await connection.beginTransaction()
 
-        transactionStarted = true
-
-        // ========================================================
-        // 7. LOCK & VALIDASI AKUN
-        // ========================================================
+        transactionStarted =
+            true
 
         const [
             akunRows,
@@ -743,9 +790,15 @@ export async function executeTwoStepClosing(
         if (
             Array.isArray(akunRows)
         ) {
-            for (const row of akunRows) {
+
+            for (
+                const row of akunRows
+            ) {
+
                 akunSet.add(
-                    String(row.no_akun)
+                    String(
+                        row.no_akun
+                    )
                 )
             }
         }
@@ -753,6 +806,7 @@ export async function executeTwoStepClosing(
         if (
             !akunSet.has("13003")
         ) {
+
             throw new Error(
                 "Akun 13003 Laba Tahun Berjalan tidak ditemukan."
             )
@@ -761,14 +815,11 @@ export async function executeTwoStepClosing(
         if (
             !akunSet.has("13004")
         ) {
+
             throw new Error(
                 "Akun 13004 Ikhtisar Laba/Rugi tidak ditemukan."
             )
         }
-
-        // ========================================================
-        // 8. VALIDASI SEMUA AKUN DETAIL
-        // ========================================================
 
         const detailCodes =
             closingAccounts.map(
@@ -778,7 +829,9 @@ export async function executeTwoStepClosing(
 
         const placeholders =
             detailCodes
-                .map(() => "?")
+                .map(
+                    () => "?"
+                )
                 .join(",")
 
         const [
@@ -786,7 +839,8 @@ export async function executeTwoStepClosing(
         ]: any =
             await connection.query(
                 `
-                SELECT no_akun
+                SELECT
+                    no_akun
                 FROM tb_akun
                 WHERE no_akun IN (${placeholders})
                 FOR UPDATE
@@ -798,11 +852,19 @@ export async function executeTwoStepClosing(
             new Set<string>()
 
         if (
-            Array.isArray(detailRows)
+            Array.isArray(
+                detailRows
+            )
         ) {
-            for (const row of detailRows) {
+
+            for (
+                const row of detailRows
+            ) {
+
                 detailSet.add(
-                    String(row.no_akun)
+                    String(
+                        row.no_akun
+                    )
                 )
             }
         }
@@ -818,6 +880,7 @@ export async function executeTwoStepClosing(
         if (
             missingAccounts.length > 0
         ) {
+
             throw new Error(
                 "Akun berikut tidak ditemukan di tb_akun: " +
                 missingAccounts
@@ -829,11 +892,6 @@ export async function executeTwoStepClosing(
             )
         }
 
-        // ========================================================
-        // STEP 1
-        // TUTUP PENDAPATAN DAN BEBAN KE 13004
-        // ========================================================
-
         const step1Items: {
             noAkun: string
             debit: number
@@ -841,17 +899,10 @@ export async function executeTwoStepClosing(
             keterangan: string
         }[] = []
 
-        // ========================================================
-        // STEP 1A
-        // PENDAPATAN
-        //
-        // Dr Pendapatan
-        //    Cr 13004
-        // ========================================================
-
         for (
             const account of closingAccounts
         ) {
+
             if (
                 account.tipe !==
                 "pendapatan"
@@ -868,65 +919,81 @@ export async function executeTwoStepClosing(
             step1Items.push({
                 noAkun:
                     account.noAkun,
+
                 debit:
                     account.nilai,
+
                 kredit:
                     0,
+
                 keterangan:
-                    `Penutupan ${account.namaAkun} ${monthLabel} ${year}`,
+                    `Penutupan ${account.namaAkun} ` +
+                    `${monthLabel} ${year}`,
             })
 
             step1Items.push({
                 noAkun:
                     "13004",
+
                 debit:
                     0,
+
                 kredit:
                     account.nilai,
+
                 keterangan:
-                    `Penutupan ${account.namaAkun} ${monthLabel} ${year}`,
+                    `Penutupan ${account.namaAkun} ` +
+                    `${monthLabel} ${year}`,
             })
         }
 
-        // ========================================================
-        // STEP 1B
-        // BEBAN
-        //
-        // Dr 13004
-        //    Cr Beban
-        //
-        // PPN 71106 dan PNBP 81100 tetap ditutup sebagai BEBAN
-        // karena pada Laba Rugi keduanya mengurangi laba.
-        // ========================================================
+        for (
+            const account of closingAccounts
+        ) {
 
-        for (const account of closingAccounts) {
-            if (account.tipe !== "beban") {
+            if (
+                account.tipe !==
+                "beban"
+            ) {
                 continue
             }
 
-            if (account.nilai <= 0) {
+            if (
+                account.nilai <= 0
+            ) {
                 continue
             }
 
             step1Items.push({
-                noAkun: "13004",
-                debit: account.nilai,
-                kredit: 0,
+                noAkun:
+                    "13004",
+
+                debit:
+                    account.nilai,
+
+                kredit:
+                    0,
+
                 keterangan:
-                    `Penutupan ${account.namaAkun} ${monthLabel} ${year}`,
+                    `Penutupan ${account.namaAkun} ` +
+                    `${monthLabel} ${year}`,
             })
 
             step1Items.push({
-                noAkun: account.noAkun,
-                debit: 0,
-                kredit: account.nilai,
+                noAkun:
+                    account.noAkun,
+
+                debit:
+                    0,
+
+                kredit:
+                    account.nilai,
+
                 keterangan:
-                    `Penutupan ${account.namaAkun} ${monthLabel} ${year}`,
+                    `Penutupan ${account.namaAkun} ` +
+                    `${monthLabel} ${year}`,
             })
         }
-        // ========================================================
-        // 9. VALIDASI STEP 1 BALANCE
-        // ========================================================
 
         const step1Debit =
             step1Items.reduce(
@@ -946,16 +1013,17 @@ export async function executeTwoStepClosing(
             step1Debit !==
             step1Kredit
         ) {
+
             throw new Error(
                 `Jurnal Step 1 tidak balance. ` +
-                `Debit: ${formatRupiah(step1Debit)}, ` +
-                `Kredit: ${formatRupiah(step1Kredit)}.`
+                `Debit: ${formatRupiah(
+                    step1Debit
+                )}, ` +
+                `Kredit: ${formatRupiah(
+                    step1Kredit
+                )}.`
             )
         }
-
-        // ========================================================
-        // 10. INSERT STEP 1
-        // ========================================================
 
         const jurnalStep1 =
             await insertJurnal(
@@ -972,13 +1040,10 @@ export async function executeTwoStepClosing(
             step1Items
         )
 
-        // ========================================================
-        // 11. UPDATE SALDO STEP 1
-        // ========================================================
-
         for (
             const item of step1Items
         ) {
+
             await updateAccountSaldo(
                 connection,
                 item.noAkun,
@@ -987,13 +1052,10 @@ export async function executeTwoStepClosing(
             )
         }
 
-        // ========================================================
-        // STEP 2
-        // TUTUP 13004 KE 13003
-        // ========================================================
-
         const nilaiClosing =
-            Math.abs(labaBersih)
+            Math.abs(
+                labaBersih
+            )
 
         let step2Items: {
             noAkun: string
@@ -1005,74 +1067,71 @@ export async function executeTwoStepClosing(
         if (
             labaBersih > 0
         ) {
-            // ======================================================
-            // LABA
-            //
-            // 13004 mempunyai saldo KREDIT
-            //
-            // Dr 13004
-            //    Cr 13003
-            // ======================================================
 
             step2Items = [
                 {
                     noAkun:
                         "13004",
+
                     debit:
                         nilaiClosing,
+
                     kredit:
                         0,
+
                     keterangan:
-                        `Pemindahan Laba ${monthLabel} ${year} ke Laba Tahun Berjalan`,
+                        `Pemindahan Laba ${monthLabel} ${year} ` +
+                        `ke Laba Tahun Berjalan`,
                 },
                 {
                     noAkun:
                         "13003",
+
                     debit:
                         0,
+
                     kredit:
                         nilaiClosing,
+
                     keterangan:
-                        `Pemindahan Laba ${monthLabel} ${year} ke Laba Tahun Berjalan`,
+                        `Pemindahan Laba ${monthLabel} ${year} ` +
+                        `ke Laba Tahun Berjalan`,
                 },
             ]
+
         } else {
-            // ======================================================
-            // RUGI
-            //
-            // 13004 mempunyai saldo DEBIT
-            //
-            // Dr 13003
-            //    Cr 13004
-            // ======================================================
 
             step2Items = [
                 {
                     noAkun:
                         "13003",
+
                     debit:
                         nilaiClosing,
+
                     kredit:
                         0,
+
                     keterangan:
-                        `Pemindahan Rugi ${monthLabel} ${year} ke Laba Tahun Berjalan`,
+                        `Pemindahan Rugi ${monthLabel} ${year} ` +
+                        `ke Laba Tahun Berjalan`,
                 },
                 {
                     noAkun:
                         "13004",
+
                     debit:
                         0,
+
                     kredit:
                         nilaiClosing,
+
                     keterangan:
-                        `Pemindahan Rugi ${monthLabel} ${year} ke Laba Tahun Berjalan`,
+                        `Pemindahan Rugi ${monthLabel} ${year} ` +
+                        `ke Laba Tahun Berjalan`,
                 },
             ]
         }
-
-        // ========================================================
-        // 12. VALIDASI STEP 2
-        // ========================================================
 
         const step2Debit =
             step2Items.reduce(
@@ -1092,16 +1151,17 @@ export async function executeTwoStepClosing(
             step2Debit !==
             step2Kredit
         ) {
+
             throw new Error(
                 `Jurnal Step 2 tidak balance. ` +
-                `Debit: ${formatRupiah(step2Debit)}, ` +
-                `Kredit: ${formatRupiah(step2Kredit)}.`
+                `Debit: ${formatRupiah(
+                    step2Debit
+                )}, ` +
+                `Kredit: ${formatRupiah(
+                    step2Kredit
+                )}.`
             )
         }
-
-        // ========================================================
-        // 13. INSERT STEP 2
-        // ========================================================
 
         const jurnalStep2 =
             await insertJurnal(
@@ -1118,13 +1178,10 @@ export async function executeTwoStepClosing(
             step2Items
         )
 
-        // ========================================================
-        // 14. UPDATE SALDO STEP 2
-        // ========================================================
-
         for (
             const item of step2Items
         ) {
+
             await updateAccountSaldo(
                 connection,
                 item.noAkun,
@@ -1132,10 +1189,6 @@ export async function executeTwoStepClosing(
                 item.kredit
             )
         }
-
-        // ========================================================
-        // 15. VALIDASI 13004
-        // ========================================================
 
         const [
             finalRows,
@@ -1159,11 +1212,17 @@ export async function executeTwoStepClosing(
         if (
             Array.isArray(finalRows)
         ) {
-            for (const row of finalRows) {
+
+            for (
+                const row of finalRows
+            ) {
+
                 if (
-                    String(row.no_akun) ===
-                    "13003"
+                    String(
+                        row.no_akun
+                    ) === "13003"
                 ) {
+
                     finalSaldo13003 =
                         Number(
                             row.saldo || 0
@@ -1171,9 +1230,11 @@ export async function executeTwoStepClosing(
                 }
 
                 if (
-                    String(row.no_akun) ===
-                    "13004"
+                    String(
+                        row.no_akun
+                    ) === "13004"
                 ) {
+
                     finalSaldo13004 =
                         Number(
                             row.saldo || 0
@@ -1182,36 +1243,19 @@ export async function executeTwoStepClosing(
             }
         }
 
-        /**
-         * 13004 adalah akun sementara.
-         *
-         * Setelah Step 1:
-         *   13004 berisi laba/rugi periode.
-         *
-         * Setelah Step 2:
-         *   13004 harus kembali ke saldo awalnya.
-         *
-         * Dalam kondisi saat ini saldo awal 13004
-         * diharapkan Rp 0.
-         */
         if (
             finalSaldo13004 !== 0
         ) {
+
             throw new Error(
                 `Saldo 13004 setelah closing bukan Rp 0. ` +
-                `Saldo sekarang: ${formatRupiah(finalSaldo13004)}.`
+                `Saldo sekarang: ${formatRupiah(
+                    finalSaldo13004
+                )}.`
             )
         }
 
-        // ========================================================
-        // 16. COMMIT
-        // ========================================================
-
         await connection.commit()
-
-        // ========================================================
-        // 17. REVALIDATE
-        // ========================================================
 
         revalidatePath("/neraca")
         revalidatePath("/closing")
@@ -1223,14 +1267,14 @@ export async function executeTwoStepClosing(
                 ? "LABA"
                 : "RUGI"
 
-        const nilaiFormatted =
-            formatRupiah(labaBersih)
-
         return {
             success: true,
+
             message:
                 `Closing ${monthLabel} ${year} berhasil. ` +
-                `${status}: ${nilaiFormatted}. ` +
+                `${status}: ${formatRupiah(
+                    labaBersih
+                )}. ` +
                 `Step 1 dan Step 2 berhasil dibuat. ` +
                 `Saldo 13004 telah kembali Rp 0.`,
 
@@ -1254,8 +1298,10 @@ export async function executeTwoStepClosing(
         }
 
     } catch (error: any) {
-        // Rollback hanya jika transaction memang sudah dimulai.
-        if (transactionStarted) {
+
+        if (
+            transactionStarted
+        ) {
             await connection.rollback()
         }
 
@@ -1270,7 +1316,1279 @@ export async function executeTwoStepClosing(
                 error?.message ||
                 "Terjadi kesalahan saat memproses closing.",
         }
+
     } finally {
+
         connection.release()
+    }
+}
+
+/**
+ * ============================================================
+ * CLOSING TAHUNAN
+ * ============================================================
+ *
+ * Konsep:
+ *
+ * Closing bulanan:
+ *
+ * Pendapatan/Beban
+ *        ↓
+ *      13004
+ *        ↓
+ *      13003
+ *
+ * Closing tahunan:
+ *
+ * 13003 Laba Tahun Berjalan
+ *        ↓
+ *      13002
+ *
+ * Dividen:
+ *
+ * 31101 Dividen
+ *        ↓
+ *      13002
+ *
+ * Dividen TIDAK mengurangi laba tahun berjalan.
+ * Dividen mengurangi laba ditahan.
+ */
+export async function executeAnnualClosing(
+    year: string
+) {
+    const connection =
+        await db.getConnection()
+
+    let transactionStarted =
+        false
+    
+    try {
+        const tahun =
+            String(year).trim()
+
+        /**
+         * ========================================================
+         * 1. VALIDASI TAHUN
+         * ========================================================
+         */
+        if (
+            !/^\d{4}$/.test(
+                tahun
+            )
+        ) {
+            return {
+                success: false,
+                message:
+                    "Tahun closing tidak valid.",
+            }
+        }
+
+        const tahunNumber =
+            Number(tahun)
+
+        const noRegistrasi =
+            `CL_TAHUNAN/${tahun}`
+
+        const tanggalClosing =
+            `${tahun}-12-31`
+
+        const keterangan =
+            `Closing Tahunan ${tahun}`
+
+        /**
+         * ========================================================
+         * 2. CEK DUPLIKASI CLOSING TAHUNAN
+         * ========================================================
+         */
+        const [
+            existingClosing,
+        ]: any =
+            await connection.query(
+                `
+                SELECT
+                    id
+                FROM tb_jurnal
+                WHERE no_registrasi = ?
+                LIMIT 1
+                `,
+                [
+                    noRegistrasi,
+                ]
+            )
+
+        if (
+            Array.isArray(
+                existingClosing
+            ) &&
+            existingClosing.length > 0
+        ) {
+            return {
+                success: false,
+                message:
+                    `Closing tahunan ${tahun} sudah pernah dilakukan.`,
+            }
+        }
+
+        /**
+         * ========================================================
+         * 3. VALIDASI 12 CLOSING BULANAN
+         * ========================================================
+         */
+        const monthlyRegistrations =
+            Array.from(
+                {
+                    length: 12,
+                },
+                (_, index) =>
+                    `CL_${String(
+                        index + 1
+                    ).padStart(
+                        2,
+                        "0"
+                    )}/${String(
+                        tahunNumber
+                    ).slice(-2)}`
+            )
+
+        const monthlyPlaceholders =
+            monthlyRegistrations
+                .map(
+                    () => "?"
+                )
+                .join(",")
+
+        const [
+            monthlyRows,
+        ]: any =
+            await connection.query(
+                `
+                SELECT
+                    no_registrasi
+                FROM tb_jurnal
+                WHERE no_registrasi IN (
+                    ${monthlyPlaceholders}
+                )
+                `,
+                monthlyRegistrations
+            )
+
+        const monthlyClosingSet =
+            new Set<string>()
+
+        if (
+            Array.isArray(
+                monthlyRows
+            )
+        ) {
+            for (
+                const row of monthlyRows
+            ) {
+                monthlyClosingSet.add(
+                    String(
+                        row.no_registrasi
+                    )
+                )
+            }
+        }
+
+        const missingMonths: string[] =
+            []
+
+        for (
+            let month = 1;
+            month <= 12;
+            month++
+        ) {
+            const registration =
+                `CL_${String(
+                    month
+                ).padStart(
+                    2,
+                    "0"
+                )}/${String(
+                    tahunNumber
+                ).slice(-2)}`
+
+            if (
+                !monthlyClosingSet.has(
+                    registration
+                )
+            ) {
+                missingMonths.push(
+                    BULAN_NAMES[
+                    String(month)
+                    ] ||
+                    `Bulan ${month}`
+                )
+            }
+        }
+
+        if (
+            missingMonths.length > 0
+        ) {
+            throw new Error(
+                `Closing tahunan ${tahun} belum dapat dilakukan. ` +
+                `Closing bulanan yang belum selesai: ` +
+                `${missingMonths.join(", ")}.`
+            )
+        }
+
+        /**
+         * ========================================================
+         * 4. BEGIN TRANSACTION
+         * ========================================================
+         */
+        await connection.beginTransaction()
+
+        transactionStarted =
+            true
+
+        /**
+         * ========================================================
+         * 5. LOCK AKUN YANG DIPERLUKAN
+         * ========================================================
+         *
+         * 13002 = Laba Ditahan
+         * 13003 = Laba Tahun Berjalan
+         * 13004 = Ikhtisar Laba/Rugi
+         *
+         * 31101 tetap dibaca untuk informasi saldo,
+         * tetapi TIDAK divalidasi harus menjadi Rp0.
+         */
+        const [
+            akunRows,
+        ]: any =
+            await connection.query(
+                `
+                SELECT
+                    no_akun,
+                    nama_akun,
+                    saldo
+                FROM tb_akun
+                WHERE no_akun IN (
+                    '13002',
+                    '13003',
+                    '13004',
+                    '31101'
+                )
+                FOR UPDATE
+                `
+            )
+
+        let saldo13002 = 0
+        let saldo13003 = 0
+        let saldo13004 = 0
+        let saldo31101 = 0
+
+        const akunSet =
+            new Set<string>()
+
+        if (
+            Array.isArray(akunRows)
+        ) {
+            for (
+                const row of akunRows
+            ) {
+                const noAkun =
+                    String(
+                        row.no_akun
+                    )
+
+                akunSet.add(
+                    noAkun
+                )
+
+                const saldo =
+                    Number(
+                        row.saldo || 0
+                    )
+
+                if (
+                    noAkun === "13002"
+                ) {
+                    saldo13002 =
+                        saldo
+                }
+
+                if (
+                    noAkun === "13003"
+                ) {
+                    saldo13003 =
+                        saldo
+                }
+
+                if (
+                    noAkun === "13004"
+                ) {
+                    saldo13004 =
+                        saldo
+                }
+
+                if (
+                    noAkun === "31101"
+                ) {
+                    saldo31101 =
+                        saldo
+                }
+            }
+        }
+
+        /**
+         * ========================================================
+         * 6. VALIDASI AKUN
+         * ========================================================
+         */
+        if (
+            !akunSet.has(
+                "13002"
+            )
+        ) {
+            throw new Error(
+                "Akun 13002 Laba Ditahan tidak ditemukan."
+            )
+        }
+
+        if (
+            !akunSet.has(
+                "13003"
+            )
+        ) {
+            throw new Error(
+                "Akun 13003 Laba Tahun Berjalan tidak ditemukan."
+            )
+        }
+
+        if (
+            !akunSet.has(
+                "13004"
+            )
+        ) {
+            throw new Error(
+                "Akun 13004 Ikhtisar Laba/Rugi tidak ditemukan."
+            )
+        }
+
+        if (
+            !akunSet.has(
+                "31101"
+            )
+        ) {
+            throw new Error(
+                "Akun 31101 Dividen tidak ditemukan."
+            )
+        }
+
+        /**
+         * ========================================================
+         * 7. VALIDASI 13004
+         * ========================================================
+         *
+         * Setelah semua closing bulanan selesai,
+         * Ikhtisar Laba/Rugi harus sudah Rp0.
+         */
+        if (
+            saldo13004 !== 0
+        ) {
+            throw new Error(
+                `Closing tahunan tidak dapat dilakukan karena ` +
+                `saldo 13004 Ikhtisar Laba/Rugi masih ` +
+                `${formatRupiah(
+                    saldo13004
+                )}. ` +
+                `Saldo 13004 harus Rp 0.`
+            )
+        }
+
+        /**
+         * ========================================================
+         * 8. VALIDASI 13003
+         * ========================================================
+         *
+         * Saldo 13003 merupakan laba/rugi tahun berjalan.
+         */
+        if (
+            saldo13003 === 0
+        ) {
+            throw new Error(
+                `Saldo 13003 Laba Tahun Berjalan untuk ${tahun} ` +
+                `adalah Rp 0. Tidak ada laba/rugi yang dapat ` +
+                `dipindahkan ke Laba Ditahan.`
+            )
+        }
+
+        /**
+         * ========================================================
+         * 9. AMBIL TOTAL DIVIDEN TAHUN BERJALAN
+         * ========================================================
+         *
+         * PENTING:
+         *
+         * Jangan menggunakan saldo tb_akun 31101
+         * sebagai total dividen tahun berjalan.
+         *
+         * Total dividen dihitung dari mutasi:
+         *
+         * 31101 DEBIT
+         *
+         * pada jurnal tahun yang bersangkutan.
+         *
+         * Closing tidak ikut dihitung.
+         */
+        const [
+            dividenRows,
+        ]: any =
+            await connection.query(
+                `
+                SELECT
+                    COALESCE(
+                        SUM(ji.debit),
+                        0
+                    ) AS total_dividen
+                FROM tb_jurnal_item ji
+                INNER JOIN tb_jurnal j
+                    ON j.id = ji.jurnal_id
+                WHERE ji.no_akun = '31101'
+                  AND YEAR(j.tanggal) = ?
+                  AND (
+                        j.no_registrasi IS NULL
+                        OR j.no_registrasi NOT LIKE 'CL\\_%'
+                  )
+                `,
+                [
+                    tahunNumber,
+                ]
+            )
+
+        const totalDividen =
+            Number(
+                dividenRows?.[0]?.total_dividen || 0
+            )
+
+        /**
+         * ========================================================
+         * 10. TENTUKAN LABA / RUGI
+         * ========================================================
+         */
+        const nilaiClosing =
+            Math.abs(
+                saldo13003
+            )
+
+        const status =
+            saldo13003 > 0
+                ? "LABA"
+                : "RUGI"
+
+        /**
+         * ========================================================
+         * 11. BENTUK ITEMS JURNAL TAHUNAN
+         * ========================================================
+         */
+        const stepItems: {
+            noAkun: string
+            debit: number
+            kredit: number
+            keterangan: string
+        }[] = []
+
+        /**
+         * ========================================================
+         * 12. TUTUP LABA / RUGI TAHUN BERJALAN
+         * ========================================================
+         *
+         * JIKA LABA:
+         *
+         * Dr 13003
+         *     Cr 13002
+         *
+         * JIKA RUGI:
+         *
+         * Dr 13002
+         *     Cr 13003
+         */
+        if (
+            saldo13003 > 0
+        ) {
+            /**
+             * LABA
+             */
+            stepItems.push({
+                noAkun:
+                    "13003",
+
+                debit:
+                    nilaiClosing,
+
+                kredit:
+                    0,
+
+                keterangan:
+                    `Pemindahan Laba Tahun Berjalan ${tahun} ` +
+                    `ke Laba Ditahan`,
+            })
+
+            stepItems.push({
+                noAkun:
+                    "13002",
+
+                debit:
+                    0,
+
+                kredit:
+                    nilaiClosing,
+
+                keterangan:
+                    `Pemindahan Laba Tahun Berjalan ${tahun} ` +
+                    `ke Laba Ditahan`,
+            })
+
+        } else {
+            /**
+             * RUGI
+             */
+            stepItems.push({
+                noAkun:
+                    "13002",
+
+                debit:
+                    nilaiClosing,
+
+                kredit:
+                    0,
+
+                keterangan:
+                    `Pemindahan Rugi Tahun Berjalan ${tahun} ` +
+                    `ke Laba Ditahan`,
+            })
+
+            stepItems.push({
+                noAkun:
+                    "13003",
+
+                debit:
+                    0,
+
+                kredit:
+                    nilaiClosing,
+
+                keterangan:
+                    `Pemindahan Rugi Tahun Berjalan ${tahun} ` +
+                    `ke Laba Ditahan`,
+            })
+        }
+
+        /**
+         * ========================================================
+         * 13. TUTUP DIVIDEN
+         * ========================================================
+         *
+         * Dividen BUKAN beban.
+         *
+         * Dividen juga TIDAK mengurangi 13003.
+         *
+         * Jurnal:
+         *
+         * Dr 13002 Laba Ditahan
+         *     Cr 31101 Dividen
+         *
+         * Nilai dividen berasal dari total mutasi debit 31101
+         * selama tahun berjalan.
+         */
+        if (
+            totalDividen > 0
+        ) {
+            stepItems.push({
+                noAkun:
+                    "13002",
+
+                debit:
+                    totalDividen,
+
+                kredit:
+                    0,
+
+                keterangan:
+                    `Penutupan Dividen Tahun ${tahun}`,
+            })
+
+            stepItems.push({
+                noAkun:
+                    "31101",
+
+                debit:
+                    0,
+
+                kredit:
+                    totalDividen,
+
+                keterangan:
+                    `Penutupan Dividen Tahun ${tahun}`,
+            })
+        }
+
+        /**
+         * ========================================================
+         * 14. VALIDASI JURNAL BALANCE
+         * ========================================================
+         */
+        const totalDebit =
+            stepItems.reduce(
+                (sum, item) =>
+                    sum + item.debit,
+                0
+            )
+
+        const totalKredit =
+            stepItems.reduce(
+                (sum, item) =>
+                    sum + item.kredit,
+                0
+            )
+
+        if (
+            totalDebit !==
+            totalKredit
+        ) {
+            throw new Error(
+                `Jurnal closing tahunan tidak balance. ` +
+                `Debit: ${formatRupiah(
+                    totalDebit
+                )}, ` +
+                `Kredit: ${formatRupiah(
+                    totalKredit
+                )}.`
+            )
+        }
+
+        /**
+         * ========================================================
+         * 15. INSERT HEADER JURNAL
+         * ========================================================
+         */
+        const jurnalClosing =
+            await insertJurnal(
+                connection,
+                tanggalClosing,
+                noRegistrasi,
+                `${tahun}-ANNUAL`,
+                keterangan
+            )
+
+        /**
+         * ========================================================
+         * 16. INSERT DETAIL JURNAL
+         * ========================================================
+         */
+        await insertJurnalItems(
+            connection,
+            jurnalClosing,
+            stepItems
+        )
+
+        /**
+         * ========================================================
+         * 17. UPDATE SALDO AKUN
+         * ========================================================
+         *
+         * Termasuk:
+         *
+         * 13003
+         * 13002
+         * 31101
+         *
+         * Tetapi tidak ada validasi bahwa saldo 31101
+         * harus menjadi Rp0 karena saldo akun tersebut
+         * bukan sumber perhitungan total dividen.
+         */
+        for (
+            const item of stepItems
+        ) {
+            await updateAccountSaldo(
+                connection,
+                item.noAkun,
+                item.debit,
+                item.kredit
+            )
+        }
+
+        /**
+         * ========================================================
+         * 18. CEK SALDO AKHIR
+         * ========================================================
+         */
+        const [
+            finalRows,
+        ]: any =
+            await connection.query(
+                `
+                SELECT
+                    no_akun,
+                    saldo
+                FROM tb_akun
+                WHERE no_akun IN (
+                    '13002',
+                    '13003',
+                    '13004',
+                    '31101'
+                )
+                `
+            )
+
+        let finalSaldo13002 = 0
+        let finalSaldo13003 = 0
+        let finalSaldo13004 = 0
+        let finalSaldo31101 = 0
+
+        if (
+            Array.isArray(
+                finalRows
+            )
+        ) {
+            for (
+                const row of finalRows
+            ) {
+                const noAkun =
+                    String(
+                        row.no_akun
+                    )
+
+                const saldo =
+                    Number(
+                        row.saldo || 0
+                    )
+
+                if (
+                    noAkun === "13002"
+                ) {
+                    finalSaldo13002 =
+                        saldo
+                }
+
+                if (
+                    noAkun === "13003"
+                ) {
+                    finalSaldo13003 =
+                        saldo
+                }
+
+                if (
+                    noAkun === "13004"
+                ) {
+                    finalSaldo13004 =
+                        saldo
+                }
+
+                if (
+                    noAkun === "31101"
+                ) {
+                    finalSaldo31101 =
+                        saldo
+                }
+            }
+        }
+
+        /**
+         * ========================================================
+         * 19. VALIDASI 13003
+         * ========================================================
+         */
+        if (
+            finalSaldo13003 !== 0
+        ) {
+            throw new Error(
+                `Saldo 13003 setelah closing tahunan bukan Rp 0. ` +
+                `Saldo sekarang: ${formatRupiah(
+                    finalSaldo13003
+                )}.`
+            )
+        }
+
+        /**
+         * ========================================================
+         * 20. VALIDASI 13004
+         * ========================================================
+         */
+        if (
+            finalSaldo13004 !== 0
+        ) {
+            throw new Error(
+                `Saldo 13004 setelah closing tahunan bukan Rp 0. ` +
+                `Saldo sekarang: ${formatRupiah(
+                    finalSaldo13004
+                )}.`
+            )
+        }
+
+        /**
+         * ========================================================
+         * CATATAN 31101
+         * ========================================================
+         *
+         * TIDAK ADA VALIDASI:
+         *
+         * finalSaldo31101 === 0
+         *
+         * karena total dividen ditentukan berdasarkan mutasi
+         * jurnal tahun berjalan, bukan saldo akhir tb_akun.
+         */
+
+        /**
+         * ========================================================
+         * 21. COMMIT
+         * ========================================================
+         */
+        await connection.commit()
+
+        /**
+         * ========================================================
+         * 22. REVALIDATE
+         * ========================================================
+         */
+        revalidatePath(
+            "/neraca"
+        )
+
+        revalidatePath(
+            "/closing"
+        )
+
+        revalidatePath(
+            "/jurnal"
+        )
+
+        revalidatePath(
+            "/riwayat-transaksi"
+        )
+
+        /**
+         * ========================================================
+         * 23. RESPONSE
+         * ========================================================
+         */
+        return {
+            success: true,
+
+            message:
+                `Closing tahunan ${tahun} berhasil. ` +
+                `${status}: ${formatRupiah(
+                    saldo13003
+                )}. ` +
+                `Dividen: ${formatRupiah(
+                    totalDividen
+                )}. ` +
+                `Laba/Rugi tahun berjalan telah dipindahkan ` +
+                `ke Laba Ditahan.`,
+
+            data: {
+                year:
+                    tahun,
+
+                noRegistrasi:
+                    noRegistrasi,
+
+                jurnalClosing:
+                    jurnalClosing,
+
+                status:
+                    status,
+
+                labaRugi:
+                    saldo13003,
+
+                totalDividen:
+                    totalDividen,
+
+                saldoAwal13002:
+                    saldo13002,
+
+                saldoAkhir13002:
+                    finalSaldo13002,
+
+                saldoAwal13003:
+                    saldo13003,
+
+                saldoAkhir13003:
+                    finalSaldo13003,
+
+                saldoAkhir13004:
+                    finalSaldo13004,
+
+                saldoAwal31101:
+                    saldo31101,
+
+                saldoAkhir31101:
+                    finalSaldo31101,
+            },
+        }
+
+    } catch (error: any) {
+
+        if (
+            transactionStarted
+        ) {
+            await connection.rollback()
+        }
+
+        console.error(
+            "Gagal eksekusi closing tahunan:",
+            error
+        )
+
+        return {
+            success: false,
+            message:
+                error?.message ||
+                "Terjadi kesalahan saat memproses closing tahunan.",
+        }
+
+    } finally {
+
+        connection.release()
+    }
+}
+
+/**
+ * ============================================================
+ * PREVIEW CLOSING TAHUNAN
+ * ============================================================
+ *
+ * Preview:
+ *
+ * 13002 = saldo Laba Ditahan sebelum closing
+ * 13003 = laba/rugi tahun berjalan
+ * 13004 = Ikhtisar Laba Rugi
+ * 31101 = total dividen tahun berjalan
+ *
+ * Simulasi:
+ *
+ * 13002 akhir =
+ *     13002 awal
+ *     + laba/rugi tahun berjalan
+ *     - dividen
+ *
+ * 13003 akhir = 0
+ * 13004 akhir = 0
+ * 31101 akhir = 0
+ */
+export async function getPreviewClosingTahunan(
+    year: string
+) {
+
+    try {
+
+        const tahun =
+            String(year).trim()
+
+        if (
+            !/^\d{4}$/.test(
+                tahun
+            )
+        ) {
+
+            return {
+                success: false,
+                message:
+                    "Tahun tidak valid.",
+                data: null,
+            }
+        }
+
+        const tahunNumber =
+            Number(tahun)
+
+        /**
+         * ========================================================
+         * 1. CEK 12 CLOSING BULANAN
+         * ========================================================
+         */
+        const monthlyRegistrations =
+            Array.from(
+                {
+                    length: 12,
+                },
+                (_, index) =>
+                    `CL_${String(
+                        index + 1
+                    ).padStart(
+                        2,
+                        "0"
+                    )}/${String(
+                        tahunNumber
+                    ).slice(-2)}`
+            )
+
+        const monthlyPlaceholders =
+            monthlyRegistrations
+                .map(
+                    () => "?"
+                )
+                .join(",")
+
+        const [
+            monthlyRows,
+        ]: any =
+            await db.query(
+                `
+                SELECT
+                    no_registrasi
+                FROM tb_jurnal
+                WHERE no_registrasi IN (
+                    ${monthlyPlaceholders}
+                )
+                `,
+                monthlyRegistrations
+            )
+
+        const monthlyClosingSet =
+            new Set<string>()
+
+        if (
+            Array.isArray(
+                monthlyRows
+            )
+        ) {
+
+            for (
+                const row of monthlyRows
+            ) {
+
+                monthlyClosingSet.add(
+                    String(
+                        row.no_registrasi
+                    )
+                )
+            }
+        }
+
+        const missingMonths: string[] =
+            []
+
+        for (
+            let month = 1;
+            month <= 12;
+            month++
+        ) {
+
+            const registration =
+                `CL_${String(
+                    month
+                ).padStart(
+                    2,
+                    "0"
+                )}/${String(
+                    tahunNumber
+                ).slice(-2)}`
+
+            if (
+                !monthlyClosingSet.has(
+                    registration
+                )
+            ) {
+
+                missingMonths.push(
+                    BULAN_NAMES[
+                    String(month)
+                    ] ||
+                    `Bulan ${month}`
+                )
+            }
+        }
+
+        /**
+         * ========================================================
+         * 2. AMBIL SALDO EKUITAS
+         * ========================================================
+         */
+        const [
+            rows,
+        ]: any =
+            await db.query(
+                `
+                SELECT
+                    no_akun,
+                    saldo
+                FROM tb_akun
+                WHERE no_akun IN (
+                    '13002',
+                    '13003',
+                    '13004',
+                    '31101'
+                )
+                ORDER BY no_akun
+                `
+            )
+
+        let saldo13002 = 0
+        let saldo13003 = 0
+        let saldo13004 = 0
+        let saldo31101 = 0
+
+        if (
+            Array.isArray(rows)
+        ) {
+
+            for (
+                const row of rows
+            ) {
+
+                const noAkun =
+                    String(
+                        row.no_akun
+                    )
+
+                const saldo =
+                    Number(
+                        row.saldo || 0
+                    )
+
+                if (
+                    noAkun === "13002"
+                ) {
+                    saldo13002 =
+                        saldo
+                }
+
+                if (
+                    noAkun === "13003"
+                ) {
+                    saldo13003 =
+                        saldo
+                }
+
+                if (
+                    noAkun === "13004"
+                ) {
+                    saldo13004 =
+                        saldo
+                }
+
+                if (
+                    noAkun === "31101"
+                ) {
+                    saldo31101 =
+                        saldo
+                }
+            }
+        }
+
+        /**
+         * ========================================================
+         * 3. AMBIL TOTAL DIVIDEN
+         * ========================================================
+         *
+         * Dividen diambil dari mutasi jurnal,
+         * bukan saldo akun.
+         */
+        const [
+            dividenRows,
+        ]: any =
+            await db.query(
+                `
+                SELECT
+                    COALESCE(
+                        SUM(ji.debit),
+                        0
+                    ) AS total_dividen
+                FROM tb_jurnal_item ji
+                INNER JOIN tb_jurnal j
+                    ON j.id = ji.jurnal_id
+                WHERE ji.no_akun = '31101'
+                  AND YEAR(j.tanggal) = ?
+                  AND (
+                        j.no_registrasi IS NULL
+                        OR j.no_registrasi NOT LIKE 'CL\\_%'
+                  )
+                `,
+                [
+                    tahunNumber,
+                ]
+            )
+
+        const totalDividen =
+            Number(
+                dividenRows?.[0]?.total_dividen || 0
+            )
+
+        /**
+         * ========================================================
+         * 4. SIMULASI HASIL CLOSING
+         * ========================================================
+         */
+        const saldo13002Setelah =
+            saldo13002 +
+            saldo13003 -
+            totalDividen
+
+        const saldo13003Setelah =
+            0
+
+        const saldo13004Setelah =
+            0
+
+        const saldo31101Setelah =
+            0
+
+        const status =
+            saldo13003 > 0
+                ? "LABA"
+                : saldo13003 < 0
+                    ? "RUGI"
+                    : "NIHIL"
+
+        /**
+         * ========================================================
+         * 5. RETURN
+         * ========================================================
+         */
+        return {
+            success: true,
+
+            data: {
+                tahun,
+
+                closingBulananLengkap:
+                    missingMonths.length === 0,
+
+                missingMonths,
+
+                saldo13002,
+
+                saldo13003,
+
+                saldo13004,
+
+                saldo31101,
+
+                totalDividen,
+
+                status,
+
+                labaRugiTahunBerjalan:
+                    saldo13003,
+
+                saldo13002Setelah,
+
+                saldo13003Setelah,
+
+                saldo13004Setelah,
+
+                saldo31101Setelah,
+            },
+        }
+
+    } catch (error: any) {
+
+        console.error(
+            "Gagal mengambil preview closing tahunan:",
+            error
+        )
+
+        return {
+            success: false,
+            message:
+                error?.message ||
+                "Gagal mengambil preview closing tahunan.",
+            data: null,
+        }
     }
 }

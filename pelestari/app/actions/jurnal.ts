@@ -31,12 +31,22 @@ function isNormalDebit(noAkun: string): boolean {
   const akun = String(noAkun).trim();
 
   const KREDIT_NORMAL_OVERRIDE = new Set<string>([
+    "13002",
+    "13003",
+    "13004",
+    "41001",
+    "41002",
     "71106",
     "81100",
   ]);
 
   if (KREDIT_NORMAL_OVERRIDE.has(akun)) {
     return false;
+  }
+
+  // Dividen adalah akun debit-normal
+  if (akun === "31101") {
+    return true;
   }
 
   const prefix = akun.charAt(0);
