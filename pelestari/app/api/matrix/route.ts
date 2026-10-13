@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       params.push(batchId);
     }
 
-    sql += ' ORDER BY m.created_at DESC';
+    sql += ' ORDER BY m.created_at ASC';
 
     const [rows] = await db.query(sql, params);
     return NextResponse.json({ success: true, data: rows });
