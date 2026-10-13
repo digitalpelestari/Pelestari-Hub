@@ -121,6 +121,19 @@ async function buildSheet(
   const IDX_FOTO = 12;
   const IMAGE_ROW_HEIGHT_PT = ((KTP_SIM_SIZE_PX.height + PADDING_PX) * 72) / 96;
 
+  // OPTIMASI: Download SEMUA gambar peserta secara paralel sekaligus di awal
+  const imagePromises = rows.map(async (row) => {
+    const [imgKtp, imgSim, imgPas] = await Promise.all([
+      fetchImageBufferServer(row.foto_ktp),
+      fetchImageBufferServer(row.foto_sim),
+      fetchImageBufferServer(row.pas_foto),
+    ]);
+    return { imgKtp, imgSim, imgPas };
+  });
+
+  const allImages = await Promise.all(imagePromises);
+
+  // Masukkan data teks dan gambar ke sheet Excel
   for (let idx = 0; idx < rows.length; idx++) {
     const row = rows[idx];
     const rowNum = HEADER_ROW_NUM + 1 + idx;
@@ -152,12 +165,7 @@ async function buildSheet(
     });
     dataRow.height = IMAGE_ROW_HEIGHT_PT;
 
-    const [imgKtp, imgSim, imgPas] = await Promise.all([
-      fetchImageBufferServer(row.foto_ktp),
-      fetchImageBufferServer(row.foto_sim),
-      fetchImageBufferServer(row.pas_foto),
-    ]);
-
+    const { imgKtp, imgSim, imgPas } = allImages[idx];
     const rowIndex0 = rowNum - 1;
 
     if (imgKtp) {
@@ -213,7 +221,6 @@ export async function POST(req: NextRequest) {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Sistem Pelatihan";
 
-    // Kelompokkan: Sheet 1 = ABB (non-DDT), Sheet 2 = AKBB (non-DDT), Sheet 3 = DDT (semua DDT tanpa perdulikan ABB/AKBB)
     const abbRows: any[] = [];
     const akbbRows: any[] = [];
     const ddtRows: any[] = [];
