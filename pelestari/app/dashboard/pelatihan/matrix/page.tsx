@@ -152,25 +152,33 @@ export default function PelatihanMatrixPage() {
   }, [])
 
   // 2. Fetch Data Matrix
-  const fetchMatrixData = async (batchId: string) => {
+ const fetchMatrixData = async (batchId: string) => {
     try {
-      setLoadingData(true)
-      const url = batchId ? `/api/matrix?batch_id=${batchId}` : `/api/matrix`
-      const res = await fetch(url)
-      const json = await res.json()
+      setLoadingData(true);
+
+      const url = batchId
+        ? `/api/matrix?batch_id=${batchId}`
+        : `/api/matrix`;
+
+      const res = await fetch(url);
+      const json = await res.json();
+
       if (json.success) {
-        setData(json.data)
+        const sortedData = [...json.data].sort((a, b) => {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+
+          return dateA - dateB;
+        });
+
+        setData(sortedData);
       }
     } catch (err) {
-      console.error("Error fetch matrix:", err)
+      console.error("Error fetch matrix:", err);
     } finally {
-      setLoadingData(false)
+      setLoadingData(false);
     }
-  }
-
-  useEffect(() => {
-    fetchMatrixData(selectedBatchId)
-  }, [selectedBatchId])
+  };
 
   // Helper Usia
   const calculateAge = (dateString: string | null) => {
@@ -663,7 +671,7 @@ export default function PelatihanMatrixPage() {
       if (result.success) {
         setIsModalOpen(false)
         resetPesertaForm()
-        fetchMatrixData(selectedBatchId)
+        await fetchMatrixData(selectedBatchId)
         Swal.fire({
           icon: "success",
           title: "Berhasil",

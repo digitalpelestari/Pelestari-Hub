@@ -186,17 +186,7 @@ export default function Page() {
       onCopy={(e) => e.preventDefault()}
       onCut={(e) => e.preventDefault()}
     >
-      {/* Overlay Watermark Dinamis */}
-      <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center overflow-hidden opacity-[0.07]">
-        <div className="grid -rotate-12 grid-cols-2 gap-24 text-center font-mono text-xs tracking-widest text-black uppercase select-none md:grid-cols-3">
-          {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i}>
-              <p>{userName}</p>
-              <p className="text-[10px]">Confidential Document</p>
-            </div>
-          ))}
-        </div>
-      </div>
+    
 
       <div className="@container/main flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
