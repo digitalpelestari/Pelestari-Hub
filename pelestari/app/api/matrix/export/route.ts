@@ -121,19 +121,19 @@ async function buildSheet(
   const IDX_FOTO = 12;
   const IMAGE_ROW_HEIGHT_PT = ((KTP_SIM_SIZE_PX.height + PADDING_PX) * 72) / 96;
 
-  // OPTIMASI: Download SEMUA gambar peserta secara paralel sekaligus di awal
-  const imagePromises = rows.map(async (row) => {
-    const [imgKtp, imgSim, imgPas] = await Promise.all([
-      fetchImageBufferServer(row.foto_ktp),
-      fetchImageBufferServer(row.foto_sim),
-      fetchImageBufferServer(row.pas_foto),
-    ]);
-    return { imgKtp, imgSim, imgPas };
-  });
+  // 1. Fetch semua gambar peserta secara paralel dengan tetap menjaga urutan index array `rows`
+  const allImages = await Promise.all(
+    rows.map(async (row) => {
+      const [imgKtp, imgSim, imgPas] = await Promise.all([
+        fetchImageBufferServer(row.foto_ktp),
+        fetchImageBufferServer(row.foto_sim),
+        fetchImageBufferServer(row.pas_foto),
+      ]);
+      return { imgKtp, imgSim, imgPas };
+    })
+  );
 
-  const allImages = await Promise.all(imagePromises);
-
-  // Masukkan data teks dan gambar ke sheet Excel
+  // 2. Masukkan data teks dan gambar ke sheet Excel secara berurutan
   for (let idx = 0; idx < rows.length; idx++) {
     const row = rows[idx];
     const rowNum = HEADER_ROW_NUM + 1 + idx;
