@@ -260,7 +260,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         { title: "Matrix", url: "/dashboard/pelatihan/matrix" },
         { title: "Batch", url: "/dashboard/pelatihan/batch" },
         { title: "Perusahaan", url: "/dashboard/pelatihan/perusahaan" },
+        { title: "RAB", url: "/dashboard/pelatihan/rab" },
       ],
+    },
+    {
+      title: "Manager Operasional",
+      url: "#",
+      icon: <Users />,
+      roles: ["MANAGER OPERASIONAL"],
+      items: [{ title: "RAB", url: "/dashboard/manager/pelatihan/rab" }],
     },
   ]
 
