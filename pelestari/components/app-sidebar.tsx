@@ -143,6 +143,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             },
           ],
         },
+        // RAB
+        {
+          title: "RAB",
+          url: "#",
+          icon: <Receipt />,
+          roles: ["ADMIN", "MANAGER FINANCE", "FINANCE"],
+          items: [
+            {
+              title: "RAB",
+              url: "/dashboard/finance/rab",
+            },
+          ],
+        },
 
         // LAPORAN
         {

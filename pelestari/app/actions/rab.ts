@@ -16,6 +16,8 @@ const STATUS = {
 
     MENUNGGU_FINANCE: "Menunggu Verifikasi Finance",
 
+    REVISI_FINANCE: "Revisi Oleh Finance",
+
     DISETUJUI: "Disetujui",
 
 } as const;
@@ -497,15 +499,13 @@ export async function updateRAB(
         }
 
         if (
-
             rows[0].status_persetujuan !== STATUS.DRAFT &&
-
-            rows[0].status_persetujuan !== STATUS.REVISI
-
+            rows[0].status_persetujuan !== STATUS.REVISI &&
+            rows[0].status_persetujuan !== STATUS.REVISI_FINANCE
         ) {
-
-            throw new Error("RAB hanya dapat diubah jika berstatus Draft atau Revisi Oleh Manager.");
-
+            throw new Error(
+                "RAB hanya dapat diubah jika berstatus Draft atau sedang dalam revisi."
+            );
         }
 
         await connection.execute(
@@ -668,69 +668,45 @@ export async function deleteRAB(idPengajuan: number) {
 
 }
 
+
 export async function submitRAB(idPengajuan: number) {
-
     if (!Number.isSafeInteger(idPengajuan) || idPengajuan < 1) {
-
         throw new Error("ID pengajuan tidak valid.");
-
     }
 
     const [result] = await db.execute<ResultSetHeader>(
-
-        `UPDATE tb_pengajuan_rab AS p
-
-         SET p.status_persetujuan = ?
-
-         WHERE p.id_pengajuan = ?
-
-           AND p.status_persetujuan IN (?, ?)
-
+        `UPDATE tb_pengajuan_rab
+         SET status_persetujuan = ?
+         WHERE id_pengajuan = ?
+           AND status_persetujuan IN (?, ?, ?)
            AND EXISTS (
-
                SELECT 1
-
-               FROM tb_rab AS r
-
-               WHERE r.id_pengajuan = p.id_pengajuan
-
+               FROM tb_rab
+               WHERE tb_rab.id_pengajuan = tb_pengajuan_rab.id_pengajuan
            )`,
-
         [
-
             STATUS.MENUNGGU_MANAGER,
-
             idPengajuan,
-
             STATUS.DRAFT,
-
             STATUS.REVISI,
-
+            STATUS.REVISI_FINANCE,
         ]
-
     );
 
     if (result.affectedRows === 0) {
-
         throw new Error(
-
             "Pengajuan tidak ditemukan, tidak memiliki rincian biaya, atau statusnya tidak dapat diajukan."
-
         );
-
     }
 
     revalidatePath("/rab");
 
     return {
-
         success: true,
-
         message: "RAB berhasil diajukan kepada Manager.",
-
     };
-
 }
+
 
 export async function approveRAB(idPengajuan: number) {
 
@@ -890,4 +866,117 @@ export async function reviseRAB(
 
     }
 
+}
+
+export async function verifyRAB(idPengajuan: number) {
+    if (!Number.isSafeInteger(idPengajuan) || idPengajuan < 1) {
+        throw new Error("ID pengajuan tidak valid.");
+    }
+
+    const connection = await db.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        const [rows] = await connection.execute<RowDataPacket[]>(
+            `SELECT id_pengajuan
+             FROM tb_pengajuan_rab
+             WHERE id_pengajuan = ?
+               AND status_persetujuan = ?
+             FOR UPDATE`,
+            [idPengajuan, STATUS.MENUNGGU_FINANCE]
+        );
+
+        if (rows.length === 0) {
+            throw new Error(
+                "RAB tidak ditemukan atau sudah diproses."
+            );
+        }
+
+        await connection.execute(
+            `UPDATE tb_pengajuan_rab
+             SET status_persetujuan = ?
+             WHERE id_pengajuan = ?`,
+            [STATUS.DISETUJUI, idPengajuan]
+        );
+
+        await connection.commit();
+
+        revalidatePath("/rab");
+        revalidatePath("/manager/rab");
+        revalidatePath("/finance/rab");
+
+        return {
+            success: true,
+            message: "RAB berhasil diverifikasi dan disetujui Finance.",
+        };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
+}
+
+export async function reviseRABFinance(
+    idPengajuan: number,
+    catatan: string
+) {
+    if (!Number.isSafeInteger(idPengajuan) || idPengajuan < 1) {
+        throw new Error("ID pengajuan tidak valid.");
+    }
+
+    if (!catatan?.trim()) {
+        throw new Error("Catatan revisi Finance wajib diisi.");
+    }
+
+    const connection = await db.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        const [rows] = await connection.execute<RowDataPacket[]>(
+            `SELECT id_pengajuan
+             FROM tb_pengajuan_rab
+             WHERE id_pengajuan = ?
+               AND status_persetujuan = ?
+             FOR UPDATE`,
+            [idPengajuan, STATUS.MENUNGGU_FINANCE]
+        );
+
+        if (rows.length === 0) {
+            throw new Error(
+                "RAB tidak ditemukan atau sudah diproses."
+            );
+        }
+
+        await connection.execute(
+            `UPDATE tb_pengajuan_rab
+             SET status_persetujuan = ?,
+                 catatan_revisi_finance = ?
+             WHERE id_pengajuan = ?`,
+            [
+                STATUS.REVISI_FINANCE,
+                catatan.trim(),
+                idPengajuan,
+            ]
+        );
+
+        await connection.commit();
+
+        revalidatePath("/rab");
+        revalidatePath("/manager/rab");
+        revalidatePath("/finance/rab");
+
+        return {
+            success: true,
+            message:
+                "RAB dikembalikan ke Pelatihan untuk diperbaiki. Setelah diajukan ulang, RAB harus melalui persetujuan Manager kembali.",
+        };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 }

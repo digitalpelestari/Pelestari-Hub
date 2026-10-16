@@ -22,7 +22,6 @@ import {
   deleteRAB,
   submitRAB,
   approveRAB,
-  reviseRAB,
 } from "@/app/actions/rab"
 
 type RincianRAB = {
@@ -164,6 +163,7 @@ function formatStatus(status: string): string {
     "Menunggu Persetujuan Manager": "Menunggu Persetujuan Manager",
     "Menunggu Verifikasi Finance": "Menunggu Verifikasi Finance",
     "Revisi Oleh Manager": "Revisi Oleh Manager",
+    "Revisi Oleh Finance": "Revisi Oleh Finance",
     Disetujui: "Disetujui",
   }
 
@@ -178,6 +178,7 @@ function warnaStatus(status: string): string {
     case "Menunggu Verifikasi Finance":
       return "bg-yellow-100 text-yellow-800"
     case "Revisi Oleh Manager":
+    case "Revisi Oleh Finance":
       return "bg-orange-100 text-orange-700"
     case "Draft":
       return "bg-gray-100 text-gray-700"
@@ -759,7 +760,8 @@ export default function RABPage() {
                         </button>
 
                         {(rab.status_persetujuan === "Draft" ||
-                          rab.status_persetujuan === "Revisi Oleh Manager") && (
+                          rab.status_persetujuan === "Revisi Oleh Manager" ||
+                          rab.status_persetujuan === "Revisi Oleh Finance") && (
                           <>
                             <button
                               type="button"
@@ -782,13 +784,14 @@ export default function RABPage() {
                         )}
 
                         {(rab.status_persetujuan === "Draft" ||
-                          rab.status_persetujuan === "Revisi Oleh Manager") && (
+                          rab.status_persetujuan === "Revisi Oleh Manager" ||
+                          rab.status_persetujuan === "Revisi Oleh Finance") && (
                           <button
                             type="button"
                             title={
-                              rab.status_persetujuan === "Revisi Oleh Manager"
-                                ? "Kirim Ulang RAB"
-                                : "Ajukan RAB"
+                              rab.status_persetujuan === "Draft"
+                                ? "Ajukan RAB"
+                                : "Kirim Ulang RAB"
                             }
                             onClick={() =>
                               void jalankanAksi(
@@ -802,51 +805,6 @@ export default function RABPage() {
                           >
                             <Send size={17} />
                           </button>
-                        )}
-
-                        {rab.status_persetujuan ===
-                          "Menunggu Persetujuan Manager" && (
-                          <>
-                            <button
-                              type="button"
-                              title="Setujui RAB"
-                              onClick={() =>
-                                void jalankanAksi(
-                                  () => approveRAB(rab.id_pengajuan),
-                                  "RAB berhasil disetujui."
-                                )
-                              }
-                              className="rounded-lg p-2 text-green-600 hover:bg-green-50"
-                            >
-                              <CheckCircle size={17} />
-                            </button>
-
-                            <button
-                              type="button"
-                              title="Minta revisi"
-                              onClick={async () => {
-                                const catatan = window.prompt(
-                                  "Masukkan catatan revisi:"
-                                )
-
-                                if (catatan === null) return
-
-                                if (!catatan.trim()) {
-                                  setError("Catatan revisi wajib diisi.")
-                                  return
-                                }
-
-                                await jalankanAksi(
-                                  () =>
-                                    reviseRAB(rab.id_pengajuan, catatan.trim()),
-                                  "RAB dikembalikan untuk revisi."
-                                )
-                              }}
-                              className="rounded-lg p-2 text-orange-600 hover:bg-orange-50"
-                            >
-                              <RotateCcw size={17} />
-                            </button>
-                          </>
                         )}
                       </div>
                     </td>
@@ -1086,7 +1044,7 @@ export default function RABPage() {
                                       e.target.value
                                     )
                                   }
-                                  placeholder="Orang"
+                                  placeholder="Per Orang"
                                   className={INPUT_COMPACT_CLASS}
                                 />
                               </td>
