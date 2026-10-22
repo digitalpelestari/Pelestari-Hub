@@ -165,6 +165,8 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 const noRegistrasi = toText(getCellValue(row, headerMap, "Nomor Register"));
                 if (!noRegistrasi) continue;
 
+                // Membaca Nomor Referensi / No. Referensi jika ada
+                const noReferensi = toText(getCellValue(row, headerMap, "No Referensi", "Nomor Referensi", "No. Referensi", "Ref"));
                 const tanggal = toDateString(getCellValue(row, headerMap, "Tanggal"));
                 const rekeningExcel = toText(getCellValue(row, headerMap, "Rekening"));
                 const namaPemohon = toText(getCellValue(row, headerMap, "Nama Pengirim"));
@@ -179,6 +181,7 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     rowKey: `CI-${r}`,
                     jenis: "CI",
                     noRegistrasi,
+                    noReferensi,
                     tanggal: tanggal || "",
                     rekeningExcel,
                     noAkunKasBank,
@@ -222,6 +225,8 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 const noRegistrasi = toText(getCellValue(row, headerMap, "Nomor Register")); 
                 if (!noRegistrasi) continue;
 
+                // Membaca Nomor Referensi / No. Referensi jika ada
+                const noReferensi = toText(getCellValue(row, headerMap, "No Referensi", "Nomor Referensi", "No. Referensi", "Ref"));
                 const tanggal = toDateString(getCellValue(row, headerMap, "Tanggal"));
                 const rekeningExcel = toText(getCellValue(row, headerMap, "Rekening"));
                 const penerima = toText(getCellValue(row, headerMap, "Penerima"));
@@ -309,6 +314,7 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     rowKey: `CO-${r}`,
                     jenis: "CO",
                     noRegistrasi: String(noRegistrasi).trim(),
+                    noReferensi,
                     tanggal: tanggal || "",
                     rekeningExcel,
                     noAkunKasBank,
@@ -356,6 +362,8 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 const noRegistrasi = toText(getCellValue(row, headerMap, "No Register", "Nomor Register"));
                 if (!noRegistrasi || !noRegistrasi.toUpperCase().startsWith("KK")) continue;
 
+                // Membaca Nomor Referensi / No. Referensi jika ada
+                const noReferensi = toText(getCellValue(row, headerMap, "No Referensi", "Nomor Referensi", "No. Referensi", "Ref"));
                 const tanggal = toDateString(getCellValue(row, headerMap, "Tanggal"));
                 const kelompokBiaya = toText(getCellValue(row, headerMap, "Kelompok Biaya"));
                 const jenisBiaya = toText(getCellValue(row, headerMap, "Jenis Biaya"));
@@ -414,6 +422,7 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     rowKey: `KK-${r}`,
                     jenis: "KK",
                     noRegistrasi: String(noRegistrasi).trim(),
+                    noReferensi,
                     tanggal: tanggal || "",
                     rekeningExcel: "Kas Kecil",
                     noAkunKasBank: AKUN_KAS_KECIL,
@@ -584,10 +593,13 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
                 });
             }
 
+            // Ambil nomor referensi dari baris pertama jika tersedia
+            const noReferensi = firstRow.noReferensi || "";
+
             const result = await createJurnalUmum({
                 tanggal: firstRow.tanggal,
                 noRegistrasi: firstRow.noRegistrasi,
-                noReferensi: "",
+                noReferensi,
                 penerimaId,
                 pemohonId,
                 keterangan: firstRow.keterangan || (firstRow.jenis === "CI" ? "Import Pemasukan (CI)" : firstRow.jenis === "CO" ? "Import Pengeluaran (CO)" : "Import Petty Cash (KK)"),
@@ -617,5 +629,3 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
         ...hasil,
     };
 }
-
-//done

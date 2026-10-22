@@ -8,24 +8,25 @@
  */
 
 export interface ImportPreviewRow {
-    rowKey: string; // id unik utk React key & referensi saat commit
-    jenis: "CI" | "CO" | "KK";
-    noRegistrasi: string;
-    tanggal: string; // yyyy-mm-dd
-    rekeningExcel: string;
-    noAkunKasBank: string | null;
-    skorMatchRekening: number | null;
-    namaPihak: string; // Nama Pengirim (CI) / Penerima (CO)
-    namaPemohon: string;
-    isPihakBaru: boolean;
-    teksSumberLawan: string; // "Jenis Pekerjaan"(CI) / "Kelompok Biaya"(CO) yang dipakai utk fuzzy match
-    noAkunLawan: string | null;
-    namaAkunLawan: string | null;
-    skorMatchLawan: number | null;
-    nominal: number;
-    keterangan: string;
-    status: "siap" | "dilewati";
-    alasanDilewati?: string;
+  rowKey: string;
+  jenis: "CI" | "CO" | "KK";
+  noRegistrasi: string;
+  noReferensi?: string | null; // <--- TAMBAHKAN BARIS INI
+  tanggal: string;
+  rekeningExcel: string;
+  noAkunKasBank: string | null;
+  skorMatchRekening: number | null;
+  namaPihak: string;
+  isPihakBaru: boolean;
+  teksSumberLawan: string;
+  namaPemohon: string;
+  noAkunLawan: string | null;
+  namaAkunLawan: string | null;
+  skorMatchLawan: number | null;
+  nominal: number;
+  keterangan: string;
+  status: "siap" | "dilewati";
+  alasanDilewati?: string;
 }
 
 export interface ImportPreviewResult {
