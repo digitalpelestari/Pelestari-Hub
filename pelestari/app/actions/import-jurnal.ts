@@ -11,8 +11,8 @@ import type { ImportPreviewRow, ImportPreviewResult } from "@/app/actions/import
  * MAPPING REKENING -> AKUN KAS/BANK
  * ============================================================ */
 const REKENING_MAPPING: Record<string, string> = {
-    "pasif": "11300",       // Pasif
-    "aktif": "11200",       // Aktif
+    "pasif": "11300",       // Bank Pasif
+    "aktif": "11200",       // Bank Aktif
     "pelatihan": "99-0001", // Rekening Pelatihan
 };
 
@@ -165,7 +165,6 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 const noRegistrasi = toText(getCellValue(row, headerMap, "Nomor Register"));
                 if (!noRegistrasi) continue;
 
-                // Membaca Nomor Referensi / No. Referensi jika ada
                 const noReferensi = toText(getCellValue(row, headerMap, "No Referensi", "Nomor Referensi", "No. Referensi", "Ref"));
                 const tanggal = toDateString(getCellValue(row, headerMap, "Tanggal"));
                 const rekeningExcel = toText(getCellValue(row, headerMap, "Rekening"));
@@ -225,13 +224,15 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 const noRegistrasi = toText(getCellValue(row, headerMap, "Nomor Register")); 
                 if (!noRegistrasi) continue;
 
-                // Membaca Nomor Referensi / No. Referensi jika ada
                 const noReferensi = toText(getCellValue(row, headerMap, "No Referensi", "Nomor Referensi", "No. Referensi", "Ref"));
                 const tanggal = toDateString(getCellValue(row, headerMap, "Tanggal"));
                 const rekeningExcel = toText(getCellValue(row, headerMap, "Rekening"));
                 const penerima = toText(getCellValue(row, headerMap, "Penerima"));
                 const pemohon = toText(getCellValue(row, headerMap, "User"));
+                
+                const debit = toNumber(getCellValue(row, headerMap, "Debit"));
                 const kredit = toNumber(getCellValue(row, headerMap, "Kredit"));
+                
                 const keteranganExcel = toText(getCellValue(row, headerMap, "Keterangan"));
                 const kelompokBiaya = toText(getCellValue(row, headerMap, "Kelompok Biaya"));
                 const jenisBiaya = toText(getCellValue(row, headerMap, "Jenis Biaya"));
@@ -239,6 +240,47 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 const rekeningKey = rekeningExcel.toLowerCase();
                 const noAkunKasBank = REKENING_MAPPING[rekeningKey] || null;
 
+                // --- DETEKSI OTOMATIS: JIKA REGISTER BERAWALAN BD ATAU DEBIT > 0 MAKA INI ADALAH CASH IN (CI) ---
+                const isCashIn = noRegistrasi.toUpperCase().startsWith("BD") || (debit > 0 && kredit === 0);
+
+                if (isCashIn) {
+                    const preview: ImportPreviewRow = {
+                        rowKey: `CO-CI-${r}`,
+                        jenis: "CI", // Set sebagai Cash In
+                        noRegistrasi: String(noRegistrasi).trim(),
+                        noReferensi,
+                        tanggal: tanggal || "",
+                        rekeningExcel,
+                        noAkunKasBank,
+                        namaPemohon: pemohon,
+                        skorMatchRekening: noAkunKasBank ? 1 : null,
+                        namaPihak: penerima || NAMA_PENERIMA_CI,
+                        isPihakBaru: penerima ? !penerimaSet.has(penerima.toLowerCase()) : false,
+                        teksSumberLawan: "Piutang Usaha",
+                        noAkunLawan: AKUN_PIUTANG_USAHA,
+                        namaAkunLawan: "Piutang Usaha",
+                        skorMatchLawan: 1,
+                        nominal: debit > 0 ? debit : kredit,
+                        keterangan: keteranganExcel,
+                        status: "siap",
+                    };
+
+                    if (!tanggal) {
+                        preview.status = "dilewati";
+                        preview.alasanDilewati = "Tanggal tidak valid";
+                    } else if (!noAkunKasBank) {
+                        preview.status = "dilewati";
+                        preview.alasanDilewati = `Rekening "${rekeningExcel}" belum dimapping ke akun Kas/Bank`;
+                    } else if (preview.nominal <= 0) {
+                        preview.status = "dilewati";
+                        preview.alasanDilewati = "Nominal pembayaran kosong / nol";
+                    }
+
+                    ciRows.push(preview);
+                    continue;
+                }
+
+                // --- JIKA PENGERJAAN PENGELUARAN STANDAR (CO) ---
                 let noAkunLawan: string | null = null;
                 let namaAkunLawan: string | null = null;
                 let skorMatchLawan: number | null = null;
@@ -362,7 +404,6 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 const noRegistrasi = toText(getCellValue(row, headerMap, "No Register", "Nomor Register"));
                 if (!noRegistrasi || !noRegistrasi.toUpperCase().startsWith("KK")) continue;
 
-                // Membaca Nomor Referensi / No. Referensi jika ada
                 const noReferensi = toText(getCellValue(row, headerMap, "No Referensi", "Nomor Referensi", "No. Referensi", "Ref"));
                 const tanggal = toDateString(getCellValue(row, headerMap, "Tanggal"));
                 const kelompokBiaya = toText(getCellValue(row, headerMap, "Kelompok Biaya"));
@@ -530,7 +571,6 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
         pesanGagal: [] as string[],
     };
 
-    // Kelompokkan baris berdasarkan Jenis dan Nomor Register yang sama
     const groupedMap = new Map<string, ImportPreviewRow[]>();
 
     for (const row of rows) {
@@ -547,7 +587,6 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
         groupedMap.get(groupKey)!.push(row);
     }
 
-    // Proses setiap grup sebagai 1 transaksi jurnal tunggal dengan banyak items
     for (const [groupKey, groupRows] of groupedMap.entries()) {
         const firstRow = groupRows[0];
         try {
@@ -558,7 +597,7 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
             let totalNominal = 0;
 
             if (firstRow.jenis === "CI") {
-                // Untuk Kas Masuk (CI): Akun Kas/Bank didebit total, akun lawan dikredit per baris
+                // Untuk Kas Masuk (CI): Akun Kas/Bank didebit total, Piutang Usaha dikredit per baris
                 for (const r of groupRows) {
                     items.push({
                         accountCode: r.noAkunLawan,
@@ -593,7 +632,6 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
                 });
             }
 
-            // Ambil nomor referensi dari baris pertama jika tersedia
             const noReferensi = firstRow.noReferensi || "";
 
             const result = await createJurnalUmum({
