@@ -18,11 +18,12 @@ import type { ImportPreviewRow, ImportPreviewResult } from "@/app/actions/import
  * PENTING:
  * - Key HARUS huruf kecil semua (lowercase), karena nama rekening dari
  *   Excel juga di-lowercase dulu sebelum dicocokkan.
- * - Value adalah no_akun yang benar-benar ada di tabel tb_akun (kepala '1').
+ * - Value adalah no_akun yang benar-benar ada di tabel tb_akun.
  */
 const REKENING_MAPPING: Record<string, string> = {
-    "pasif": "11300", // Pasif
-    "aktif": "11200", // Aktif
+    "pasif": "11300",     // Pasif
+    "aktif": "11200",     // Aktif
+    "pelatihan": "99-0001", // Rekening Pelatihan
 };
 
 const AKUN_KAS_KECIL = "11100";
@@ -108,6 +109,7 @@ function toNumber(value: any): number {
     const cleaned = String(value).replace(/[^0-9.-]/g, "");
     return Number(cleaned) || 0;
 }
+
 function toText(value: any): string {
     if (value === null || value === undefined) {
         return "";
@@ -132,6 +134,7 @@ function toText(value: any): string {
 
     return String(value).trim();
 }
+
 /* ============================================================
  * ACTION: PREVIEW IMPORT
  * ============================================================ */
@@ -143,17 +146,15 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
         await workbook.xlsx.load(buffer as any);
 
         // --- Ambil master data yang dibutuhkan untuk matching ---
-        // Mapping rekening diambil dari konstanta REKENING_MAPPING di atas (bukan tabel DB),
-        // dicocokkan secara fuzzy (bukan exact match) supaya toleran typo/variasi penulisan.
         const kandidatRekening: FuzzyCandidate<string>[] = Object.entries(REKENING_MAPPING).map(
             ([nama, noAkun]) => ({ item: noAkun, label: nama })
         );
 
         const [akunRows]: any = await db.query(
             `SELECT a.no_akun, a.nama_akun, k.kelompok_biaya AS nama_kelompok
-       FROM tb_akun a
-       LEFT JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
-       WHERE a.is_aktif = 1`
+             FROM tb_akun a
+             LEFT JOIN tb_kelompok_biaya k ON a.kelompok_biaya_id = k.id
+             WHERE a.is_aktif = 1`
         );
 
         const [kelompokRows]: any = await db.query(
@@ -262,6 +263,7 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 ciRows.push(preview);
             }
         }
+
         /* -------- PARSE SHEET CO (Cash Out / Pengeluaran) -------- */
         const coRows: ImportPreviewRow[] = [];
         const sheetCO = findSheetByPrefix(workbook, "CO");
@@ -272,12 +274,10 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
             for (let r = headerRowIdx + 1; r <= sheetCO.rowCount; r++) {
                 const row = sheetCO.getRow(r);
                 const noRegistrasi = toText(
-                    getCellValue(
-                        row,
-                        headerMap,
-                        "Nomor Register"
-                    )
-                ); if (!noRegistrasi) continue;
+                    getCellValue(row, headerMap, "Nomor Register")
+                ); 
+                
+                if (!noRegistrasi) continue;
 
                 const tanggal = toDateString(getCellValue(row, headerMap, "Tanggal"));
                 const rekeningExcel = toText(
@@ -311,35 +311,46 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 const rekeningKey = rekeningExcel.toLowerCase();
                 const noAkunKasBank = REKENING_MAPPING[rekeningKey] || null;
 
-                // Tahap 1: cocokkan Kelompok Biaya -> tb_kelompok_biaya
-                const matchKelompok = findBestMatch(
-                    kelompokBiaya,
-                    kandidatKelompok,
-                    0.60,
-                    0.10
-                );
                 let noAkunLawan: string | null = null;
                 let namaAkunLawan: string | null = null;
                 let skorMatchLawan: number | null = null;
 
-                if (matchKelompok) {
-                    // Tahap 2: dalam kelompok yang cocok, perhalus pilihan akun pakai teks Jenis Biaya
-                    const akunDalamKelompok = akunRows.filter(
-                        (a: any) => a.nama_kelompok === matchKelompok.item.kelompok_biaya
-                    );
-                    const kandidatAkunDalamKelompok: FuzzyCandidate<any>[] = akunDalamKelompok.map(
-                        (a: any) => ({ item: a, label: a.nama_akun })
-                    );
-                    const matchAkun = findBestMatch(
-                        jenisBiaya,
-                        kandidatAkunDalamKelompok,
+                // --- HANDLING KHUSUS REALISASI RAB PELATIHAN ---
+                if (
+                    kelompokBiaya.trim().toLowerCase() === "rab" &&
+                    jenisBiaya.trim().toLowerCase() === "pelatihan"
+                ) {
+                    noAkunLawan = "99-0001";
+                    namaAkunLawan = "Pelatihan";
+                    skorMatchLawan = 1;
+                } else {
+                    // Tahap 1: cocokkan Kelompok Biaya -> tb_kelompok_biaya
+                    const matchKelompok = findBestMatch(
+                        kelompokBiaya,
+                        kandidatKelompok,
                         0.60,
                         0.10
                     );
-                    if (matchAkun) {
-                        noAkunLawan = matchAkun.item.no_akun;
-                        namaAkunLawan = matchAkun.item.nama_akun;
-                        skorMatchLawan = Number(matchAkun.score.toFixed(2));
+
+                    if (matchKelompok) {
+                        // Tahap 2: dalam kelompok yang cocok, perhalus pilihan akun pakai teks Jenis Biaya
+                        const akunDalamKelompok = akunRows.filter(
+                            (a: any) => a.nama_kelompok === matchKelompok.item.kelompok_biaya
+                        );
+                        const kandidatAkunDalamKelompok: FuzzyCandidate<any>[] = akunDalamKelompok.map(
+                            (a: any) => ({ item: a, label: a.nama_akun })
+                        );
+                        const matchAkun = findBestMatch(
+                            jenisBiaya,
+                            kandidatAkunDalamKelompok,
+                            0.60,
+                            0.10
+                        );
+                        if (matchAkun) {
+                            noAkunLawan = matchAkun.item.no_akun;
+                            namaAkunLawan = matchAkun.item.nama_akun;
+                            skorMatchLawan = Number(matchAkun.score.toFixed(2));
+                        }
                     }
                 }
 
@@ -351,7 +362,8 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     rekeningExcel,
                     noAkunKasBank,
                     namaPemohon: pemohon,
-                    skorMatchRekening: noAkunKasBank ? 1 : null, namaPihak: penerima,
+                    skorMatchRekening: noAkunKasBank ? 1 : null, 
+                    namaPihak: penerima,
                     isPihakBaru: penerima ? !penerimaSet.has(penerima.toLowerCase()) : false,
                     teksSumberLawan: kelompokBiaya,
                     noAkunLawan,
@@ -379,6 +391,7 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 coRows.push(preview);
             }
         }
+
         /* -------- PARSE SHEET PETTY CASH (KK) -------- */
         const kkRows: ImportPreviewRow[] = [];
         const sheetKK = findSheetByPrefix(workbook, "PETTY CASH");
@@ -396,7 +409,6 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
 
                 if (!noRegistrasi) continue;
 
-                // Hanya ambil transaksi KK
                 if (!noRegistrasi.toUpperCase().startsWith("KK")) {
                     continue;
                 }
@@ -417,93 +429,82 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     getCellValue(row, headerMap, "Keterangan")
                 );
 
-                // Debit sengaja tidak digunakan
-                // PIC sengaja tidak digunakan
-                // Total Saldo sengaja tidak digunakan
                 const kredit = toNumber(
                     getCellValue(row, headerMap, "Kredit")
-                );
-
-                /* -----------------------------------------
-                 * MATCH KELOMPOK BIAYA
-                 * ----------------------------------------- */
-                const matchKelompok = findBestMatch(
-                    kelompokBiaya,
-                    kandidatKelompok,
-                    0.60,
-                    0.10
                 );
 
                 let noAkunLawan: string | null = null;
                 let namaAkunLawan: string | null = null;
                 let skorMatchLawan: number | null = null;
 
-                if (matchKelompok) {
-                    const akunDalamKelompok = akunRows.filter(
-                        (a: any) =>
-                            a.nama_kelompok ===
-                            matchKelompok.item.kelompok_biaya
-                    );
-
-                    const kandidatAkunDalamKelompok: FuzzyCandidate<any>[] =
-                        akunDalamKelompok.map((a: any) => ({
-                            item: a,
-                            label: a.nama_akun,
-                        }));
-
-                    const matchAkun = findBestMatch(
-                        jenisBiaya,
-                        kandidatAkunDalamKelompok,
+                if (
+                    kelompokBiaya.trim().toLowerCase() === "rab" &&
+                    jenisBiaya.trim().toLowerCase() === "pelatihan"
+                ) {
+                    noAkunLawan = "99-0001";
+                    namaAkunLawan = "Pelatihan";
+                    skorMatchLawan = 1;
+                } else {
+                    const matchKelompok = findBestMatch(
+                        kelompokBiaya,
+                        kandidatKelompok,
                         0.60,
                         0.10
                     );
 
-                    if (matchAkun) {
-                        noAkunLawan = matchAkun.item.no_akun;
-                        namaAkunLawan = matchAkun.item.nama_akun;
-                        skorMatchLawan = Number(
-                            matchAkun.score.toFixed(2)
+                    if (matchKelompok) {
+                        const akunDalamKelompok = akunRows.filter(
+                            (a: any) =>
+                                a.nama_kelompok ===
+                                matchKelompok.item.kelompok_biaya
                         );
-                    } else if (akunDalamKelompok.length > 0) {
-                        noAkunLawan = akunDalamKelompok[0].no_akun;
-                        namaAkunLawan = akunDalamKelompok[0].nama_akun;
-                        skorMatchLawan = Number(
-                            matchKelompok.score.toFixed(2)
+
+                        const kandidatAkunDalamKelompok: FuzzyCandidate<any>[] =
+                            akunDalamKelompok.map((a: any) => ({
+                                item: a,
+                                label: a.nama_akun,
+                            }));
+
+                        const matchAkun = findBestMatch(
+                            jenisBiaya,
+                            kandidatAkunDalamKelompok,
+                            0.60,
+                            0.10
                         );
+
+                        if (matchAkun) {
+                            noAkunLawan = matchAkun.item.no_akun;
+                            namaAkunLawan = matchAkun.item.nama_akun;
+                            skorMatchLawan = Number(
+                                matchAkun.score.toFixed(2)
+                            );
+                        } else if (akunDalamKelompok.length > 0) {
+                            noAkunLawan = akunDalamKelompok[0].no_akun;
+                            namaAkunLawan = akunDalamKelompok[0].nama_akun;
+                            skorMatchLawan = Number(
+                                matchKelompok.score.toFixed(2)
+                            );
+                        }
                     }
                 }
 
                 const preview: ImportPreviewRow = {
                     rowKey: `KK-${r}`,
                     jenis: "KK",
-
                     noRegistrasi: String(noRegistrasi).trim(),
-
                     tanggal: tanggal || "",
-
-                    // Petty Cash tidak punya kolom Rekening
                     rekeningExcel: "Kas Kecil",
-
-                    // Langsung menggunakan akun Kas Kecil
                     noAkunKasBank: AKUN_KAS_KECIL,
                     skorMatchRekening: 1,
-
-                    // Tidak ada Penerima/PIC yang digunakan
                     namaPihak: "",
                     isPihakBaru: false,
-
                     namaPemohon: "",
-
                     teksSumberLawan: kelompokBiaya,
-
                     noAkunLawan,
                     namaAkunLawan,
                     skorMatchLawan,
-
                     nominal: kredit,
-
                     keterangan,
-
                     status: "siap",
                 };
 
@@ -523,10 +524,9 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                 kkRows.push(preview);
             }
         }
+
         const semuaRows = [...ciRows, ...coRows, ...kkRows];
-
         const totalBaris = semuaRows.length;
-
         const siap = semuaRows.filter(
             (r) => r.status === "siap"
         ).length;
@@ -563,7 +563,7 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
 }
 
 /* ============================================================
- * ACTION: COMMIT IMPORT (baris yang sudah dikonfirmasi user)
+ * ACTION: COMMIT IMPORT
  * ============================================================ */
 
 async function resolvePihakId(namaPihak: string): Promise<number | null> {
@@ -724,12 +724,3 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
         ...hasil,
     };
 }
-
-/* ============================================================
- * CATATAN: MAPPING REKENING -> AKUN KAS/BANK
- * ============================================================
- * Mapping tidak disimpan di DB, cukup edit konstanta REKENING_MAPPING di
- * bagian atas file ini kalau ada nama rekening baru yang belum termapping,
- * lalu redeploy. Halaman preview import akan menampilkan daftar nama
- * rekening yang belum ada di mapping tersebut.
- */
