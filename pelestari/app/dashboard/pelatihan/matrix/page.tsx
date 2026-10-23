@@ -67,6 +67,7 @@ export default function PelatihanMatrixPage() {
   const [search, setSearch] = useState("")
   const [filterJenisPelatihan, setFilterJenisPelatihan] = useState<"ALL" | JenisPelatihan>("ALL")
   const [filterDdt, setFilterDdt] = useState<"ALL" | "YA" | "TIDAK">("ALL")
+  const [filterPerusahaan, setFilterPerusahaan] = useState<string>("ALL")
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -801,6 +802,15 @@ export default function PelatihanMatrixPage() {
 
   const currentBatchInfo = batches.find((b) => String(b.id) === selectedBatchId)
 
+  // Daftar perusahaan unik (diambil dari data batch yang sedang dimuat)
+  const perusahaanOptions = Array.from(
+    new Set(
+      data
+        .map((d) => d.perusahaan?.trim())
+        .filter((p): p is string => !!p)
+    )
+  ).sort((a, b) => a.localeCompare(b))
+
   // Filter Data Matrix
   const filteredData = data.filter((item) => {
     const q = search.toLowerCase()
@@ -825,7 +835,11 @@ export default function PelatihanMatrixPage() {
       (filterDdt === "YA" && isDdtTrue) ||
       (filterDdt === "TIDAK" && !isDdtTrue)
 
-    return matchSearch && matchJenis && matchDdt
+    const matchPerusahaan =
+      filterPerusahaan === "ALL" ||
+      (item.perusahaan?.trim() || "") === filterPerusahaan
+
+    return matchSearch && matchJenis && matchDdt && matchPerusahaan
   })
 
   return (
@@ -966,6 +980,24 @@ export default function PelatihanMatrixPage() {
               </select>
             </div>
 
+            {/* Filter Perusahaan */}
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <Building2 className="h-4 w-4 text-sky-500" />
+              <select
+                aria-label="Filter Perusahaan"
+                value={filterPerusahaan}
+                onChange={(e) => setFilterPerusahaan(e.target.value)}
+                className="max-w-[180px] bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+              >
+                <option value="ALL">Semua Perusahaan</option>
+                {perusahaanOptions.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Batch Selector */}
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <Calendar className="h-4 w-4 text-slate-400" />
@@ -974,6 +1006,7 @@ export default function PelatihanMatrixPage() {
                 value={selectedBatchId}
                 onChange={(e) => {
                   setSelectedBatchId(e.target.value)
+                  setFilterPerusahaan("ALL")
                   setFormValues((prev) => ({
                     ...prev,
                     batch_id: e.target.value,
