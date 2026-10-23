@@ -2628,17 +2628,29 @@ export async function createJurnalDenganReferensiInvoiceOnly(
     );
 
   /**
-   * Jika bukan invoice atau PO,
-   * gunakan jurnal umum biasa.
+   * Jika referensi kosong, pertahankan perilaku
+   * jurnal umum untuk pemanggilan yang memang
+   * tidak menggunakan referensi invoice atau PO.
+   */
+  if (!payload.noReferensi?.trim()) {
+    return await createJurnalUmum(payload);
+  }
+
+  /**
+   * Jika referensi diisi tetapi tidak ditemukan,
+   * jangan menyimpan jurnal sebagai jurnal umum.
    */
   if (
-    lookup.found !==
-    "invoice" &&
+    lookup.found !== "invoice" &&
     lookup.found !== "po"
   ) {
-    return await createJurnalUmum(
-      payload
-    );
+    return {
+      success: false,
+      message:
+        `Referensi "${payload.noReferensi}" tidak ditemukan sebagai invoice atau PO. ` +
+        "Jurnal tidak disimpan.",
+    };
+
   }
 
   const connection =
@@ -2801,36 +2813,30 @@ export async function createJurnalDenganReferensiInvoiceOnly(
      * CARI AKUN TARGET
      * ========================================================
      */
-    const [
-      targetRows,
-    ]: any =
-      await connection.query(
-        `SELECT
-           a.no_akun
-         FROM tb_akun a
-         JOIN tb_kelompok_biaya k
-           ON a.kelompok_biaya_id = k.id
-         WHERE
-           k.kelompok_biaya LIKE ?
-           AND a.is_aktif = 1`,
-        [
-          `%${targetAkunKeyword}%`,
-        ]
-      );
-
-    const targetAccounts =
-      new Set<string>(
-        (
-          targetRows ||
-          []
-        ).map(
-          (r: any) =>
-            String(
-              r.no_akun
-            )
+    const [targetRows]: any =
+      lookup.found === "invoice"
+        ? await connection.query(
+          `SELECT no_akun
+               FROM tb_akun
+               WHERE no_akun = ?
+                 AND is_aktif = 1`,
+          ["12100"]
         )
-      );
+        : await connection.query(
+          `SELECT a.no_akun
+               FROM tb_akun a
+               JOIN tb_kelompok_biaya k
+                 ON a.kelompok_biaya_id = k.id
+               WHERE k.kelompok_biaya LIKE ?
+                 AND a.is_aktif = 1`,
+          [`%${targetAkunKeyword}%`]
+        );
 
+    const targetAccounts = new Set<string>(
+      (targetRows || []).map((r: any) =>
+        String(r.no_akun)
+      )
+    );
     /**
      * HITUNG POSISI TARGET
      */

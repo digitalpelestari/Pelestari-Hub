@@ -1,33 +1,55 @@
+
 "use server";
 
 import ExcelJS from "exceljs";
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { createJurnalUmum } from "@/app/actions/jurnal";
-import { findBestMatch, FuzzyCandidate } from "@/lib/fuzzyMatch";
-import type { ImportPreviewRow, ImportPreviewResult } from "@/app/actions/import-jurnal.types";
+import {
+    createJurnalUmum,
+    createJurnalDenganReferensiInvoiceOnly,
+} from "@/app/actions/jurnal";
+import {
+    findBestMatch,
+    FuzzyCandidate,
+} from "@/lib/fuzzyMatch";
+import type {
+    ImportPreviewRow,
+    ImportPreviewResult,
+} from "@/app/actions/import-jurnal.types";
 
 /* ============================================================
  * MAPPING REKENING -> AKUN KAS/BANK
  * ============================================================ */
+const NAMA_PENERIMA_CI = "PT Peduli Lestari Indonesia";
 const REKENING_MAPPING: Record<string, string> = {
-    "pasif": "11300",       // Bank Pasif
-    "aktif": "11200",       // Bank Aktif
-    "pelatihan": "99-0001", // Rekening Pelatihan
+    pasif: "11300",
+    aktif: "11200",
+    pelatihan: "99-0001",
 };
 
 const AKUN_KAS_KECIL = "11100";
 const AKUN_PIUTANG_USAHA = "12100";
-const NAMA_PENERIMA_CI = "PT Peduli Lestari Indonesia";
 
 /* ============================================================
  * HELPER: BACA SHEET EXCEL SECARA DINAMIS
  * ============================================================ */
 
-function findSheetByPrefix(workbook: ExcelJS.Workbook, prefix: "CI" | "CO" | "PETTY CASH"): ExcelJS.Worksheet | null {
+function findSheetByPrefix(
+    workbook: ExcelJS.Workbook,
+    prefix: "CI" | "CO" | "PETTY CASH"
+): ExcelJS.Worksheet | null {
     return (
-        workbook.worksheets.find((ws) => ws.name.trim().toUpperCase().startsWith(prefix)) || null
+        workbook.worksheets.find((ws) =>
+            ws.name.trim().toUpperCase().startsWith(prefix)
+        ) || null
     );
+}
+
+function normalizeHeader(value: unknown): string {
+    return String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/[.\s_-]+/g, " ");
 }
 
 function findHeaderRowIndex(worksheet: ExcelJS.Worksheet): number {
@@ -36,9 +58,7 @@ function findHeaderRowIndex(worksheet: ExcelJS.Worksheet): number {
         let found = false;
 
         row.eachCell((cell) => {
-            const value = String(cell.value ?? "")
-                .trim()
-                .toLowerCase();
+            const value = normalizeHeader(cell.value);
 
             if (
                 value === "nomor register" ||
@@ -56,38 +76,65 @@ function findHeaderRowIndex(worksheet: ExcelJS.Worksheet): number {
     );
 }
 
-function buildHeaderMap(worksheet: ExcelJS.Worksheet, headerRowIdx: number): Map<string, number> {
+function buildHeaderMap(
+    worksheet: ExcelJS.Worksheet,
+    headerRowIdx: number
+): Map<string, number> {
     const map = new Map<string, number>();
     const row = worksheet.getRow(headerRowIdx);
+
     row.eachCell((cell, colNumber) => {
-        const key = String(cell.value ?? "").trim().toLowerCase();
-        if (key) map.set(key, colNumber);
+        const key = normalizeHeader(cell.value);
+
+        if (key) {
+            map.set(key, colNumber);
+        }
     });
+
     return map;
 }
 
-function getCellValue(row: ExcelJS.Row, headerMap: Map<string, number>, ...headerNames: string[]): any {
+function getCellValue(
+    row: ExcelJS.Row,
+    headerMap: Map<string, number>,
+    ...headerNames: string[]
+): any {
     for (const name of headerNames) {
-        const col = headerMap.get(name.trim().toLowerCase());
-        if (col) {
+        const col = headerMap.get(normalizeHeader(name));
+
+        if (col !== undefined) {
             const val = row.getCell(col).value;
-            if (val !== null && val !== undefined && String(val).trim() !== "") return val;
+
+            if (
+                val !== null &&
+                val !== undefined &&
+                String(val).trim() !== ""
+            ) {
+                return val;
+            }
         }
     }
+
     return null;
 }
 
 function toDateString(value: any): string | null {
     if (!value) return null;
+
     const date = value instanceof Date ? value : new Date(value);
+
     if (isNaN(date.getTime())) return null;
+
     return date.toISOString().slice(0, 10);
 }
 
 function toNumber(value: any): number {
     if (value === null || value === undefined) return 0;
+
     if (typeof value === "number") return value;
+
     const cleaned = String(value).replace(/[^0-9.-]/g, "");
+
     return Number(cleaned) || 0;
 }
 
@@ -111,6 +158,10 @@ function toText(value: any): string {
         if (value.text !== undefined) {
             return String(value.text).trim();
         }
+
+        if (value.hyperlink !== undefined) {
+            return String(value.text ?? value.hyperlink).trim();
+        }
     }
 
     return String(value).trim();
@@ -120,15 +171,27 @@ function toText(value: any): string {
  * ACTION: PREVIEW IMPORT
  * ============================================================ */
 
-export async function previewImportJurnal(base64File: string): Promise<ImportPreviewResult> {
+export async function previewImportJurnal(
+    base64File: string
+): Promise<ImportPreviewResult> {
+    console.log("PREVIEW IMPORT JURNAL TERPANGGIL");
+
     try {
         const buffer = Buffer.from(base64File, "base64");
         const workbook = new ExcelJS.Workbook();
+
         await workbook.xlsx.load(buffer as any);
 
-        const kandidatRekening: FuzzyCandidate<string>[] = Object.entries(REKENING_MAPPING).map(
-            ([nama, noAkun]) => ({ item: noAkun, label: nama })
+        console.log(
+            "DAFTAR SHEET:",
+            workbook.worksheets.map((sheet) => sheet.name)
         );
+
+        const kandidatRekening: FuzzyCandidate<string>[] =
+            Object.entries(REKENING_MAPPING).map(([nama, noAkun]) => ({
+                item: noAkun,
+                label: nama,
+            }));
 
         const [akunRows]: any = await db.query(
             `SELECT a.no_akun, a.nama_akun, k.kelompok_biaya AS nama_kelompok
@@ -144,38 +207,109 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
         const [penerimaRows]: any = await db.query(
             "SELECT nama_penerima FROM tb_penerima"
         );
+
         const penerimaSet = new Set<string>(
-            penerimaRows.map((p: any) => String(p.nama_penerima).trim().toLowerCase())
+            penerimaRows.map((p: any) =>
+                String(p.nama_penerima).trim().toLowerCase()
+            )
         );
 
-        const kandidatKelompok: FuzzyCandidate<any>[] = kelompokRows.map((k: any) => ({
-            item: k,
-            label: k.kelompok_biaya,
-        }));
+        const kandidatKelompok: FuzzyCandidate<any>[] =
+            kelompokRows.map((k: any) => ({
+                item: k,
+                label: k.kelompok_biaya,
+            }));
 
-        /* -------- PARSE SHEET CI (Cash In / Pemasukan) -------- */
+        /* -------- PARSE SHEET CI -------- */
+
         const ciRows: ImportPreviewRow[] = [];
         const sheetCI = findSheetByPrefix(workbook, "CI");
+
         if (sheetCI) {
             const headerRowIdx = findHeaderRowIndex(sheetCI);
             const headerMap = buildHeaderMap(sheetCI, headerRowIdx);
 
-            for (let r = headerRowIdx + 1; r <= sheetCI.rowCount; r++) {
+            console.log("SHEET CI:", sheetCI.name);
+            console.log("HEADER ROW CI:", headerRowIdx);
+            console.log("HEADER EXCEL CI:", [...headerMap.keys()]);
+
+            for (
+                let r = headerRowIdx + 1;
+                r <= sheetCI.rowCount;
+                r++
+            ) {
                 const row = sheetCI.getRow(r);
-                const noRegistrasi = toText(getCellValue(row, headerMap, "Nomor Register"));
+
+                const noRegistrasi = toText(
+                    getCellValue(
+                        row,
+                        headerMap,
+                        "Nomor Register",
+                        "No Register"
+                    )
+                );
+
                 if (!noRegistrasi) continue;
 
-                const noReferensi = toText(getCellValue(row, headerMap, "No Referensi", "Nomor Referensi", "No. Referensi", "Ref"));
-                const tanggal = toDateString(getCellValue(row, headerMap, "Tanggal"));
-                const rekeningExcel = toText(getCellValue(row, headerMap, "Rekening"));
-                const namaPemohon = toText(getCellValue(row, headerMap, "Nama Pengirim"));
-                const debit = toNumber(getCellValue(row, headerMap, "Debit"));
-                const detail = toText(getCellValue(row, headerMap, "Detail"));
-                const perusahaan = toText(getCellValue(row, headerMap, "Perusahaan"));
-                const teksSumberLawan = toText(getCellValue(row, headerMap, "Jenis Pekerjaan", "Divisi"));
+                const tanggal = toDateString(
+                    getCellValue(row, headerMap, "Tanggal")
+                );
+
+                const rekeningExcel = toText(
+                    getCellValue(row, headerMap, "Rekening")
+                );
+
+                const namaPengirim = toText(
+                    getCellValue(row, headerMap, "Nama Pengirim")
+                );
+
+                const perusahaan = toText(
+                    getCellValue(row, headerMap, "Perusahaan")
+                );
+
+                // Nama pemohon CI digabung dari perusahaan dan nama pengirim.
+                const namaPemohon = [perusahaan, namaPengirim]
+                    .filter(Boolean)
+                    .join(" - ");
+
+                const debit = toNumber(
+                    getCellValue(row, headerMap, "Debit")
+                );
+
+                const detail = toText(
+                    getCellValue(row, headerMap, "Detail")
+                );
+
+                const noReferensi = toText(
+                    getCellValue(
+                        row,
+                        headerMap,
+                        "No Referensi",
+                        "No. Referensi",
+                        "Nomor Referensi",
+                        "No Reference",
+                        "Reference"
+                    )
+                );
+
+                console.log(`CI ROW ${r}:`, {
+                    noRegistrasi,
+                    noReferensi,
+                });
+
+                const teksSumberLawan = toText(
+                    getCellValue(
+                        row,
+                        headerMap,
+                        "Jenis Pekerjaan",
+                        "Divisi"
+                    )
+                );
 
                 const rekeningKey = rekeningExcel.toLowerCase();
-                const noAkunKasBank = REKENING_MAPPING[rekeningKey] || null;
+                const noAkunKasBank =
+                    REKENING_MAPPING[rekeningKey] || null;
+
                 const preview: ImportPreviewRow = {
                     rowKey: `CI-${r}`,
                     jenis: "CI",
@@ -185,6 +319,8 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     rekeningExcel,
                     noAkunKasBank,
                     skorMatchRekening: noAkunKasBank ? 1 : null,
+                    // CI memakai Nama Pemohon dari Excel; jangan isi penerima
+                    // dengan nama perusahaan secara otomatis.
                     namaPihak: NAMA_PENERIMA_CI,
                     isPihakBaru: false,
                     teksSumberLawan,
@@ -193,7 +329,9 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     namaAkunLawan: "Piutang Usaha",
                     skorMatchLawan: 1,
                     nominal: debit,
-                    keterangan: [detail, perusahaan].filter(Boolean).join(" - "),
+                    keterangan: [detail, perusahaan]
+                        .filter(Boolean)
+                        .join(" - "),
                     status: "siap",
                 };
 
@@ -202,148 +340,204 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     preview.alasanDilewati = "Tanggal tidak valid";
                 } else if (!noAkunKasBank) {
                     preview.status = "dilewati";
-                    preview.alasanDilewati = `Rekening "${rekeningExcel}" belum dimapping ke akun Kas/Bank`;
+                    preview.alasanDilewati =
+                        `Rekening "${rekeningExcel}" belum dimapping ke akun Kas/Bank`;
                 } else if (debit <= 0) {
                     preview.status = "dilewati";
-                    preview.alasanDilewati = "Nominal debit kosong / nol";
+                    preview.alasanDilewati =
+                        "Nominal debit kosong / nol";
                 }
 
                 ciRows.push(preview);
             }
+        } else {
+            console.warn("SHEET CI TIDAK DITEMUKAN");
         }
 
-        /* -------- PARSE SHEET CO (Cash Out / Pengeluaran) -------- */
+        /* -------- PARSE SHEET CO -------- */
+
         const coRows: ImportPreviewRow[] = [];
         const sheetCO = findSheetByPrefix(workbook, "CO");
+
         if (sheetCO) {
             const headerRowIdx = findHeaderRowIndex(sheetCO);
             const headerMap = buildHeaderMap(sheetCO, headerRowIdx);
 
-            for (let r = headerRowIdx + 1; r <= sheetCO.rowCount; r++) {
+            for (
+                let r = headerRowIdx + 1;
+                r <= sheetCO.rowCount;
+                r++
+            ) {
                 const row = sheetCO.getRow(r);
-                const noRegistrasi = toText(getCellValue(row, headerMap, "Nomor Register")); 
+
+                const noRegistrasi = toText(
+                    getCellValue(
+                        row,
+                        headerMap,
+                        "Nomor Register",
+                        "No Register"
+                    )
+                );
+
                 if (!noRegistrasi) continue;
 
-                const noReferensi = toText(getCellValue(row, headerMap, "No Referensi", "Nomor Referensi", "No. Referensi", "Ref"));
-                const tanggal = toDateString(getCellValue(row, headerMap, "Tanggal"));
-                const rekeningExcel = toText(getCellValue(row, headerMap, "Rekening"));
-                const penerima = toText(getCellValue(row, headerMap, "Penerima"));
-                const pemohon = toText(getCellValue(row, headerMap, "User"));
-                
-                const debit = toNumber(getCellValue(row, headerMap, "Debit"));
-                const kredit = toNumber(getCellValue(row, headerMap, "Kredit"));
-                
-                const keteranganExcel = toText(getCellValue(row, headerMap, "Keterangan"));
-                const kelompokBiaya = toText(getCellValue(row, headerMap, "Kelompok Biaya"));
-                const jenisBiaya = toText(getCellValue(row, headerMap, "Jenis Biaya"));
+                const tanggal = toDateString(
+                    getCellValue(row, headerMap, "Tanggal")
+                );
+
+                const rekeningExcel = toText(
+                    getCellValue(row, headerMap, "Rekening")
+                );
+
+                const penerima = toText(
+                    getCellValue(row, headerMap, "Penerima")
+                );
+
+                const pemohon = toText(
+                    getCellValue(row, headerMap, "User")
+                );
+
+                const kredit = toNumber(
+                    getCellValue(row, headerMap, "Kredit")
+                );
+
+                const keteranganExcel = toText(
+                    getCellValue(row, headerMap, "Keterangan")
+                );
+
+                const kelompokBiaya = toText(
+                    getCellValue(row, headerMap, "Kelompok Biaya")
+                );
+
+                const jenisBiaya = toText(
+                    getCellValue(row, headerMap, "Jenis Biaya")
+                );
 
                 const rekeningKey = rekeningExcel.toLowerCase();
-                const noAkunKasBank = REKENING_MAPPING[rekeningKey] || null;
+                const noAkunKasBank =
+                    REKENING_MAPPING[rekeningKey] || null;
 
-                // --- DETEKSI OTOMATIS: JIKA REGISTER BERAWALAN BD ATAU DEBIT > 0 MAKA INI ADALAH CASH IN (CI) ---
-                const isCashIn = noRegistrasi.toUpperCase().startsWith("BD") || (debit > 0 && kredit === 0);
-
-                if (isCashIn) {
-                    const preview: ImportPreviewRow = {
-                        rowKey: `CO-CI-${r}`,
-                        jenis: "CI", // Set sebagai Cash In
-                        noRegistrasi: String(noRegistrasi).trim(),
-                        noReferensi,
-                        tanggal: tanggal || "",
-                        rekeningExcel,
-                        noAkunKasBank,
-                        namaPemohon: pemohon,
-                        skorMatchRekening: noAkunKasBank ? 1 : null,
-                        namaPihak: penerima || NAMA_PENERIMA_CI,
-                        isPihakBaru: penerima ? !penerimaSet.has(penerima.toLowerCase()) : false,
-                        teksSumberLawan: "Piutang Usaha",
-                        noAkunLawan: AKUN_PIUTANG_USAHA,
-                        namaAkunLawan: "Piutang Usaha",
-                        skorMatchLawan: 1,
-                        nominal: debit > 0 ? debit : kredit,
-                        keterangan: keteranganExcel,
-                        status: "siap",
-                    };
-
-                    if (!tanggal) {
-                        preview.status = "dilewati";
-                        preview.alasanDilewati = "Tanggal tidak valid";
-                    } else if (!noAkunKasBank) {
-                        preview.status = "dilewati";
-                        preview.alasanDilewati = `Rekening "${rekeningExcel}" belum dimapping ke akun Kas/Bank`;
-                    } else if (preview.nominal <= 0) {
-                        preview.status = "dilewati";
-                        preview.alasanDilewati = "Nominal pembayaran kosong / nol";
-                    }
-
-                    ciRows.push(preview);
-                    continue;
-                }
-
-                // --- JIKA PENGERJAAN PENGELUARAN STANDAR (CO) ---
                 let noAkunLawan: string | null = null;
                 let namaAkunLawan: string | null = null;
                 let skorMatchLawan: number | null = null;
 
                 try {
-                    if (kelompokBiaya.trim().toLowerCase() === "rab" && jenisBiaya.trim().toLowerCase() === "pelatihan") {
+                    if (
+                        kelompokBiaya.trim().toLowerCase() === "rab" &&
+                        jenisBiaya.trim().toLowerCase() === "pelatihan"
+                    ) {
                         noAkunLawan = "99-0001";
                         namaAkunLawan = "Pelatihan";
                         skorMatchLawan = 1;
                     } else {
                         let matchKelompok: any = null;
+
                         if (kelompokBiaya) {
-                            matchKelompok = findBestMatch(kelompokBiaya, kandidatKelompok, 0.30, 0.05);
+                            matchKelompok = findBestMatch(
+                                kelompokBiaya,
+                                kandidatKelompok,
+                                0.30,
+                                0.05
+                            );
                         }
 
                         if (!matchKelompok && kelompokBiaya) {
                             const searchK = kelompokBiaya.toLowerCase();
-                            const foundK = kelompokRows.find((k: any) => 
-                                k && k.kelompok_biaya && (k.kelompok_biaya.toLowerCase().includes(searchK) || searchK.includes(k.kelompok_biaya.toLowerCase()))
+
+                            const foundK = kelompokRows.find((k: any) =>
+                                k &&
+                                k.kelompok_biaya &&
+                                (
+                                    k.kelompok_biaya.toLowerCase().includes(searchK) ||
+                                    searchK.includes(
+                                        k.kelompok_biaya.toLowerCase()
+                                    )
+                                )
                             );
+
                             if (foundK) {
-                                matchKelompok = { item: foundK, score: 0.8 };
+                                matchKelompok = {
+                                    item: foundK,
+                                    score: 0.8,
+                                };
                             } else if (kelompokRows.length > 0) {
-                                matchKelompok = { item: kelompokRows[0], score: 0.4 };
+                                matchKelompok = {
+                                    item: kelompokRows[0],
+                                    score: 0.4,
+                                };
                             }
                         }
 
-                        if (matchKelompok && matchKelompok.item) {
-                            const namaKelompokTarget = matchKelompok.item.kelompok_biaya;
+                        if (matchKelompok?.item) {
+                            const namaKelompokTarget =
+                                matchKelompok.item.kelompok_biaya;
+
                             const akunDalamKelompok = akunRows.filter(
-                                (a: any) => a && a.nama_kelompok === namaKelompokTarget
+                                (a: any) =>
+                                    a &&
+                                    a.nama_kelompok === namaKelompokTarget
                             );
 
                             if (akunDalamKelompok.length > 0) {
-                                const kandidatAkun: FuzzyCandidate<any>[] = akunDalamKelompok.map((a: any) => ({
-                                    item: a,
-                                    label: a.nama_akun || "",
-                                }));
+                                const kandidatAkun: FuzzyCandidate<any>[] =
+                                    akunDalamKelompok.map((a: any) => ({
+                                        item: a,
+                                        label: a.nama_akun || "",
+                                    }));
 
                                 let matchAkun: any = null;
+
                                 if (jenisBiaya) {
-                                    matchAkun = findBestMatch(jenisBiaya, kandidatAkun, 0.30, 0.05);
+                                    matchAkun = findBestMatch(
+                                        jenisBiaya,
+                                        kandidatAkun,
+                                        0.30,
+                                        0.05
+                                    );
                                 }
 
                                 if (!matchAkun && jenisBiaya) {
                                     const searchJ = jenisBiaya.toLowerCase();
-                                    const foundA = akunDalamKelompok.find((a: any) => 
-                                        (a.nama_akun && a.nama_akun.toLowerCase().includes(searchJ)) ||
-                                        searchJ.includes(a.nama_akun ? a.nama_akun.toLowerCase() : "")
+
+                                    const foundA = akunDalamKelompok.find(
+                                        (a: any) =>
+                                            (
+                                                a.nama_akun &&
+                                                a.nama_akun.toLowerCase()
+                                                    .includes(searchJ)
+                                            ) ||
+                                            searchJ.includes(
+                                                a.nama_akun
+                                                    ? a.nama_akun.toLowerCase()
+                                                    : ""
+                                            )
                                     );
+
                                     if (foundA) {
-                                        matchAkun = { item: foundA, score: 0.7 };
+                                        matchAkun = {
+                                            item: foundA,
+                                            score: 0.7,
+                                        };
                                     }
                                 }
 
-                                if (!matchAkun && akunDalamKelompok.length > 0) {
-                                    matchAkun = { item: akunDalamKelompok[0], score: 0.5 };
+                                if (!matchAkun) {
+                                    matchAkun = {
+                                        item: akunDalamKelompok[0],
+                                        score: 0.5,
+                                    };
                                 }
 
-                                if (matchAkun && matchAkun.item) {
-                                    noAkunLawan = matchAkun.item.no_akun || null;
-                                    namaAkunLawan = matchAkun.item.nama_akun || null;
-                                    skorMatchLawan = Number((matchAkun.score ?? 0.5).toFixed(2));
+                                if (matchAkun?.item) {
+                                    noAkunLawan =
+                                        matchAkun.item.no_akun || null;
+
+                                    namaAkunLawan =
+                                        matchAkun.item.nama_akun || null;
+
+                                    skorMatchLawan = Number(
+                                        (matchAkun.score ?? 0.5).toFixed(2)
+                                    );
                                 }
                             }
                         }
@@ -356,14 +550,16 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     rowKey: `CO-${r}`,
                     jenis: "CO",
                     noRegistrasi: String(noRegistrasi).trim(),
-                    noReferensi,
                     tanggal: tanggal || "",
+                    noReferensi: "",
                     rekeningExcel,
                     noAkunKasBank,
                     namaPemohon: pemohon,
-                    skorMatchRekening: noAkunKasBank ? 1 : null, 
+                    skorMatchRekening: noAkunKasBank ? 1 : null,
                     namaPihak: penerima,
-                    isPihakBaru: penerima ? !penerimaSet.has(penerima.toLowerCase()) : false,
+                    isPihakBaru: penerima
+                        ? !penerimaSet.has(penerima.toLowerCase())
+                        : false,
                     teksSumberLawan: kelompokBiaya,
                     noAkunLawan,
                     namaAkunLawan,
@@ -378,13 +574,16 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     preview.alasanDilewati = "Tanggal tidak valid";
                 } else if (!noAkunKasBank) {
                     preview.status = "dilewati";
-                    preview.alasanDilewati = `Rekening "${rekeningExcel}" belum dimapping ke akun Kas/Bank`;
+                    preview.alasanDilewati =
+                        `Rekening "${rekeningExcel}" belum dimapping ke akun Kas/Bank`;
                 } else if (!noAkunLawan) {
                     preview.status = "dilewati";
-                    preview.alasanDilewati = `Tidak ditemukan akun beban yang cocok untuk kelompok biaya "${kelompokBiaya || "(kosong)"}"`;
+                    preview.alasanDilewati =
+                        `Tidak ditemukan akun beban yang cocok untuk kelompok biaya "${kelompokBiaya || "(kosong)"}"`;
                 } else if (kredit <= 0) {
                     preview.status = "dilewati";
-                    preview.alasanDilewati = "Nominal kredit kosong / nol";
+                    preview.alasanDilewati =
+                        "Nominal kredit kosong / nol";
                 }
 
                 coRows.push(preview);
@@ -392,6 +591,7 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
         }
 
         /* -------- PARSE SHEET PETTY CASH (KK) -------- */
+
         const kkRows: ImportPreviewRow[] = [];
         const sheetKK = findSheetByPrefix(workbook, "PETTY CASH");
 
@@ -399,58 +599,118 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
             const headerRowIdx = findHeaderRowIndex(sheetKK);
             const headerMap = buildHeaderMap(sheetKK, headerRowIdx);
 
-            for (let r = headerRowIdx + 1; r <= sheetKK.rowCount; r++) {
+            for (
+                let r = headerRowIdx + 1;
+                r <= sheetKK.rowCount;
+                r++
+            ) {
                 const row = sheetKK.getRow(r);
-                const noRegistrasi = toText(getCellValue(row, headerMap, "No Register", "Nomor Register"));
-                if (!noRegistrasi || !noRegistrasi.toUpperCase().startsWith("KK")) continue;
 
-                const noReferensi = toText(getCellValue(row, headerMap, "No Referensi", "Nomor Referensi", "No. Referensi", "Ref"));
-                const tanggal = toDateString(getCellValue(row, headerMap, "Tanggal"));
-                const kelompokBiaya = toText(getCellValue(row, headerMap, "Kelompok Biaya"));
-                const jenisBiaya = toText(getCellValue(row, headerMap, "Jenis Biaya"));
-                const keterangan = toText(getCellValue(row, headerMap, "Keterangan"));
-                const kredit = toNumber(getCellValue(row, headerMap, "Kredit"));
+                const noRegistrasi = toText(
+                    getCellValue(
+                        row,
+                        headerMap,
+                        "No Register",
+                        "Nomor Register"
+                    )
+                );
+
+                if (
+                    !noRegistrasi ||
+                    !noRegistrasi.toUpperCase().startsWith("KK")
+                ) {
+                    continue;
+                }
+
+                const tanggal = toDateString(
+                    getCellValue(row, headerMap, "Tanggal")
+                );
+
+                const kelompokBiaya = toText(
+                    getCellValue(row, headerMap, "Kelompok Biaya")
+                );
+
+                const jenisBiaya = toText(
+                    getCellValue(row, headerMap, "Jenis Biaya")
+                );
+
+                const keterangan = toText(
+                    getCellValue(row, headerMap, "Keterangan")
+                );
+
+                const kredit = toNumber(
+                    getCellValue(row, headerMap, "Kredit")
+                );
 
                 let noAkunLawan: string | null = null;
                 let namaAkunLawan: string | null = null;
                 let skorMatchLawan: number | null = null;
 
                 try {
-                    if (kelompokBiaya.trim().toLowerCase() === "rab" && jenisBiaya.trim().toLowerCase() === "pelatihan") {
+                    if (
+                        kelompokBiaya.trim().toLowerCase() === "rab" &&
+                        jenisBiaya.trim().toLowerCase() === "pelatihan"
+                    ) {
                         noAkunLawan = "99-0001";
                         namaAkunLawan = "Pelatihan";
                         skorMatchLawan = 1;
                     } else {
                         let matchKelompok: any = null;
+
                         if (kelompokBiaya) {
-                            matchKelompok = findBestMatch(kelompokBiaya, kandidatKelompok, 0.30, 0.05);
+                            matchKelompok = findBestMatch(
+                                kelompokBiaya,
+                                kandidatKelompok,
+                                0.30,
+                                0.05
+                            );
                         }
 
-                        if (matchKelompok && matchKelompok.item) {
-                            const namaKelompokTarget = matchKelompok.item.kelompok_biaya;
+                        if (matchKelompok?.item) {
+                            const namaKelompokTarget =
+                                matchKelompok.item.kelompok_biaya;
+
                             const akunDalamKelompok = akunRows.filter(
-                                (a: any) => a && a.nama_kelompok === namaKelompokTarget
+                                (a: any) =>
+                                    a &&
+                                    a.nama_kelompok === namaKelompokTarget
                             );
 
                             if (akunDalamKelompok.length > 0) {
-                                const kandidatAkun: FuzzyCandidate<any>[] = akunDalamKelompok.map((a: any) => ({
-                                    item: a,
-                                    label: a.nama_akun || "",
-                                }));
+                                const kandidatAkun: FuzzyCandidate<any>[] =
+                                    akunDalamKelompok.map((a: any) => ({
+                                        item: a,
+                                        label: a.nama_akun || "",
+                                    }));
 
                                 let matchAkun: any = null;
+
                                 if (jenisBiaya) {
-                                    matchAkun = findBestMatch(jenisBiaya, kandidatAkun, 0.30, 0.05);
+                                    matchAkun = findBestMatch(
+                                        jenisBiaya,
+                                        kandidatAkun,
+                                        0.30,
+                                        0.05
+                                    );
                                 }
 
-                                if (!matchAkun && akunDalamKelompok.length > 0) {
-                                    matchAkun = { item: akunDalamKelompok[0], score: 0.5 };
+                                if (!matchAkun) {
+                                    matchAkun = {
+                                        item: akunDalamKelompok[0],
+                                        score: 0.5,
+                                    };
                                 }
 
-                                if (matchAkun && matchAkun.item) {
-                                    noAkunLawan = matchAkun.item.no_akun || null;
-                                    namaAkunLawan = matchAkun.item.nama_akun || null;
-                                    skorMatchLawan = Number((matchAkun.score ?? 0.5).toFixed(2));
+                                if (matchAkun?.item) {
+                                    noAkunLawan =
+                                        matchAkun.item.no_akun || null;
+
+                                    namaAkunLawan =
+                                        matchAkun.item.nama_akun || null;
+
+                                    skorMatchLawan = Number(
+                                        (matchAkun.score ?? 0.5).toFixed(2)
+                                    );
                                 }
                             }
                         }
@@ -463,8 +723,8 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     rowKey: `KK-${r}`,
                     jenis: "KK",
                     noRegistrasi: String(noRegistrasi).trim(),
-                    noReferensi,
                     tanggal: tanggal || "",
+                    noReferensi: "",
                     rekeningExcel: "Kas Kecil",
                     noAkunKasBank: AKUN_KAS_KECIL,
                     skorMatchRekening: 1,
@@ -485,10 +745,12 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
                     preview.alasanDilewati = "Tanggal tidak valid";
                 } else if (!noAkunLawan) {
                     preview.status = "dilewati";
-                    preview.alasanDilewati = `Tidak ditemukan akun beban yang cocok untuk kelompok biaya "${kelompokBiaya || "(kosong)"}"`;
+                    preview.alasanDilewati =
+                        `Tidak ditemukan akun beban yang cocok untuk kelompok biaya "${kelompokBiaya || "(kosong)"}"`;
                 } else if (kredit <= 0) {
                     preview.status = "dilewati";
-                    preview.alasanDilewati = "Nominal kredit kosong / nol";
+                    preview.alasanDilewati =
+                        "Nominal kredit kosong / nol";
                 }
 
                 kkRows.push(preview);
@@ -497,7 +759,13 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
 
         const semuaRows = [...ciRows, ...coRows, ...kkRows];
         const totalBaris = semuaRows.length;
-        const siap = semuaRows.filter((r) => r.status === "siap").length;
+        const siap = semuaRows.filter(
+            (row) => row.status === "siap"
+        ).length;
+
+        console.log("TOTAL CI:", ciRows.length);
+        console.log("TOTAL CO:", coRows.length);
+        console.log("TOTAL KK:", kkRows.length);
 
         return {
             success: true,
@@ -513,6 +781,7 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
         };
     } catch (error: any) {
         console.error("previewImportJurnal error:", error);
+
         return {
             success: false,
             message: error?.message || "Gagal membaca file Excel.",
@@ -520,50 +789,77 @@ export async function previewImportJurnal(base64File: string): Promise<ImportPre
             co: [],
             kk: [],
             rekeningBelumDimapping: [],
-            summary: { totalBaris: 0, siap: 0, dilewati: 0 },
+            summary: {
+                totalBaris: 0,
+                siap: 0,
+                dilewati: 0,
+            },
         };
     }
 }
 
 /* ============================================================
- * ACTION: COMMIT IMPORT (DENGAN GROUPING BERDASARKAN NOMOR REGISTER)
+ * ACTION: COMMIT IMPORT
+ * GROUPING BERDASARKAN JENIS DAN NOMOR REGISTER
  * ============================================================ */
 
-async function resolvePihakId(namaPihak: string): Promise<number | null> {
+async function resolvePihakId(
+    namaPihak: string
+): Promise<number | null> {
     const nama = (namaPihak || "").trim();
+
     if (!nama) return null;
 
     const [rows]: any = await db.query(
-        "SELECT id FROM tb_penerima WHERE LOWER(nama_penerima) = LOWER(?) LIMIT 1",
+        `SELECT id
+         FROM tb_penerima
+         WHERE LOWER(nama_penerima) = LOWER(?)
+         LIMIT 1`,
         [nama]
     );
-    if (rows.length > 0) return Number(rows[0].id);
+
+    if (rows.length > 0) {
+        return Number(rows[0].id);
+    }
 
     const [insertResult]: any = await db.query(
         "INSERT INTO tb_penerima (nama_penerima) VALUES (?)",
         [nama]
     );
+
     return Number(insertResult.insertId);
 }
 
-async function resolvePemohonId(namaPemohon: string): Promise<number | null> {
+async function resolvePemohonId(
+    namaPemohon: string
+): Promise<number | null> {
     const nama = (namaPemohon || "").trim();
+
     if (!nama) return null;
 
     const [rows]: any = await db.query(
-        `SELECT id FROM tb_pemohon WHERE LOWER(nama_pemohon) = LOWER(?) LIMIT 1`,
+        `SELECT id
+         FROM tb_pemohon
+         WHERE LOWER(nama_pemohon) = LOWER(?)
+         LIMIT 1`,
         [nama]
     );
-    if (rows.length > 0) return Number(rows[0].id);
+
+    if (rows.length > 0) {
+        return Number(rows[0].id);
+    }
 
     const [insertResult]: any = await db.query(
-        `INSERT INTO tb_pemohon (nama_pemohon) VALUES (?)`,
+        "INSERT INTO tb_pemohon (nama_pemohon) VALUES (?)",
         [nama]
     );
+
     return Number(insertResult.insertId);
 }
 
-export async function commitImportJurnal(rows: ImportPreviewRow[]) {
+export async function commitImportJurnal(
+    rows: ImportPreviewRow[]
+) {
     const hasil = {
         berhasil: 0,
         gagal: 0,
@@ -574,96 +870,181 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
     const groupedMap = new Map<string, ImportPreviewRow[]>();
 
     for (const row of rows) {
-        if (row.status !== "siap" || !row.noAkunKasBank || !row.noAkunLawan) {
+        if (
+            row.status !== "siap" ||
+            !row.noAkunKasBank ||
+            !row.noAkunLawan
+        ) {
             hasil.gagal++;
-            hasil.pesanGagal.push(`${row.noRegistrasi || 'Baris'}: baris tidak siap untuk diimpor`);
+
+            hasil.pesanGagal.push(
+                `${row.noRegistrasi || "Baris"}: baris tidak siap untuk diimpor`
+            );
+
             continue;
         }
 
         const groupKey = `${row.jenis}:${row.noRegistrasi}`;
+
         if (!groupedMap.has(groupKey)) {
             groupedMap.set(groupKey, []);
         }
+
         groupedMap.get(groupKey)!.push(row);
     }
 
-    for (const [groupKey, groupRows] of groupedMap.entries()) {
+    for (const [, groupRows] of groupedMap.entries()) {
         const firstRow = groupRows[0];
+
         try {
-            const penerimaId = await resolvePihakId(firstRow.namaPihak);
-            const pemohonId = firstRow.jenis === "CI" || firstRow.jenis === "CO" ? await resolvePemohonId(firstRow.namaPemohon) : null;
+            const noReferensi = (
+                firstRow.noReferensi || ""
+            ).trim();
+
+            console.log("COMMIT IMPORT:", {
+                jenis: firstRow.jenis,
+                noRegistrasi: firstRow.noRegistrasi,
+                noReferensi,
+            });
+
+            if (
+                firstRow.jenis === "CI" &&
+                groupRows.some(
+                    (row) =>
+                        (row.noReferensi || "").trim() !== noReferensi
+                )
+            ) {
+                hasil.gagal++;
+
+                hasil.pesanGagal.push(
+                    `${firstRow.noRegistrasi}: nomor referensi berbeda dalam satu grup jurnal CI.`
+                );
+
+                continue;
+            }
+
+            const penerimaId = await resolvePihakId(
+                firstRow.namaPihak
+            );
+
+            const pemohonId =
+                firstRow.jenis === "CI" ||
+                    firstRow.jenis === "CO"
+                    ? await resolvePemohonId(firstRow.namaPemohon)
+                    : null;
 
             const items: any[] = [];
             let totalNominal = 0;
 
             if (firstRow.jenis === "CI") {
-                // Untuk Kas Masuk (CI): Akun Kas/Bank didebit total, Piutang Usaha dikredit per baris
-                for (const r of groupRows) {
+                // Pemasukan: kas/bank debit, piutang kredit.
+                for (const row of groupRows) {
                     items.push({
-                        accountCode: r.noAkunLawan,
+                        accountCode: row.noAkunLawan,
                         debit: 0,
-                        kredit: r.nominal,
-                        keterangan: r.keterangan,
+                        kredit: row.nominal,
+                        keterangan: row.keterangan,
                     });
-                    totalNominal += r.nominal;
+
+                    totalNominal += row.nominal;
                 }
+
                 items.unshift({
                     accountCode: firstRow.noAkunKasBank,
                     debit: totalNominal,
                     kredit: 0,
-                    keterangan: firstRow.keterangan || "Import Pemasukan (CI)",
+                    keterangan:
+                        firstRow.keterangan ||
+                        "Import Pemasukan (CI)",
                 });
             } else {
-                // Untuk Kas Keluar (CO) & Petty Cash (KK): Akun beban didebit per baris, Kas/Bank dikredit total
-                for (const r of groupRows) {
+                // Pengeluaran: akun lawan debit, kas/bank kredit.
+                for (const row of groupRows) {
                     items.push({
-                        accountCode: r.noAkunLawan,
-                        debit: r.nominal,
+                        accountCode: row.noAkunLawan,
+                        debit: row.nominal,
                         kredit: 0,
-                        keterangan: r.keterangan,
+                        keterangan: row.keterangan,
                     });
-                    totalNominal += r.nominal;
+
+                    totalNominal += row.nominal;
                 }
+
                 items.push({
                     accountCode: firstRow.noAkunKasBank,
                     debit: 0,
                     kredit: totalNominal,
-                    keterangan: firstRow.keterangan || (firstRow.jenis === "CO" ? "Import Pengeluaran (CO)" : "Import Petty Cash (KK)"),
+                    keterangan:
+                        firstRow.keterangan ||
+                        (
+                            firstRow.jenis === "CO"
+                                ? "Import Pengeluaran (CO)"
+                                : "Import Petty Cash (KK)"
+                        ),
                 });
             }
 
-            const noReferensi = firstRow.noReferensi || "";
-
-            const result = await createJurnalUmum({
+            const payload = {
                 tanggal: firstRow.tanggal,
                 noRegistrasi: firstRow.noRegistrasi,
                 noReferensi,
                 penerimaId,
                 pemohonId,
-                keterangan: firstRow.keterangan || (firstRow.jenis === "CI" ? "Import Pemasukan (CI)" : firstRow.jenis === "CO" ? "Import Pengeluaran (CO)" : "Import Petty Cash (KK)"),
+                keterangan:
+                    firstRow.keterangan ||
+                    (
+                        firstRow.jenis === "CI"
+                            ? "Import Pemasukan (CI)"
+                            : firstRow.jenis === "CO"
+                                ? "Import Pengeluaran (CO)"
+                                : "Import Petty Cash (KK)"
+                    ),
                 items,
-            });
+            };
+
+            const result =
+                firstRow.jenis === "CI" && noReferensi
+                    ? await createJurnalDenganReferensiInvoiceOnly(
+                        payload
+                    )
+                    : await createJurnalUmum(payload);
 
             if (result.success) {
                 hasil.berhasil++;
-            } else if (result.message?.includes("sudah ada di jurnal")) {
+            } else if (
+                result.message?.includes("sudah ada di jurnal")
+            ) {
                 hasil.duplikat++;
             } else {
                 hasil.gagal++;
-                hasil.pesanGagal.push(`${firstRow.noRegistrasi}: ${result.message}`);
+
+                hasil.pesanGagal.push(
+                    `${firstRow.noRegistrasi}: ${result.message}`
+                );
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             hasil.gagal++;
-            hasil.pesanGagal.push(`${firstRow.noRegistrasi}: ${error.message}`);
+
+            const pesan =
+                error instanceof Error
+                    ? error.message
+                    : "Terjadi kesalahan yang tidak diketahui.";
+
+            hasil.pesanGagal.push(
+                `${firstRow.noRegistrasi}: ${pesan}`
+            );
         }
     }
 
     revalidatePath("/dashboard/finance/pos/jurnal");
     revalidatePath("/dashboard/finance/riwayat");
+    revalidatePath("/dashboard/finance/invoices");
 
     return {
         success: hasil.gagal === 0,
-        message: `Import selesai. Berhasil: ${hasil.berhasil}, Duplikat: ${hasil.duplikat}, Gagal: ${hasil.gagal}.`,
+        message:
+            `Import selesai. Berhasil: ${hasil.berhasil}, ` +
+            `Duplikat: ${hasil.duplikat}, Gagal: ${hasil.gagal}.`,
         ...hasil,
     };
 }

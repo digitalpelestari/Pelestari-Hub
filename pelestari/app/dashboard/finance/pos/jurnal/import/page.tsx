@@ -148,6 +148,11 @@ export default function ImportJurnalPage() {
       <TableCell className="font-mono text-xs whitespace-nowrap">
         {row.noRegistrasi}
       </TableCell>
+      {row.jenis === "CI" && (
+        <TableCell className="font-mono text-xs whitespace-nowrap">
+          {row.noReferensi || "-"}
+        </TableCell>
+      )}
       <TableCell className="text-xs whitespace-nowrap">
         {row.tanggal || "-"}
       </TableCell>
@@ -415,6 +420,7 @@ export default function ImportJurnalPage() {
               <TableHeader>
                 <TableRow className="text-[11px] text-zinc-500 uppercase">
                   <TableHead>No. Registrasi</TableHead>
+                  <TableHead>No. Referensi</TableHead>
                   <TableHead>Tanggal</TableHead>
                   <TableHead>Rekening</TableHead>
                   <TableHead>Akun Lawan (Pendapatan)</TableHead>
