@@ -21,6 +21,142 @@ import { swal } from "@/lib/sweetalert"
 
 const todayLocal = () => new Date().toLocaleDateString("en-CA") // YYYY-MM-DD (waktu lokal)
 
+const BULAN_LIST = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+]
+
+// === DAFTAR KATEGORI UNTUK GRAFIK TERPISAH ===
+const KATEGORI_LIST = [
+  {
+    value: "PLN/Listrik",
+    label: "PLN / Listrik",
+    bar: "bg-amber-500",
+    dot: "text-amber-600",
+  },
+  {
+    value: "PDAM/Air",
+    label: "PDAM / Air Bersih",
+    bar: "bg-blue-500",
+    dot: "text-blue-600",
+  },
+  {
+    value: "WiFi/Internet",
+    label: "WiFi / Internet",
+    bar: "bg-purple-500",
+    dot: "text-purple-600",
+  },
+  {
+    value: "Lainnya",
+    label: "Lainnya",
+    bar: "bg-zinc-500",
+    dot: "text-zinc-600",
+  },
+]
+
+// === KOMPONEN GRAFIK PER KATEGORI ===
+function CategoryChart({
+  kategori,
+  records,
+}: {
+  kategori: (typeof KATEGORI_LIST)[number]
+  records: any[]
+}) {
+  // Data kategori ini saja, urut kronologis (lama -> baru)
+  const data = records
+    .filter((r) => r.nama_utility === kategori.value)
+    .sort((a, b) => {
+      if (Number(a.tahun) !== Number(b.tahun))
+        return Number(a.tahun) - Number(b.tahun)
+      const diff = BULAN_LIST.indexOf(a.bulan) - BULAN_LIST.indexOf(b.bulan)
+      if (diff !== 0) return diff
+      return Number(a.id_utility) - Number(b.id_utility)
+    })
+
+  // Nilai maksimum dihitung per kategori
+  const maxNominal =
+    data.length > 0 ? Math.max(...data.map((r) => Number(r.nominal))) : 1
+  const total = data.reduce((sum, r) => sum + Number(r.nominal), 0)
+
+  return (
+    <div className="rounded border bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+        <h2 className="flex items-center gap-1.5 text-xs font-bold text-zinc-900 uppercase">
+          <BarChart3 className={`h-4 w-4 ${kategori.dot}`} />
+          Grafik Tren {kategori.label}
+        </h2>
+        <div className="text-[10px] font-semibold text-zinc-500">
+          {data.length} tagihan &middot; Total{" "}
+          <span className="font-black text-zinc-800">
+            Rp {total.toLocaleString("id-ID")}
+          </span>
+        </div>
+      </div>
+
+      {data.length === 0 ? (
+        <p className="py-4 text-center text-zinc-400 italic">
+          Belum ada data {kategori.label}.
+        </p>
+      ) : (
+        <div className="w-full overflow-x-auto">
+          <div className="min-w-[600px]">
+            <div className="relative h-60 border-b border-l border-zinc-300 px-4">
+              {/* Bar Chart */}
+              <div className="relative z-10 flex h-full items-end justify-around gap-4 px-4">
+                {data.map((rec) => {
+                  const nominalValue = Number(rec.nominal)
+                  const percentageHeight =
+                    maxNominal > 0 ? (nominalValue / maxNominal) * 100 : 0
+
+                  return (
+                    <div
+                      key={rec.id_utility}
+                      className="flex h-full max-w-24 flex-1 flex-col items-center justify-end"
+                    >
+                      <div className="mb-1 text-center text-[9px] font-black text-zinc-700">
+                        Rp {nominalValue.toLocaleString("id-ID")}
+                      </div>
+
+                      <div
+                        className={`w-full max-w-16 rounded-t-sm ${kategori.bar} transition-all duration-500 ease-out`}
+                        style={{ height: `${Math.max(percentageHeight, 2)}%` }}
+                        title={`${rec.nama_utility} - ${rec.bulan} ${rec.tahun}: Rp ${nominalValue.toLocaleString(
+                          "id-ID"
+                        )}`}
+                      />
+
+                      <div className="mt-2 text-center">
+                        <div className="text-[10px] font-bold text-zinc-700">
+                          {rec.bulan}
+                        </div>
+                        <div className="text-[9px] text-zinc-400">
+                          {rec.tahun}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            {/* Ruang untuk label bulan/tahun di bawah sumbu */}
+            <div className="h-10" />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function GaUtilitiesPage() {
   const [records, setRecords] = useState<any[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -29,7 +165,7 @@ export default function GaUtilitiesPage() {
   // === STATE EDIT (null = mode tambah) ===
   const [editingId, setEditingId] = useState<number | null>(null)
 
-  // === STATE FILTER BULANAN & JENIS ===
+  // === STATE FILTER JENIS (hanya untuk tabel) ===
   const [filterUtility, setFilterJenis] = useState("Semua")
 
   // === STATE FORM INPUT ===
@@ -50,7 +186,7 @@ export default function GaUtilitiesPage() {
     if (res.success) setRecords(res.data)
   }
 
-  // === LOGIC FILTER DATA UNTUK TABEL & GRAFIK ===
+  // === LOGIC FILTER DATA UNTUK TABEL ===
   const filteredRecords = records.filter((rec) => {
     return filterUtility === "Semua" || rec.nama_utility === filterUtility
   })
@@ -137,15 +273,6 @@ export default function GaUtilitiesPage() {
     }
   }
 
-  // Balik urutan khusus untuk tampilan grafik batang dari kiri-ke-kanan / atas-ke-bawah (kronologis waktu lama ke baru)
-  const chartRecords = [...filteredRecords].reverse()
-
-  // Ambil batas tertinggi nominal dari data yang sudah terfilter sebagai basis pembagi lebar bar
-  const maxNominal =
-    chartRecords.length > 0
-      ? Math.max(...chartRecords.map((r) => Number(r.nominal)))
-      : 1
-
   return (
     <div className="mx-auto max-w-7xl p-6 font-sans text-xs">
       {/* HEADER UTAMA */}
@@ -166,7 +293,8 @@ export default function GaUtilitiesPage() {
           <Plus className="h-4 w-4" /> Catat Tagihan Baru
         </button>
       </div>
-      {/* PANEL CONTROL FILTER UTILLITAS */}
+
+      {/* PANEL CONTROL FILTER UTILITAS (khusus tabel) */}
       <div className="mb-6 flex flex-col items-center gap-3 rounded border border-zinc-200 bg-zinc-50 p-3 shadow-sm sm:flex-row">
         <div className="flex w-full items-center gap-2 sm:w-auto">
           <span className="flex items-center gap-1 text-[10px] font-bold whitespace-nowrap text-zinc-500 uppercase">
@@ -194,6 +322,7 @@ export default function GaUtilitiesPage() {
           dari {records.length} total baris log
         </div>
       </div>
+
       {/* TABEL REKAP BULANAN */}
       <div className="mb-6 overflow-hidden rounded border bg-white shadow-sm">
         <table className="w-full border-collapse text-left">
@@ -283,117 +412,18 @@ export default function GaUtilitiesPage() {
           </tbody>
         </table>
       </div>
-      {/* BAR CHART TREN BULANAN */}
-      <div className="rounded border bg-white p-4 shadow-sm">
-        <h2 className="mb-4 flex items-center gap-1.5 border-b pb-2 text-xs font-bold text-zinc-900 uppercase">
-          <BarChart3 className="h-4 w-4 text-zinc-500" />
-          Grafik Tren Biaya Terfilter ({filterUtility})
-        </h2>
 
-        {chartRecords.length === 0 ? (
-          <p className="py-4 text-center text-zinc-400 italic">
-            Tidak ada grafik untuk ditampilkan pada filter ini.
-          </p>
-        ) : (
-          <div className="w-full overflow-x-auto">
-            <div className="min-w-[600px]">
-              <div className="relative h-72 border-b border-l border-zinc-300 px-4">
-                {/* Grid & Y Axis */}
-                <div className="pointer-events-none absolute inset-0 flex flex-col justify-between">
-                  {[100, 75, 50, 25, 0].map((value) => (
-                    <div
-                      key={value}
-                      className="flex w-full items-center border-t border-dashed border-zinc-100"
-                    >
-                      <span className="absolute -left-16 w-12 text-right text-[9px] text-zinc-400">
-                        {Math.round((maxNominal * value) / 100).toLocaleString(
-                          "id-ID"
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Bar Chart */}
-                <div className="relative z-10 flex h-full items-end justify-around gap-4 px-4">
-                  {chartRecords.map((rec) => {
-                    const nominalValue = Number(rec.nominal)
-
-                    const percentageHeight =
-                      maxNominal > 0 ? (nominalValue / maxNominal) * 100 : 0
-
-                    const barColor =
-                      rec.nama_utility === "PLN/Listrik"
-                        ? "bg-amber-500"
-                        : rec.nama_utility === "PDAM/Air"
-                          ? "bg-blue-500"
-                          : rec.nama_utility === "WiFi/Internet"
-                            ? "bg-purple-500"
-                            : "bg-zinc-500"
-
-                    return (
-                      <div
-                        key={rec.id_utility}
-                        className="flex h-full max-w-24 flex-1 flex-col items-center justify-end"
-                      >
-                        {/* Nominal */}
-                        <div className="mb-1 text-center text-[9px] font-black text-zinc-700">
-                          Rp {nominalValue.toLocaleString("id-ID")}
-                        </div>
-
-                        {/* Bar */}
-                        <div
-                          className={`w-full max-w-16 rounded-t-sm ${barColor} transition-all duration-500 ease-out`}
-                          style={{
-                            height: `${Math.max(percentageHeight, 2)}%`,
-                          }}
-                          title={`${rec.nama_utility} - ${rec.bulan} ${rec.tahun}: Rp ${nominalValue.toLocaleString(
-                            "id-ID"
-                          )}`}
-                        />
-
-                        {/* Label */}
-                        <div className="mt-2 text-center">
-                          <div className="text-[10px] font-bold text-zinc-700">
-                            {rec.bulan}
-                          </div>
-
-                          <div className="text-[9px] text-zinc-400">
-                            {rec.tahun}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Legend */}
-              <div className="mt-5 flex flex-wrap items-center justify-center gap-5 text-[10px] font-semibold text-zinc-500">
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-amber-500" />
-                  PLN/Listrik
-                </span>
-
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-blue-500" />
-                  PDAM/Air
-                </span>
-
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-purple-500" />
-                  WiFi/Internet
-                </span>
-
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-zinc-500" />
-                  Lainnya
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
+      {/* GRAFIK TREN: TERPISAH PER KATEGORI */}
+      <div className="space-y-6">
+        {KATEGORI_LIST.map((kategori) => (
+          <CategoryChart
+            key={kategori.value}
+            kategori={kategori}
+            records={records}
+          />
+        ))}
       </div>
+
       {/* DIALOG FORM MODAL (TAMBAH & EDIT) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -439,20 +469,7 @@ export default function GaUtilitiesPage() {
                     onChange={(e) => setBulan(e.target.value)}
                     className="w-full cursor-pointer rounded border bg-white p-2"
                   >
-                    {[
-                      "Januari",
-                      "Februari",
-                      "Maret",
-                      "April",
-                      "Mei",
-                      "Juni",
-                      "Juli",
-                      "Agustus",
-                      "September",
-                      "Oktober",
-                      "November",
-                      "Desember",
-                    ].map((m) => (
+                    {BULAN_LIST.map((m) => (
                       <option key={m} value={m}>
                         {m}
                       </option>
