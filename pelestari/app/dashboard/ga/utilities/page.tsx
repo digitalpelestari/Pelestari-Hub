@@ -5,6 +5,7 @@ import {
   Plus,
   X,
   Trash2,
+  Pencil,
   ClipboardList,
   Activity,
   BarChart3,
@@ -13,14 +14,20 @@ import {
 import {
   getUtilitiesAction,
   createUtilityAction,
+  updateUtilityAction,
   deleteUtilityAction,
 } from "@/app/actions/utility"
 import { swal } from "@/lib/sweetalert"
+
+const todayLocal = () => new Date().toLocaleDateString("en-CA") // YYYY-MM-DD (waktu lokal)
 
 export default function GaUtilitiesPage() {
   const [records, setRecords] = useState<any[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  // === STATE EDIT (null = mode tambah) ===
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   // === STATE FILTER BULANAN & JENIS ===
   const [filterUtility, setFilterJenis] = useState("Semua")
@@ -30,9 +37,7 @@ export default function GaUtilitiesPage() {
   const [bulan, setBulan] = useState("Januari")
   const [tahun, setTahun] = useState<number | "">("")
   const [nominal, setNominal] = useState("")
-  const [tanggalBayar, setTanggalBayar] = useState(
-    new Date().toISOString().split("T")[0]
-  )
+  const [tanggalBayar, setTanggalBayar] = useState(todayLocal())
   const [keterangan, setKeterangan] = useState("")
 
   useEffect(() => {
@@ -50,6 +55,42 @@ export default function GaUtilitiesPage() {
     return filterUtility === "Semua" || rec.nama_utility === filterUtility
   })
 
+  // === HELPER FORM & MODAL ===
+  const resetForm = () => {
+    setNamaUtility("PLN/Listrik")
+    setBulan("Januari")
+    setTahun(new Date().getFullYear())
+    setNominal("")
+    setTanggalBayar(todayLocal())
+    setKeterangan("")
+    setEditingId(null)
+  }
+
+  const openAddModal = () => {
+    resetForm()
+    setIsModalOpen(true)
+  }
+
+  const openEditModal = (rec: any) => {
+    setEditingId(rec.id_utility)
+    setNamaUtility(rec.nama_utility)
+    setBulan(rec.bulan)
+    setTahun(Number(rec.tahun))
+    setNominal(String(Number(rec.nominal)))
+    setTanggalBayar(
+      rec.tanggal_bayar
+        ? new Date(rec.tanggal_bayar).toLocaleDateString("en-CA")
+        : ""
+    )
+    setKeterangan(rec.keterangan || "")
+    setIsModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setIsModalOpen(false)
+    resetForm()
+  }
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -63,12 +104,17 @@ export default function GaUtilitiesPage() {
       keterangan,
     }
 
-    const res = await createUtilityAction(payload)
+    const res = editingId
+      ? await updateUtilityAction(editingId, payload)
+      : await createUtilityAction(payload)
+
     if (res.success) {
-      swal.success("Tagihan utilitas berhasil dicatat")
-      setIsModalOpen(false)
-      setNominal("")
-      setKeterangan("")
+      swal.success(
+        editingId
+          ? "Tagihan utilitas berhasil diperbarui"
+          : "Tagihan utilitas berhasil dicatat"
+      )
+      closeModal()
       fetchRecords()
     } else {
       swal.error(res.message)
@@ -114,7 +160,7 @@ export default function GaUtilitiesPage() {
           </p>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={openAddModal}
           className="animate-fade-in flex items-center gap-1 rounded bg-blue-600 px-4 py-2 font-bold text-white shadow transition-colors hover:bg-blue-700"
         >
           <Plus className="h-4 w-4" /> Catat Tagihan Baru
@@ -159,7 +205,7 @@ export default function GaUtilitiesPage() {
               <th className="p-3 text-center">Tanggal Bayar</th>
               <th className="p-3 text-right">Biaya Tagihan</th>
               <th className="p-3">Keterangan / Catatan</th>
-              <th className="w-16 p-3 text-center">Aksi</th>
+              <th className="w-24 p-3 text-center">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y font-medium text-zinc-700">
@@ -208,19 +254,28 @@ export default function GaUtilitiesPage() {
                     {rec.keterangan || "-"}
                   </td>
                   <td className="p-3 text-center">
-                    <button
-                      onClick={() =>
-                        handleDelete(
-                          rec.id_utility,
-                          rec.nama_utility,
-                          rec.bulan
-                        )
-                      }
-                      className="rounded border border-red-200 p-1.5 text-red-500 transition-colors hover:bg-red-50"
-                      title="Hapus Log"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        onClick={() => openEditModal(rec)}
+                        className="rounded border border-blue-200 p-1.5 text-blue-500 transition-colors hover:bg-blue-50"
+                        title="Edit Log"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleDelete(
+                            rec.id_utility,
+                            rec.nama_utility,
+                            rec.bulan
+                          )
+                        }
+                        className="rounded border border-red-200 p-1.5 text-red-500 transition-colors hover:bg-red-50"
+                        title="Hapus Log"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -339,16 +394,18 @@ export default function GaUtilitiesPage() {
           </div>
         )}
       </div>
-      {/* DIALOG FORM MODAL */}
+      {/* DIALOG FORM MODAL (TAMBAH & EDIT) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md overflow-hidden rounded bg-white shadow-xl">
             <div className="flex items-center justify-between bg-zinc-900 px-5 py-3 font-bold tracking-wide text-white uppercase">
               <span className="flex items-center gap-1.5">
-                <ClipboardList className="h-4 w-4 text-blue-400" /> Registrasi
-                Tagihan Bulanan
+                <ClipboardList className="h-4 w-4 text-blue-400" />{" "}
+                {editingId
+                  ? "Edit Tagihan Bulanan"
+                  : "Registrasi Tagihan Bulanan"}
               </span>
-              <button type="button" onClick={() => setIsModalOpen(false)}>
+              <button type="button" onClick={closeModal}>
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -464,7 +521,7 @@ export default function GaUtilitiesPage() {
               <div className="flex justify-end gap-2 border-t pt-3">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={closeModal}
                   className="rounded border px-4 py-2 font-semibold text-zinc-600 hover:bg-zinc-50"
                 >
                   Batal
@@ -474,7 +531,11 @@ export default function GaUtilitiesPage() {
                   disabled={loading}
                   className="rounded bg-blue-600 px-5 py-2 font-bold text-white shadow transition-colors disabled:bg-blue-400"
                 >
-                  {loading ? "Menyimpan..." : "Simpan Tagihan"}
+                  {loading
+                    ? "Menyimpan..."
+                    : editingId
+                      ? "Simpan Perubahan"
+                      : "Simpan Tagihan"}
                 </button>
               </div>
             </form>

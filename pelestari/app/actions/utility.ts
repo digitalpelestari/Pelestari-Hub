@@ -41,3 +41,33 @@ export async function deleteUtilityAction(id_utility: number) {
     return { success: false, message: error.message };
   }
 }
+
+// 4. UPDATE DATA
+export async function updateUtilityAction(id_utility: number, payload: any) {
+  try {
+    const { nama_utility, bulan, tahun, nominal, tanggal_bayar, keterangan } = payload;
+    const [result]: any = await db.execute(
+      `UPDATE tb_utility_tracking
+       SET nama_utility = ?, bulan = ?, tahun = ?, nominal = ?, tanggal_bayar = ?, keterangan = ?
+       WHERE id_utility = ?`,
+      [
+        nama_utility,
+        bulan,
+        Number(tahun),
+        Number(nominal),
+        tanggal_bayar,
+        keterangan || null,
+        id_utility,
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return { success: false, message: "Data tidak ditemukan" };
+    }
+
+    revalidatePath("/dashboard/ga/utilities");
+    return { success: true, message: "Data utilitas berhasil diperbarui!" };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+}

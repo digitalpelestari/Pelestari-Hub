@@ -280,7 +280,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Manager Operasional",
       url: "#",
       icon: <Users />,
-      roles: ["MANAGER OPERASIONAL"],
+      roles: ["MANAGER OPERASIONAL", "ADMIN"],
       items: [{ title: "RAB", url: "/dashboard/manager/pelatihan/rab" }],
     },
   ]
