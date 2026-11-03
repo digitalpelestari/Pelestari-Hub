@@ -167,6 +167,62 @@ function toText(value: any): string {
     return String(value).trim();
 }
 
+/**
+ * Tentukan piutang berdasarkan kolom terkait transaksi, bukan default
+ * Piutang Usaha jika ada indikasi pegawai.
+ * Nama akun dan nomor akun tetap diambil dari COA aktif (tb_akun).
+ */
+function resolveAkunPiutang(
+    akunRows: any[],
+    sumber: string,
+    jenisPiutangExcel: string
+): {
+    noAkun: string | null;
+    namaAkun: string | null;
+    skor: number | null;
+    jenis: "pegawai" | "usaha";
+} {
+    const teks = normalizeHeader(sumber);
+    const jenisPiutang = normalizeHeader(jenisPiutangExcel);
+    // Mendeteksi "Pegawai" / "Karyawan" tanpa harus diawali "Piutang".
+    // Juga mendukung penulisan "Piutang Kpd Pegawai" / "Piutang pada Pegawai".
+    const penandaPegawai = /\b(pegawai|karyawan|employee|staff)\b/i;
+    const isPiutangPegawai =
+        penandaPegawai.test(jenisPiutang) ||
+        penandaPegawai.test(teks);
+
+    const akunPiutang = akunRows.filter((akun: any) =>
+        /\bpiutang\b/i.test(normalizeHeader(akun?.nama_akun))
+    );
+
+    if (isPiutangPegawai) {
+        const akunPegawai = akunPiutang.find((akun: any) =>
+            penandaPegawai.test(normalizeHeader(akun?.nama_akun))
+        );
+
+        // Jangan fallback ke Piutang Usaha saat akun pegawai tidak ditemukan.
+        return {
+            noAkun: akunPegawai?.no_akun != null ? String(akunPegawai.no_akun) : null,
+            namaAkun: akunPegawai?.nama_akun || null,
+            skor: akunPegawai ? 1 : null,
+            jenis: "pegawai",
+        };
+    }
+
+    const akunUsaha = akunPiutang.find((akun: any) =>
+        /\bpiutang\s+usaha\b/i.test(normalizeHeader(akun?.nama_akun))
+    );
+
+    return {
+        noAkun: akunUsaha?.no_akun != null
+            ? String(akunUsaha.no_akun)
+            : AKUN_PIUTANG_USAHA,
+        namaAkun: akunUsaha?.nama_akun || "Piutang Usaha",
+        skor: 1,
+        jenis: "usaha",
+    };
+}
+
 /* ============================================================
  * ACTION: PREVIEW IMPORT
  * ============================================================ */
@@ -302,9 +358,69 @@ export async function previewImportJurnal(
                         row,
                         headerMap,
                         "Jenis Pekerjaan",
-                        "Divisi"
+                        "Divisi",
+                        "Kategori",
+                        "Kategori Transaksi",
+                        "Jenis Transaksi"
                     )
                 );
+
+                const akunPiutangExcel = toText(
+                    getCellValue(
+                        row,
+                        headerMap,
+                        "Jenis Piutang",
+                        "Akun Lawan",
+                        "Nama Akun Piutang",
+                        "Akun Piutang",
+                        "Nama Akun Lawan",
+                        "Kode Akun Lawan"
+                    )
+                );
+
+                // Baca penanda akun dari kolom khusus maupun detail transaksi.
+                // Bila terdeteksi pegawai/karyawan, wajib dicocokkan ke akun
+                // Piutang Pegawai agar tidak jatuh ke Piutang Usaha.
+                // Kolom tambahan sering menyimpan klasifikasi piutang.
+                const indikasiPiutang = toText(
+                    getCellValue(
+                        row,
+                        headerMap,
+                        "Keterangan",
+                        "Uraian",
+                        "Keterangan Transaksi"
+                    )
+                );
+                // Deteksi label eksplisit di sel lain meskipun nama header berubah.
+                const nilaiSel = Array.isArray(row.values)
+                    ? row.values.slice(1)
+                    : Object.values(row.values);
+                const labelPiutangDariSel = nilaiSel
+                    .map((value) => toText(value))
+                    .filter((value) => /piutang[\s\W]*(pegawai|karyawan|employee|staff)/i.test(value))
+                    .join(" ");
+
+                const sumberAkunPiutang = [
+                    teksSumberLawan,
+                    detail,
+                    indikasiPiutang,
+                    labelPiutangDariSel,
+                ]
+                    .filter(Boolean)
+                    .join(" ");
+
+                const akunPiutang = resolveAkunPiutang(
+                    akunRows,
+                    sumberAkunPiutang,
+                    akunPiutangExcel
+                );
+
+                console.log(`DETEKSI PIUTANG CI ROW ${r}:`, {
+                    teksSumberLawan,
+                    akunPiutangExcel,
+                    sumberAkunPiutang,
+                    terpilih: akunPiutang,
+                });
 
                 const rekeningKey = rekeningExcel.toLowerCase();
                 const noAkunKasBank =
@@ -325,9 +441,9 @@ export async function previewImportJurnal(
                     isPihakBaru: false,
                     teksSumberLawan,
                     namaPemohon,
-                    noAkunLawan: AKUN_PIUTANG_USAHA,
-                    namaAkunLawan: "Piutang Usaha",
-                    skorMatchLawan: 1,
+                    noAkunLawan: akunPiutang.noAkun,
+                    namaAkunLawan: akunPiutang.namaAkun,
+                    skorMatchLawan: akunPiutang.skor,
                     nominal: debit,
                     keterangan: [detail, perusahaan]
                         .filter(Boolean)
@@ -342,6 +458,10 @@ export async function previewImportJurnal(
                     preview.status = "dilewati";
                     preview.alasanDilewati =
                         `Rekening "${rekeningExcel}" belum dimapping ke akun Kas/Bank`;
+                } else if (!akunPiutang.noAkun) {
+                    preview.status = "dilewati";
+                    preview.alasanDilewati =
+                        `Akun Piutang Pegawai tidak ditemukan di daftar akun aktif untuk baris ${noRegistrasi}`;
                 } else if (debit <= 0) {
                     preview.status = "dilewati";
                     preview.alasanDilewati =
