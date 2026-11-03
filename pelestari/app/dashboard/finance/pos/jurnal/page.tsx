@@ -35,6 +35,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Upload,
+  ArrowUpDown,
 } from "lucide-react"
 import {
   getJurnalList,
@@ -81,6 +82,9 @@ export default function JurnalUmumListPage() {
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
 
+  // SORTING NO. REGISTRASI: default | BK_ASC | BK_DESC | BD_ASC | BD_DESC
+  const [sortMode, setSortMode] = useState("default")
+
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const pageSizeOptions = [10, 20, 50, 100, 200]
@@ -95,6 +99,10 @@ export default function JurnalUmumListPage() {
   const [editingJurnalId, setEditingJurnalId] = useState<number | null>(null)
   const [editHeaderForm, setEditHeaderForm] = useState<any>({})
   const [editItemsForm, setEditItemsForm] = useState<any[]>([])
+
+  // BULK DELETE: id jurnal yang dipilih
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+
   const totalItems = totalData
   const totalPagesSafe = Math.max(1, totalPages)
 
@@ -136,6 +144,11 @@ export default function JurnalUmumListPage() {
     return () => clearTimeout(handler)
   }, [searchInput])
 
+  // Kosongkan pilihan saat filter / pencarian / ukuran halaman berubah
+  useEffect(() => {
+    setSelectedIds([])
+  }, [startDate, endDate, searchQuery, pageSize, sortMode])
+
   const loadData = async () => {
     const thisRequestId = ++requestIdRef.current
     setLoading(true)
@@ -149,7 +162,8 @@ export default function JurnalUmumListPage() {
         endParam,
         currentPage,
         pageSize,
-        searchQuery
+        searchQuery,
+        sortMode
       )
       const dataAkun = await getAkunList()
 
@@ -211,7 +225,15 @@ export default function JurnalUmumListPage() {
 
   useEffect(() => {
     loadData()
-  }, [startDate, endDate, currentPage, pageSize, searchQuery, pathname])
+  }, [
+    startDate,
+    endDate,
+    currentPage,
+    pageSize,
+    searchQuery,
+    sortMode,
+    pathname,
+  ])
 
   const startEditJurnal = (jurnal: any) => {
     setEditingJurnalId(jurnal.id)
@@ -329,9 +351,74 @@ export default function JurnalUmumListPage() {
     const res = await deleteJurnalByHeader(jurnalId)
     if (res.success) {
       swal.success(res.message)
+      setSelectedIds((prev) => prev.filter((id) => id !== jurnalId))
       await loadData()
     } else {
       swal.error("Gagal menghapus transaksi: " + res.message)
+    }
+    setLoading(false)
+  }
+
+  // ===== BULK DELETE =====
+  const pageIds = jurnalList.map((j) => j.id as number)
+  const allPageSelected =
+    pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id))
+  const somePageSelected = pageIds.some((id) => selectedIds.includes(id))
+
+  const toggleSelectOne = (id: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
+
+  const toggleSelectAllPage = () => {
+    setSelectedIds((prev) =>
+      allPageSelected
+        ? prev.filter((id) => !pageIds.includes(id))
+        : Array.from(new Set([...prev, ...pageIds]))
+    )
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return
+
+    if (
+      !(await swal.confirm(
+        `Apakah Anda yakin ingin menghapus ${selectedIds.length} transaksi jurnal terpilih? Tindakan ini tidak dapat dibatalkan.`
+      ))
+    )
+      return
+
+    setLoading(true)
+    let successCount = 0
+    const failedMessages: string[] = []
+
+    for (const id of selectedIds) {
+      try {
+        const res = await deleteJurnalByHeader(id)
+        if (res.success) successCount++
+        else failedMessages.push(res.message)
+      } catch (err: any) {
+        failedMessages.push(err.message)
+      }
+    }
+
+    if (failedMessages.length === 0) {
+      swal.success(`${successCount} transaksi jurnal berhasil dihapus.`)
+    } else {
+      swal.error(
+        `${successCount} berhasil dihapus, ${failedMessages.length} gagal.\n${failedMessages[0]}`
+      )
+    }
+
+    // jika semua baris di halaman ini terhapus, mundur satu halaman
+    const deletedAllOnPage =
+      pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id))
+    setSelectedIds([])
+    if (deletedAllOnPage && currentPage > 1) {
+      setCurrentPage((p) => p - 1) // memicu loadData lewat useEffect
+    } else {
+      await loadData()
     }
     setLoading(false)
   }
@@ -438,6 +525,29 @@ export default function JurnalUmumListPage() {
 
         <div className="flex w-full flex-wrap items-center gap-2.5 md:w-auto">
           <div className="flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50/50 px-3">
+            <ArrowUpDown className="h-4 w-4 text-zinc-400" />
+            <span className="text-[10px] font-bold text-zinc-400 uppercase">
+              Urutan:
+            </span>
+            <select
+              value={sortMode}
+              onChange={(e) => {
+                setSortMode(e.target.value)
+                setCurrentPage(1)
+              }}
+              className="cursor-pointer bg-transparent text-xs font-medium text-zinc-700 outline-none"
+            >
+              <option value="default">Terbaru (Default)</option>
+              <option value="BK_ASC">BK dari 1</option>
+              <option value="BK_DESC">BK dari teratas</option>
+              <option value="BD_ASC">BD dari 1</option>
+              <option value="BD_DESC">BD dari teratas</option>
+            </select>
+          </div>
+
+          <span className="font-medium text-zinc-300">/</span>
+
+          <div className="flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50/50 px-3">
             <Calendar className="h-4 w-4 text-zinc-400" />
             <span className="text-[10px] font-bold text-zinc-400 uppercase">
               Dari:
@@ -483,12 +593,52 @@ export default function JurnalUmumListPage() {
         </div>
       </div>
 
+      {/* TOOLBAR BULK DELETE */}
+      {selectedIds.length > 0 && (
+        <div className="flex w-full items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+          <span className="text-xs font-semibold text-rose-700">
+            {selectedIds.length} transaksi jurnal dipilih
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setSelectedIds([])}
+              disabled={loading}
+              className="h-9 rounded-lg px-3 text-xs font-semibold text-zinc-600 hover:bg-white"
+            >
+              Batal Pilih
+            </Button>
+            <Button
+              onClick={handleBulkDelete}
+              disabled={loading}
+              className="h-9 gap-2 rounded-lg bg-rose-600 px-4 text-xs font-semibold text-white hover:bg-rose-700"
+            >
+              <Trash2 className="h-4 w-4" /> HAPUS TERPILIH
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* TABEL DATA JURNAL */}
       <div className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
         <div className="w-full overflow-x-auto">
-          <Table className="w-full min-w-[1240px] border-collapse">
+          <Table className="w-full min-w-[1290px] border-collapse">
             <TableHeader className="border-b border-zinc-200 bg-zinc-50/70">
               <TableRow className="text-[11px] font-bold tracking-wider text-zinc-600 uppercase">
+                <TableHead className="w-[50px] px-4 py-3.5">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    ref={(el) => {
+                      if (el)
+                        el.indeterminate = !allPageSelected && somePageSelected
+                    }}
+                    onChange={toggleSelectAllPage}
+                    disabled={loading || jurnalList.length === 0}
+                    className="h-4 w-4 cursor-pointer accent-zinc-900"
+                    title="Pilih semua di halaman ini"
+                  />
+                </TableHead>
                 <TableHead className="w-[110px] px-4 py-3.5">Tanggal</TableHead>
                 <TableHead className="w-[160px] px-4 py-3.5">
                   No. Registrasi
@@ -530,7 +680,7 @@ export default function JurnalUmumListPage() {
               {loading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={13}
+                    colSpan={14}
                     className="h-40 text-center text-zinc-400 italic"
                   >
                     Memuat data transaksi dari server...
@@ -544,6 +694,7 @@ export default function JurnalUmumListPage() {
                   const totalItems =
                     itemsArray.length > 0 ? itemsArray.length : 1
                   const isJurnalEditing = editingJurnalId === jurnal.id
+                  const isSelected = selectedIds.includes(jurnal.id)
 
                   const itemsToRender =
                     itemsArray.length > 0
@@ -561,10 +712,26 @@ export default function JurnalUmumListPage() {
                     return (
                       <TableRow
                         key={`${jurnal.id}-${idx}`}
-                        className="transition-colors hover:bg-zinc-50/60"
+                        className={`transition-colors hover:bg-zinc-50/60 ${
+                          isSelected ? "bg-rose-50/40" : ""
+                        }`}
                       >
                         {idx === 0 && (
                           <>
+                            {/* CHECKBOX */}
+                            <TableCell
+                              rowSpan={totalItems}
+                              className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectOne(jurnal.id)}
+                                disabled={loading || isJurnalEditing}
+                                className="h-4 w-4 cursor-pointer accent-zinc-900"
+                              />
+                            </TableCell>
+
                             {/* TANGGAL */}
                             <TableCell
                               rowSpan={totalItems}
@@ -963,7 +1130,7 @@ export default function JurnalUmumListPage() {
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={13}
+                    colSpan={14}
                     className="h-32 text-center text-zinc-400 italic"
                   >
                     Tidak ada rekaman transaksi jurnal pada rentang waktu ini.

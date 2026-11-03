@@ -1065,7 +1065,9 @@ export async function getJurnalList(
   endDate?: string,
   page?: number,
   pageSize?: number,
-  search?: string
+  search?: string,
+  sortMode?: string
+
 ) {
   try {
     const isPaginationEnabled =
@@ -1153,7 +1155,39 @@ export async function getJurnalList(
         searchValue
       );
     }
+    /**
+     * FILTER & URUTAN NO. REGISTRASI (BK / BD)
+     * Format: BK_001/11/26 -> prefix_nomor/bulan/tahun
+     */
+    const SORT_MODES: Record<string, { prefix: string; dir: "ASC" | "DESC" }> = {
+      BK_ASC: { prefix: "BK_", dir: "ASC" },
+      BK_DESC: { prefix: "BK_", dir: "DESC" },
+      BD_ASC: { prefix: "BD_", dir: "ASC" },
+      BD_DESC: { prefix: "BD_", dir: "DESC" },
+    };
 
+    const activeSort = sortMode ? SORT_MODES[sortMode] : undefined;
+
+    let orderByClause = `ORDER BY j.tanggal DESC, j.id DESC`;
+
+    if (activeSort) {
+      conditions.push("LEFT(j.no_registrasi, 3) = ?");
+      params.push(activeSort.prefix);
+
+      const d = activeSort.dir;
+      orderByClause = `
+        ORDER BY
+          RIGHT(j.no_registrasi, 2) ${d},
+          CAST(
+            SUBSTRING_INDEX(
+              SUBSTRING_INDEX(j.no_registrasi, '_', -1),
+              '/',
+              1
+            ) AS UNSIGNED
+          ) ${d},
+          j.id ${d}
+      `;
+    }
     const whereClause =
       conditions.length > 0
         ? `WHERE ${conditions.join(
@@ -1344,11 +1378,9 @@ export async function getJurnalList(
       LEFT JOIN tb_pemohon pm
         ON j.pemohon_id = pm.id
 
-      ${whereClause}
+          ${whereClause}
 
-      ORDER BY
-        j.tanggal DESC,
-        j.id DESC
+      ${orderByClause}
     `;
 
     const headerParams = [
