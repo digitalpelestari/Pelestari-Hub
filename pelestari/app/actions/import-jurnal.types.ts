@@ -23,6 +23,8 @@ export interface ImportPreviewRow {
     noAkunLawan: string | null;
     namaAkunLawan: string | null;
     skorMatchLawan: number | null;
+    isDuplikat?: boolean;   // tambahkan
+    peringatan?: string;    // tambahkan
     nominal: number;
     keterangan: string;
     status: "siap" | "dilewati";
@@ -40,5 +42,6 @@ export interface ImportPreviewResult {
         totalBaris: number;
         siap: number;
         dilewati: number;
+        duplikat?: number;  // tambahkan
     };
 }

@@ -1,8 +1,7 @@
 "use client"
 
-import React, { useEffect, useRef, useState } from "react"
+import React, { useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -19,6 +18,7 @@ import {
   Copy,
   Landmark,
   Loader2,
+  AlertTriangle,
 } from "lucide-react"
 import {
   previewImportJurnal,
@@ -43,7 +43,6 @@ export default function ImportJurnalPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isParsing, setIsParsing] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
-  const [importProgress, setImportProgress] = useState(0)
   const [importTotal, setImportTotal] = useState(0)
   const [importProcessed, setImportProcessed] = useState(0)
   const [fileName, setFileName] = useState("")
@@ -57,10 +56,9 @@ export default function ImportJurnalPage() {
   const [summary, setSummary] = useState({
     totalBaris: 0,
     siap: 0,
+    duplikat: 0,
     dilewati: 0,
   })
-
-  const [lastBase64, setLastBase64] = useState<string>("")
 
   const handleCopySnippet = () => {
     const snippet = rekeningBelumDimapping
@@ -80,7 +78,6 @@ export default function ImportJurnalPage() {
     setIsParsing(true)
     try {
       const base64 = await fileToBase64(file)
-      setLastBase64(base64)
       await runPreview(base64)
     } catch (err: any) {
       swal.error("Gagal membaca file: " + err.message)
@@ -99,28 +96,42 @@ export default function ImportJurnalPage() {
     setCoRows(res.co)
     setKkRows(res.kk)
     setRekeningBelumDimapping(res.rekeningBelumDimapping)
-    setSummary(res.summary)
+    setSummary({
+      totalBaris: res.summary.totalBaris,
+      siap: res.summary.siap,
+      duplikat: res.summary.duplikat ?? 0,
+      dilewati: res.summary.dilewati,
+    })
   }
 
   const handleImport = async () => {
+    // Baris duplikat (no register sudah ada di jurnal) tidak ikut diimpor.
     const siapRows = [...ciRows, ...coRows, ...kkRows].filter(
-      (r) => r.status === "siap"
+      (r) => r.status === "siap" && !r.isDuplikat
     )
     if (siapRows.length === 0) {
       swal.error("Tidak ada baris berstatus 'siap' untuk diimpor")
       return
     }
 
+    const catatanDuplikat =
+      summary.duplikat > 0
+        ? ` ${summary.duplikat} baris yang sudah ada di jurnal akan dilewati.`
+        : ""
+
     if (
       !(await swal.confirm(
-        `Import ${siapRows.length} transaksi ke jurnal umum? Baris berstatus "dilewati" tidak akan diimpor.`
+        `Import ${siapRows.length} transaksi ke jurnal umum? Baris berstatus "dilewati" tidak akan diimpor.${catatanDuplikat}`
       ))
     )
       return
 
     setIsImporting(true)
+    setImportTotal(siapRows.length)
+    setImportProcessed(0)
     try {
       const res = await commitImportJurnal(siapRows)
+      setImportProcessed(siapRows.length)
       if (res.success) {
         swal.success(res.message)
       } else {
@@ -133,6 +144,7 @@ export default function ImportJurnalPage() {
       setCiRows([])
       setCoRows([])
       setKkRows([])
+      setSummary({ totalBaris: 0, siap: 0, duplikat: 0, dilewati: 0 })
       setFileName("")
       if (fileInputRef.current) fileInputRef.current.value = ""
     } finally {
@@ -140,11 +152,55 @@ export default function ImportJurnalPage() {
     }
   }
 
+  const rowClass = (row: ImportPreviewRow) =>
+    row.isDuplikat
+      ? "bg-amber-50/60"
+      : row.status === "dilewati"
+        ? "bg-rose-50/40"
+        : ""
+
+  const renderStatus = (row: ImportPreviewRow) => {
+    if (row.isDuplikat) {
+      return (
+        <>
+          <Badge
+            className="gap-1 border-amber-300 bg-amber-50 text-amber-700"
+            title={row.peringatan}
+          >
+            <AlertTriangle className="h-3 w-3" /> Sudah ada
+          </Badge>
+          <div className="mt-0.5 text-[10px] text-amber-600">
+            {row.peringatan || "Sudah ada di jurnal, tidak akan diimpor"}
+          </div>
+        </>
+      )
+    }
+
+    if (row.status === "siap") {
+      return (
+        <Badge className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700">
+          <CheckCircle2 className="h-3 w-3" /> Siap
+        </Badge>
+      )
+    }
+
+    return (
+      <>
+        <Badge
+          className="gap-1 border-rose-200 bg-rose-50 text-rose-700"
+          title={row.alasanDilewati}
+        >
+          <XCircle className="h-3 w-3" /> Dilewati
+        </Badge>
+        <div className="mt-0.5 text-[10px] text-rose-500">
+          {row.alasanDilewati}
+        </div>
+      </>
+    )
+  }
+
   const renderRow = (row: ImportPreviewRow) => (
-    <TableRow
-      key={row.rowKey}
-      className={row.status === "dilewati" ? "bg-rose-50/40" : ""}
-    >
+    <TableRow key={row.rowKey} className={rowClass(row)}>
       <TableCell className="font-mono text-xs whitespace-nowrap">
         {row.noRegistrasi}
       </TableCell>
@@ -191,27 +247,11 @@ export default function ImportJurnalPage() {
       <TableCell className="text-right font-mono text-xs">
         {new Intl.NumberFormat("id-ID").format(row.nominal)}
       </TableCell>
-      <TableCell className="text-xs">
-        {row.status === "siap" ? (
-          <Badge className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700">
-            <CheckCircle2 className="h-3 w-3" /> Siap
-          </Badge>
-        ) : (
-          <Badge
-            className="gap-1 border-rose-200 bg-rose-50 text-rose-700"
-            title={row.alasanDilewati}
-          >
-            <XCircle className="h-3 w-3" /> Dilewati
-          </Badge>
-        )}
-        {row.status === "dilewati" && (
-          <div className="mt-0.5 text-[10px] text-rose-500">
-            {row.alasanDilewati}
-          </div>
-        )}
-      </TableCell>
+      <TableCell className="text-xs">{renderStatus(row)}</TableCell>
     </TableRow>
   )
+
+  const adaData = ciRows.length > 0 || coRows.length > 0 || kkRows.length > 0
 
   return (
     <div className="relative min-h-screen w-full space-y-6 bg-zinc-50/50 p-6 font-sans text-zinc-900">
@@ -232,7 +272,7 @@ export default function ImportJurnalPage() {
 
               <p className="mt-1 text-xs text-zinc-500">
                 {isParsing
-                  ? "Membaca data dan mencocokkan akun..."
+                  ? "Membaca data, mencocokkan akun, dan memeriksa duplikat..."
                   : "Sedang menyimpan transaksi jurnal, mohon tunggu..."}
               </p>
 
@@ -287,13 +327,16 @@ export default function ImportJurnalPage() {
 
         <div>
           <h1 className="text-xl font-bold tracking-tight">
-            Import Jurnal dari Excel (CI / CO / KK)
+            Import Jurnal dari Excel (BK / BD / KK)
           </h1>
 
           <p className="text-xs text-zinc-500">
-            Upload file laporan bulanan, sistem akan membaca sheet "CI ...", "CO
-            ..." dan "Petty Cash" lalu mencocokkannya ke akun secara otomatis.
-            Periksa hasilnya sebelum konfirmasi import.
+            Upload file laporan bulanan. Sistem membaca semua sheet dan
+            mengelompokkan baris dari prefix No. Registrasi (BD_ untuk CI, BK_
+            untuk CO, KK_ untuk Petty Cash), lalu mencocokkannya ke akun secara
+            otomatis. Baris yang no. registrasinya sudah ada di jurnal akan
+            ditandai dan tidak diimpor ulang. Periksa hasilnya sebelum
+            konfirmasi import.
           </p>
         </div>
       </div>
@@ -326,6 +369,24 @@ export default function ImportJurnalPage() {
           </div>
         )}
       </div>
+
+      {/* ============================================================
+        PERINGATAN DUPLIKAT
+    ============================================================ */}
+      {summary.duplikat > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <div className="text-xs text-amber-800">
+            <p className="font-semibold">
+              {summary.duplikat} baris sudah ada di jurnal.
+            </p>
+            <p className="mt-0.5">
+              Baris ini ditandai kuning dan tidak akan diimpor ulang. Baris lain
+              yang berstatus Siap tetap bisa diimpor.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ============================================================
         REKENING YANG BELUM ADA DI CONFIG
@@ -376,15 +437,19 @@ export default function ImportJurnalPage() {
       {/* ============================================================
         SUMMARY + TOMBOL IMPORT
     ============================================================ */}
-      {(ciRows.length > 0 || coRows.length > 0 || kkRows.length > 0) && (
+      {adaData && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <div className="flex gap-4 text-xs text-zinc-600">
+          <div className="flex flex-wrap gap-4 text-xs text-zinc-600">
             <span>
               Total baris: <b>{summary.totalBaris}</b>
             </span>
 
             <span className="text-emerald-600">
               Siap: <b>{summary.siap}</b>
+            </span>
+
+            <span className="text-amber-600">
+              Sudah ada: <b>{summary.duplikat}</b>
             </span>
 
             <span className="text-rose-600">
@@ -493,10 +558,7 @@ export default function ImportJurnalPage() {
 
               <TableBody>
                 {kkRows.map((row) => (
-                  <TableRow
-                    key={row.rowKey}
-                    className={row.status === "dilewati" ? "bg-rose-50/40" : ""}
-                  >
+                  <TableRow key={row.rowKey} className={rowClass(row)}>
                     <TableCell className="font-mono text-xs whitespace-nowrap">
                       {row.noRegistrasi}
                     </TableCell>
@@ -534,26 +596,7 @@ export default function ImportJurnalPage() {
                     </TableCell>
 
                     <TableCell className="text-xs">
-                      {row.status === "siap" ? (
-                        <Badge className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Siap
-                        </Badge>
-                      ) : (
-                        <>
-                          <Badge
-                            className="gap-1 border-rose-200 bg-rose-50 text-rose-700"
-                            title={row.alasanDilewati}
-                          >
-                            <XCircle className="h-3 w-3" />
-                            Dilewati
-                          </Badge>
-
-                          <div className="mt-0.5 text-[10px] text-rose-500">
-                            {row.alasanDilewati}
-                          </div>
-                        </>
-                      )}
+                      {renderStatus(row)}
                     </TableCell>
                   </TableRow>
                 ))}
