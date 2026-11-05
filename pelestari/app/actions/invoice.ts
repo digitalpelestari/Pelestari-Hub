@@ -1,15 +1,11 @@
 "use server";
-
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-
 // =========================================================================
 // HELPER: CEK NORMAL BALANCE AKUN
 // =========================================================================
-
 function isNormalDebit(noAkun: string): boolean {
   const akun = String(noAkun).trim();
-
   // =========================================================
   // AKUN NORMAL DEBIT
   // =========================================================
@@ -19,7 +15,6 @@ function isNormalDebit(noAkun: string): boolean {
   ) {
     return true;
   }
-
   // =========================================================
   // AKUN NORMAL KREDIT
   // =========================================================
@@ -31,12 +26,10 @@ function isNormalDebit(noAkun: string): boolean {
   ) {
     return false;
   }
-
   // =========================================================
   // DEFAULT BERDASARKAN PREFIX
   // =========================================================
   const prefix = akun.charAt(0);
-
   return (
     prefix === "1" ||
     prefix === "5" ||
@@ -46,17 +39,14 @@ function isNormalDebit(noAkun: string): boolean {
     prefix === "9"
   );
 }
-
 // =========================================================================
 // HELPER: HITUNG ULANG SALDO AKUN DARI SELURUH JURNAL
 // =========================================================================
-
 async function recalculateSaldoAkun(
   connection: any,
   noAkun: string
 ) {
   const akun = String(noAkun).trim();
-
   const [rows]: any = await connection.query(
     `SELECT
       COALESCE(
@@ -64,7 +54,6 @@ async function recalculateSaldoAkun(
           CASE
             WHEN no_akun IN ('12100', '14001')
               THEN debit - kredit
-
             WHEN no_akun IN (
               '41001',
               '41002',
@@ -72,7 +61,6 @@ async function recalculateSaldoAkun(
               '81100'
             )
               THEN kredit - debit
-
             ELSE debit - kredit
           END
         ),
@@ -82,11 +70,9 @@ async function recalculateSaldoAkun(
      WHERE no_akun = ?`,
     [akun]
   );
-
   const saldo = Number(
     rows[0]?.saldo || 0
   );
-
   await connection.query(
     `UPDATE tb_akun
      SET saldo = ?
@@ -97,11 +83,9 @@ async function recalculateSaldoAkun(
     ]
   );
 }
-
 // =========================================================================
 // HELPER: HITUNG ULANG BEBERAPA AKUN SEKALIGUS
 // =========================================================================
-
 async function recalculateSaldoAkunList(
   connection: any,
   akunList: string[]
@@ -113,7 +97,6 @@ async function recalculateSaldoAkunList(
         .filter(Boolean)
     ),
   ];
-
   for (const noAkun of akunUnik) {
     await recalculateSaldoAkun(
       connection,
@@ -121,25 +104,20 @@ async function recalculateSaldoAkunList(
     );
   }
 }
-
 // =========================================================================
 // HELPER: GENERATE NOMOR REGISTRASI JURNAL
 // =========================================================================
-
 async function generateNoRegistrasi(
   connection: any,
   tanggal: string
 ) {
   const date = new Date(tanggal);
-
   const bulan = String(
     date.getMonth() + 1
   ).padStart(2, "0");
-
   const tahun = String(
     date.getFullYear()
   ).slice(-2);
-
   const [rows]: any =
     await connection.query(
       `SELECT no_registrasi
@@ -151,9 +129,7 @@ async function generateNoRegistrasi(
         `BD_%/${bulan}/${tahun}`,
       ]
     );
-
   let nomorUrut = 1;
-
   if (
     rows.length > 0 &&
     rows[0].no_registrasi
@@ -162,36 +138,101 @@ async function generateNoRegistrasi(
       rows[0].no_registrasi.match(
         /^BD_(\d+)\/\d{2}\/\d{2}$/
       );
-
     if (match) {
       nomorUrut =
         Number(match[1]) + 1;
     }
   }
-
   return `BD_${String(
     nomorUrut
   ).padStart(3, "0")}/${bulan}/${tahun}`;
 }
-
 // =========================================================================
 // 1. FUNGSI: IMPORT DATA EXCEL INVOICES BULK
 // =========================================================================
+
+// Pembayaran berasal dari pelunasan piutang, bukan debit bank atau jurnal
+// penerbitan invoice. Referensi dicocokkan utuh; tanda baca tidak dihapus.
+// Prefix kas/bank 11 mengikuti akun Bank Pasif 11300 pada data aplikasi.
+async function getPembayaranJurnal(connection: any, nomorInvoice?: string) {
+  const [rows]: any = await connection.query(
+    `SELECT TRIM(j.no_referensi) AS nomor_invoice,
+            j.id AS jurnal_id, j.tanggal,
+            SUM(COALESCE(ji.kredit, 0) - COALESCE(ji.debit, 0)) AS nominal
+     FROM tb_jurnal j
+     JOIN tb_jurnal_item ji ON ji.jurnal_id = j.id
+     WHERE ji.no_akun = '12100'
+       AND TRIM(COALESCE(j.no_referensi, '')) <> ''
+       -- Kredit piutang adalah pelunasan; invoice_id tidak membatasi pairing.
+       -- Debit piutang hanya dihitung sebagai pembalikan bila ada kredit kas/bank.
+       AND (
+         COALESCE(ji.kredit, 0) > 0
+         OR (COALESCE(ji.debit, 0) > 0 AND EXISTS (
+           SELECT 1 FROM tb_jurnal_item bank
+           WHERE bank.jurnal_id = j.id
+             AND bank.no_akun LIKE '11%'
+             AND COALESCE(bank.kredit, 0) > 0
+         ))
+       )
+       ${nomorInvoice === undefined ? '' : 'AND BINARY TRIM(j.no_referensi) = BINARY ?'}
+     GROUP BY TRIM(j.no_referensi), j.id, j.tanggal
+     ORDER BY j.tanggal ASC, j.id ASC`,
+    nomorInvoice === undefined ? [] : [String(nomorInvoice).trim()]
+  );
+  return rows;
+}
+
+function hitungPembayaranInvoice(invoice: any, pembayaran: any[]) {
+  const nomor = String(invoice.nomor_invoice || '').trim();
+  const matched = pembayaran.filter((row) => String(row.nomor_invoice).trim() === nomor);
+  // Nilai negatif ikut mengurangi pembayaran (misalnya pembalikan jurnal).
+  const bersih = matched.reduce((sum, row) => sum + Number(row.nominal || 0), 0);
+  const totalBayar = Math.max(0, Math.round(bersih * 100) / 100);
+  const total = Math.round(Number(invoice.total || 0) * 100) / 100;
+  const positif = matched.filter((row) => Number(row.nominal) > 0);
+  const bayar1 = Math.min(totalBayar, Number(positif[0]?.nominal || 0));
+  return {
+    ...invoice,
+    // Dua kolom lama tetap tersedia: pembayaran pertama dan sisa kumulatif.
+    bayar_1: bayar1,
+    tanggal_bayar_1: bayar1 > 0 ? positif[0]?.tanggal : null,
+    bayar_2: Math.max(0, totalBayar - bayar1),
+    tanggal_bayar_2: totalBayar > bayar1 ? positif[positif.length - 1]?.tanggal : null,
+    total_bayar: totalBayar,
+    sisa_tagihan: Math.max(0, total - totalBayar),
+    kelebihan_bayar: Math.max(0, totalBayar - total),
+    status: totalBayar >= total && total >= 0 ? 'Lunas'
+      : totalBayar > 0 ? 'Dibayar Sebagian' : 'Belum Lunas',
+  };
+}
+
+async function syncPembayaranInvoice(connection: any, invoiceId: number) {
+  const [rows]: any = await connection.query(
+    'SELECT * FROM tb_invoice WHERE id = ? FOR UPDATE', [invoiceId]
+  );
+  if (!rows[0]) throw new Error('Invoice tidak ditemukan.');
+  const pembayaran = await getPembayaranJurnal(connection, rows[0].nomor_invoice);
+  const hasil = hitungPembayaranInvoice(rows[0], pembayaran);
+  await connection.query(
+    `UPDATE tb_invoice SET bayar_1 = ?, tanggal_bayar_1 = ?,
+     bayar_2 = ?, tanggal_bayar_2 = ?, status = ? WHERE id = ?`,
+    [hasil.bayar_1, hasil.tanggal_bayar_1, hasil.bayar_2,
+     hasil.tanggal_bayar_2, hasil.status, invoiceId]
+  );
+  return hasil;
+}
 
 export async function importInvoices(
   dataArray: any[]
 ) {
   const connection =
     await db.getConnection();
-
   try {
     await connection.beginTransaction();
-
     for (const item of dataArray) {
       // =======================================================
       // INSERT HEADER INVOICE
       // =======================================================
-
       const query = `
         INSERT INTO tb_invoice (
           nomor_invoice,
@@ -217,7 +258,6 @@ export async function importInvoices(
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
-
       const values = [
         item.nomor_invoice,
         item.batch || "N/A",
@@ -240,33 +280,26 @@ export async function importInvoices(
         Number(item.bayar_1) || 0,
         Number(item.bayar_2) || 0,
       ];
-
       const [result]: any =
         await connection.query(
           query,
           values
         );
-
       const invoiceId =
         result.insertId;
-
       // =======================================================
       // DETAIL 1
       // =======================================================
-
       const jumlahPeserta1 =
         Number(
           item.jumlah_peserta
         ) || 0;
-
       const hargaPeserta1 =
         Number(
           item.harga_peserta
         ) || 0;
-
       const keterangan1 =
         `${item.jenis_kegiatan || item.keterangan || "-"} - Batch ${item.batch || "-"}`;
-
       if (
         keterangan1 ||
         jumlahPeserta1 > 0 ||
@@ -288,24 +321,19 @@ export async function importInvoices(
           ]
         );
       }
-
       // =======================================================
       // DETAIL 2
       // =======================================================
-
       const jumlahPeserta2 =
         Number(
           item.jumlah_peserta_2
         ) || 0;
-
       const hargaPeserta2 =
         Number(
           item.harga_peserta_2
         ) || 0;
-
       const keterangan2 =
         item.keterangan_2 || "";
-
       if (
         keterangan2 ||
         jumlahPeserta2 > 0 ||
@@ -327,44 +355,36 @@ export async function importInvoices(
           ]
         );
       }
+      await syncPembayaranInvoice(connection, invoiceId);
     }
-
     await connection.commit();
-
     revalidatePath(
       "/dashboard/finance/invoices"
     );
-
     return {
       success: true,
       message:
         `${dataArray.length} data berhasil diimpor`,
     };
-
   } catch (error: any) {
     await connection.rollback();
-
     console.error(
       "IMPORT_ERROR:",
       error.message
     );
-
     return {
       success: false,
       message:
         "Gagal impor: " +
         error.message,
     };
-
   } finally {
     connection.release();
   }
 }
-
 // =========================================================================
 // 2. FUNGSI: AMBIL URUTAN NOMOR INVOICE
 // =========================================================================
-
 export async function getNextInvoiceNumber() {
   try {
     const [rows]: any =
@@ -372,41 +392,32 @@ export async function getNextInvoiceNumber() {
         `SELECT COUNT(id) AS total
          FROM tb_invoice`
       );
-
     const count =
       rows.length > 0
         ? Number(rows[0].total)
         : 0;
-
     return count + 1;
-
   } catch (error) {
     console.error(
       "Gagal mengambil urutan nomor:",
       error
     );
-
     return 1;
   }
 }
-
 // =========================================================================
 // 3. FUNGSI: TAMBAH INVOICE FORM
 // =========================================================================
-
 export async function createInvoice(
   formData: any
 ) {
   const connection =
     await db.getConnection();
-
   try {
     await connection.beginTransaction();
-
     // =========================================================
     // 1. INSERT INVOICE
     // =========================================================
-
     const [invoiceResult]: any =
       await connection.query(
         `INSERT INTO tb_invoice (
@@ -466,19 +477,15 @@ export async function createInvoice(
           "Belum Lunas",
         ]
       );
-
     const invoiceId =
       invoiceResult.insertId;
-
     // =========================================================
     // 2. INSERT DETAIL INVOICE
     // =========================================================
-
     const items =
       Array.isArray(formData.items)
         ? formData.items
         : [];
-
     for (const item of items) {
       await connection.query(
         `INSERT INTO tb_invoice_details (
@@ -490,57 +497,45 @@ export async function createInvoice(
         VALUES (?, ?, ?, ?)`,
         [
           invoiceId,
-
           `${item.item_deskripsi || "-"} - Batch ${formData.batch || "-"
           }`,
-
           Number(
             item.item_jumlah || 0
           ),
-
           Number(
             item.item_harga || 0
           ),
         ]
       );
     }
-
     // =========================================================
     // 3. SIAPKAN NILAI JURNAL
     // =========================================================
-
     const totalInvoice =
       Number(
         formData.total || 0
       );
-
     const nominalPnbp =
       Number(
         formData.nominal_pnbp || 0
       );
-
     const total =
       Math.round(totalInvoice);
-
     const pnbp =
       formData.is_pnbp
         ? Math.round(nominalPnbp)
         : 0;
-
     // =========================================================
     // 4. TENTUKAN AKUN PENDAPATAN
     // =========================================================
-
     const jenisKegiatan =
       String(
         formData.jenis_kegiatan || ""
       )
         .trim()
         .toLowerCase();
-
     let akunPendapatan =
       "41001";
-
     if (
       jenisKegiatan === "konsultan" ||
       jenisKegiatan === "konsultasi"
@@ -548,11 +543,9 @@ export async function createInvoice(
       akunPendapatan =
         "41002";
     }
-
     // =========================================================
     // 5. HITUNG SUBTOTAL
     // =========================================================
-
     const subtotal =
       Math.round(
         items.reduce(
@@ -564,12 +557,10 @@ export async function createInvoice(
               Number(
                 item.item_jumlah || 0
               );
-
             const harga =
               Number(
                 item.item_harga || 0
               );
-
             return (
               sum +
               jumlah * harga
@@ -578,11 +569,9 @@ export async function createInvoice(
           0
         )
       );
-
     // =========================================================
     // 6. HITUNG DPP
     // =========================================================
-
     const dpp =
       formData.is_dpp
         ? Math.round(
@@ -590,33 +579,27 @@ export async function createInvoice(
           subtotal
         )
         : subtotal;
-
     // =========================================================
     // 7. HITUNG PPH 23
     // =========================================================
-
     const pph23 =
       formData.is_pph23
         ? Math.round(
           dpp * 0.02
         )
         : 0;
-
     // =========================================================
     // 8. HITUNG PPN
     // =========================================================
-
     const ppn =
       formData.is_ppn11
         ? Math.round(
           subtotal * 0.11
         )
         : 0;
-
     // =========================================================
     // 9. CARI PEMOHON
     // =========================================================
-
     const [pemohonRows]: any =
       await connection.query(
         `SELECT id
@@ -627,7 +610,6 @@ export async function createInvoice(
           "PT Peduli Lestari Indonesia",
         ]
       );
-
     if (
       pemohonRows.length === 0
     ) {
@@ -635,26 +617,21 @@ export async function createInvoice(
         `Pemohon "PT Peduli Lestari Indonesia" tidak ditemukan di tb_pemohon`
       );
     }
-
     const pemohonId =
       pemohonRows[0].id;
-
     // =========================================================
     // 10. CARI / BUAT PENERIMA
     // =========================================================
-
     const namaPenerima =
       String(
         formData.perusahaan_tujuan ||
         ""
       ).trim();
-
     if (!namaPenerima) {
       throw new Error(
         "Perusahaan tujuan / penerima wajib diisi"
       );
     }
-
     const [penerimaRows]: any =
       await connection.query(
         `SELECT id
@@ -663,15 +640,12 @@ export async function createInvoice(
          LIMIT 1`,
         [namaPenerima]
       );
-
     let penerimaId: number;
-
     if (
       penerimaRows.length > 0
     ) {
       penerimaId =
         penerimaRows[0].id;
-
     } else {
       const [
         penerimaResult,
@@ -683,25 +657,20 @@ export async function createInvoice(
           VALUES (?)`,
           [namaPenerima]
         );
-
       penerimaId =
         penerimaResult.insertId;
     }
-
     // =========================================================
     // 11. NOMOR REGISTRASI
     // =========================================================
-
     const noRegistrasi =
       await generateNoRegistrasi(
         connection,
         formData.tanggal
       );
-
     // =========================================================
     // 12. KETERANGAN JURNAL
     // =========================================================
-
     const keteranganJurnal =
       items
         .map(
@@ -710,11 +679,9 @@ export async function createInvoice(
         )
         .filter(Boolean)
         .join(", ");
-
     // =========================================================
     // 13. INSERT HEADER JURNAL
     // =========================================================
-
     const [
       jurnalResult,
     ]: any =
@@ -739,25 +706,20 @@ export async function createInvoice(
           pemohonId,
         ]
       );
-
     const jurnalId =
       jurnalResult.insertId;
-
     // =========================================================
     // 14. SIAPKAN DETAIL JURNAL
     // =========================================================
-
     const jurnalDetails: {
       no_akun: string;
       debit: number;
       kredit: number;
       keterangan: string;
     }[] = [];
-
     // =========================================================
     // PIUTANG
     // =========================================================
-
     jurnalDetails.push({
       no_akun: "12100",
       debit: total,
@@ -766,11 +728,9 @@ export async function createInvoice(
         `Piutang Invoice ${formData.nomor_invoice} - Batch ${formData.batch || "-"
         }`,
     });
-
     // =========================================================
     // PPH 23
     // =========================================================
-
     if (pph23 > 0) {
       jurnalDetails.push({
         no_akun: "14001",
@@ -780,11 +740,9 @@ export async function createInvoice(
           `PPh 23 Invoice ${formData.nomor_invoice}`,
       });
     }
-
     // =========================================================
     // PENDAPATAN
     // =========================================================
-
     jurnalDetails.push({
       no_akun: akunPendapatan,
       debit: 0,
@@ -792,11 +750,9 @@ export async function createInvoice(
       keterangan:
         `Pendapatan Invoice ${formData.nomor_invoice}`,
     });
-
     // =========================================================
     // PPN
     // =========================================================
-
     if (ppn > 0) {
       jurnalDetails.push({
         no_akun: "71106",
@@ -806,11 +762,9 @@ export async function createInvoice(
           `PPN Invoice ${formData.nomor_invoice}`,
       });
     }
-
     // =========================================================
     // PNBP
     // =========================================================
-
     if (pnbp > 0) {
       jurnalDetails.push({
         no_akun: "81100",
@@ -820,11 +774,9 @@ export async function createInvoice(
           `PNBP Invoice ${formData.nomor_invoice}`,
       });
     }
-
     // =========================================================
     // 15. VALIDASI BALANCE
     // =========================================================
-
     const totalDebit =
       jurnalDetails.reduce(
         (sum, item) =>
@@ -834,7 +786,6 @@ export async function createInvoice(
           ),
         0
       );
-
     const totalKredit =
       jurnalDetails.reduce(
         (sum, item) =>
@@ -844,7 +795,6 @@ export async function createInvoice(
           ),
         0
       );
-
     if (
       totalDebit !==
       totalKredit
@@ -853,11 +803,9 @@ export async function createInvoice(
         `Jurnal tidak balance. Debit: ${totalDebit}, Kredit: ${totalKredit}`
       );
     }
-
     // =========================================================
     // 16. INSERT DETAIL JURNAL
     // =========================================================
-
     for (const detail of jurnalDetails) {
       await connection.query(
         `INSERT INTO tb_jurnal_item (
@@ -877,11 +825,9 @@ export async function createInvoice(
         ]
       );
     }
-
     // =========================================================
     // 17. HITUNG ULANG SALDO AKUN
     // =========================================================
-
     await recalculateSaldoAkunList(
       connection,
       jurnalDetails.map(
@@ -889,68 +835,54 @@ export async function createInvoice(
           detail.no_akun
       )
     );
-
     // =========================================================
     // 18. COMMIT
     // =========================================================
-
+    await syncPembayaranInvoice(connection, invoiceId);
     await connection.commit();
-
     revalidatePath(
       "/dashboard/finance/invoices"
     );
-
     revalidatePath(
       "/dashboard/finance/jurnal"
     );
-
     revalidatePath(
       "/dashboard/finance/riwayat"
     );
-
     return {
       success: true,
       id: invoiceId,
       jurnalId,
     };
-
   } catch (error: any) {
     await connection.rollback();
-
     console.error(
       "Error createInvoice:",
       error
     );
-
     return {
       success: false,
       error:
         error.message ||
         "Gagal membuat invoice",
     };
-
   } finally {
     connection.release();
   }
 }
-
 // =========================================================================
 // 4. FUNGSI: HAPUS DATA INVOICE + JURNAL + SALDO
 // =========================================================================
-
 export async function deleteInvoice(
   id: number
 ) {
   const connection =
     await db.getConnection();
-
   try {
     await connection.beginTransaction();
-
     // =========================================================
     // 1. CARI JURNAL INVOICE
     // =========================================================
-
     const [jurnalRows]: any =
       await connection.query(
         `SELECT id
@@ -959,19 +891,15 @@ export async function deleteInvoice(
          LIMIT 1`,
         [id]
       );
-
     const jurnalId =
       jurnalRows.length > 0
         ? Number(jurnalRows[0].id)
         : null;
-
     let akunYangBerubah: string[] =
       [];
-
     // =========================================================
     // 2. AMBIL AKUN JURNAL
     // =========================================================
-
     if (jurnalId) {
       const [
         jurnalItems,
@@ -983,7 +911,6 @@ export async function deleteInvoice(
            WHERE jurnal_id = ?`,
           [jurnalId]
         );
-
       akunYangBerubah =
         jurnalItems.map(
           (detail: any) =>
@@ -991,49 +918,40 @@ export async function deleteInvoice(
               detail.no_akun
             )
         );
-
       // =======================================================
       // 3. HAPUS DETAIL JURNAL
       // =======================================================
-
       await connection.query(
         `DELETE FROM tb_jurnal_item
          WHERE jurnal_id = ?`,
         [jurnalId]
       );
-
       // =======================================================
       // 4. HAPUS HEADER JURNAL
       // =======================================================
-
       await connection.query(
         `DELETE FROM tb_jurnal
          WHERE id = ?`,
         [jurnalId]
       );
     }
-
     // =========================================================
     // 5. HAPUS DETAIL INVOICE
     // =========================================================
-
     await connection.query(
       `DELETE FROM tb_invoice_details
        WHERE invoice_id = ?`,
       [id]
     );
-
     // =========================================================
     // 6. HAPUS INVOICE
     // =========================================================
-
     const [result]: any =
       await connection.query(
         `DELETE FROM tb_invoice
          WHERE id = ?`,
         [id]
       );
-
     if (
       result.affectedRows === 0
     ) {
@@ -1041,78 +959,61 @@ export async function deleteInvoice(
         "Invoice tidak ditemukan."
       );
     }
-
     // =========================================================
     // 7. HITUNG ULANG SALDO AKUN
     // =========================================================
-
     await recalculateSaldoAkunList(
       connection,
       akunYangBerubah
     );
-
     // =========================================================
     // 8. COMMIT
     // =========================================================
-
     await connection.commit();
-
     revalidatePath(
       "/dashboard/finance/invoices"
     );
-
     revalidatePath(
       "/dashboard/finance/jurnal"
     );
-
     revalidatePath(
       "/dashboard/finance/riwayat"
     );
-
     return {
       success: true,
       message:
         "Invoice, jurnal, dan saldo berhasil dihapus.",
     };
-
   } catch (error: any) {
     await connection.rollback();
-
     console.error(
       "DELETE_INVOICE_ERROR:",
       error
     );
-
     return {
       success: false,
       message:
         error.message ||
         "Gagal menghapus invoice.",
     };
-
   } finally {
     connection.release();
   }
 }
-
 // =========================================================================
 // 5. FUNGSI: UPDATE / EDIT INVOICE + JURNAL + SALDO
 // =========================================================================
-
 export async function updateInvoice(
   id: number,
   data: any
 ) {
   const connection =
     await db.getConnection();
-
   try {
     await connection.beginTransaction();
-
     // =========================================================
     // 1. AMBIL INVOICE LAMA
     // =========================================================
-
     const [
       oldInvoiceRows,
     ]: any =
@@ -1123,7 +1024,6 @@ export async function updateInvoice(
          LIMIT 1`,
         [id]
       );
-
     if (
       oldInvoiceRows.length === 0
     ) {
@@ -1131,14 +1031,19 @@ export async function updateInvoice(
         "Invoice tidak ditemukan."
       );
     }
-
     const oldInvoice =
       oldInvoiceRows[0];
-
+    // Hindari putusnya pasangan pembayaran jika nomor invoice diganti.
+    if (String(data.nomor_invoice || oldInvoice.nomor_invoice).trim() !==
+        String(oldInvoice.nomor_invoice).trim()) {
+      const existingPayments = await getPembayaranJurnal(connection, oldInvoice.nomor_invoice);
+      if (existingPayments.length > 0) {
+        throw new Error('Nomor invoice memiliki jurnal pembayaran. Sesuaikan referensi pembayaran terlebih dahulu sebelum mengganti nomor invoice.');
+      }
+    }
     // =========================================================
     // 2. AMBIL JURNAL LAMA
     // =========================================================
-
     const [
       oldJurnalRows,
     ]: any =
@@ -1146,24 +1051,23 @@ export async function updateInvoice(
         `SELECT id
          FROM tb_jurnal
          WHERE invoice_id = ?
+           AND EXISTS (SELECT 1 FROM tb_jurnal_item issuance
+                       WHERE issuance.jurnal_id = tb_jurnal.id
+                         AND issuance.no_akun = '12100' AND issuance.debit > 0)
          LIMIT 1`,
         [id]
       );
-
     const oldJurnalId =
       oldJurnalRows.length > 0
         ? Number(
           oldJurnalRows[0].id
         )
         : null;
-
     // =========================================================
     // 3. AMBIL AKUN JURNAL LAMA
     // =========================================================
-
     let akunJurnalLama: string[] =
       [];
-
     if (oldJurnalId) {
       const [
         oldJurnalItems,
@@ -1175,7 +1079,6 @@ export async function updateInvoice(
            WHERE jurnal_id = ?`,
           [oldJurnalId]
         );
-
       akunJurnalLama =
         oldJurnalItems.map(
           (detail: any) =>
@@ -1184,23 +1087,18 @@ export async function updateInvoice(
             )
         );
     }
-
     // =========================================================
     // 4. DATA BARU
     // =========================================================
-
     const tanggal =
       data.tanggal ||
       oldInvoice.tanggal;
-
     const nomorInvoice =
       data.nomor_invoice ||
       oldInvoice.nomor_invoice;
-
     const batch =
       data.batch ||
       null;
-
     const jenisKegiatan =
       String(
         data.jenis_kegiatan ||
@@ -1209,24 +1107,20 @@ export async function updateInvoice(
       )
         .trim()
         .toLowerCase();
-
     const perusahaanTujuan =
       String(
         data.perusahaan_tujuan ||
         oldInvoice.perusahaan_tujuan ||
         ""
       ).trim();
-
     if (!perusahaanTujuan) {
       throw new Error(
         "Perusahaan tujuan / penerima wajib diisi"
       );
     }
-
     // =========================================================
     // 5. UPDATE DATA INVOICE
     // =========================================================
-
     await connection.query(
       `UPDATE tb_invoice SET
         nomor_invoice = ?,
@@ -1244,12 +1138,7 @@ export async function updateInvoice(
         is_ppn11 = ?,
         is_pnbp = ?,
         nominal_pnbp = ?,
-        bayar_1 = ?,
-        tanggal_bayar_1 = ?,
-        bayar_2 = ?,
-        tanggal_bayar_2 = ?,
-        total = ?,
-        status = ?
+        total = ?
        WHERE id = ?`,
       [
         nomorInvoice,
@@ -1274,39 +1163,23 @@ export async function updateInvoice(
           data.nominal_pnbp || 0
         ),
         Number(
-          data.bayar_1 || 0
-        ),
-        data.tanggal_bayar_1 ||
-        null,
-        Number(
-          data.bayar_2 || 0
-        ),
-        data.tanggal_bayar_2 ||
-        null,
-        Number(
           data.total || 0
         ),
-        data.status ||
-        "Belum Lunas",
         id,
       ]
     );
-
     // =========================================================
     // 6. REPLACE DETAIL INVOICE
     // =========================================================
-
     await connection.query(
       `DELETE FROM tb_invoice_details
        WHERE invoice_id = ?`,
       [id]
     );
-
     const items =
       Array.isArray(data.items)
         ? data.items
         : [];
-
     for (const item of items) {
       await connection.query(
         `INSERT INTO tb_invoice_details (
@@ -1318,51 +1191,41 @@ export async function updateInvoice(
         VALUES (?, ?, ?, ?)`,
         [
           id,
-
           `${item.item_deskripsi || "-"} - Batch ${batch || "-"
           }`,
-
           Number(
             item.item_jumlah || 0
           ),
-
           Number(
             item.item_harga || 0
           ),
         ]
       );
     }
-
     // =========================================================
     // 7. HITUNG ULANG NILAI
     // =========================================================
-
     const totalInvoice =
       Math.round(
         Number(
           data.total || 0
         )
       );
-
     const nominalPnbp =
       Math.round(
         Number(
           data.nominal_pnbp || 0
         )
       );
-
     const pnbp =
       data.is_pnbp
         ? nominalPnbp
         : 0;
-
     // =========================================================
     // 8. TENTUKAN AKUN PENDAPATAN
     // =========================================================
-
     let akunPendapatan =
       "41001";
-
     if (
       jenisKegiatan ===
       "konsultan" ||
@@ -1372,11 +1235,9 @@ export async function updateInvoice(
       akunPendapatan =
         "41002";
     }
-
     // =========================================================
     // 9. HITUNG SUBTOTAL
     // =========================================================
-
     const subtotal =
       Math.round(
         items.reduce(
@@ -1388,12 +1249,10 @@ export async function updateInvoice(
               Number(
                 item.item_jumlah || 0
               );
-
             const harga =
               Number(
                 item.item_harga || 0
               );
-
             return (
               sum +
               jumlah * harga
@@ -1402,11 +1261,9 @@ export async function updateInvoice(
           0
         )
       );
-
     // =========================================================
     // 10. HITUNG DPP
     // =========================================================
-
     const dpp =
       data.is_dpp
         ? Math.round(
@@ -1414,33 +1271,27 @@ export async function updateInvoice(
           subtotal
         )
         : subtotal;
-
     // =========================================================
     // 11. HITUNG PPH 23
     // =========================================================
-
     const pph23 =
       data.is_pph23
         ? Math.round(
           dpp * 0.02
         )
         : 0;
-
     // =========================================================
     // 12. HITUNG PPN
     // =========================================================
-
     const ppn =
       data.is_ppn11
         ? Math.round(
           subtotal * 0.11
         )
         : 0;
-
     // =========================================================
     // 13. CARI PEMOHON
     // =========================================================
-
     const [
       pemohonRows,
     ]: any =
@@ -1453,7 +1304,6 @@ export async function updateInvoice(
           "PT Peduli Lestari Indonesia",
         ]
       );
-
     if (
       pemohonRows.length === 0
     ) {
@@ -1461,14 +1311,11 @@ export async function updateInvoice(
         `Pemohon "PT Peduli Lestari Indonesia" tidak ditemukan di tb_pemohon`
       );
     }
-
     const pemohonId =
       pemohonRows[0].id;
-
     // =========================================================
     // 14. CARI / BUAT PENERIMA
     // =========================================================
-
     const [
       penerimaRows,
     ]: any =
@@ -1479,15 +1326,12 @@ export async function updateInvoice(
          LIMIT 1`,
         [perusahaanTujuan]
       );
-
     let penerimaId: number;
-
     if (
       penerimaRows.length > 0
     ) {
       penerimaId =
         penerimaRows[0].id;
-
     } else {
       const [
         penerimaResult,
@@ -1499,17 +1343,13 @@ export async function updateInvoice(
           VALUES (?)`,
           [perusahaanTujuan]
         );
-
       penerimaId =
         penerimaResult.insertId;
     }
-
     // =========================================================
     // 15. NOMOR REGISTRASI
     // =========================================================
-
     let noRegistrasi: string;
-
     if (oldJurnalId) {
       const [
         noRegRows,
@@ -1521,7 +1361,6 @@ export async function updateInvoice(
            LIMIT 1`,
           [oldJurnalId]
         );
-
       if (
         noRegRows.length > 0 &&
         noRegRows[0]
@@ -1530,7 +1369,6 @@ export async function updateInvoice(
         noRegistrasi =
           noRegRows[0]
             .no_registrasi;
-
       } else {
         noRegistrasi =
           await generateNoRegistrasi(
@@ -1538,7 +1376,6 @@ export async function updateInvoice(
             tanggal
           );
       }
-
     } else {
       noRegistrasi =
         await generateNoRegistrasi(
@@ -1546,11 +1383,9 @@ export async function updateInvoice(
           tanggal
         );
     }
-
     // =========================================================
     // 16. KETERANGAN JURNAL
     // =========================================================
-
     const keteranganJurnal =
       items
         .map(
@@ -1559,105 +1394,76 @@ export async function updateInvoice(
         )
         .filter(Boolean)
         .join(", ");
-
     // =========================================================
     // 17. SIAPKAN DETAIL JURNAL
     // =========================================================
-
     const jurnalDetails: {
       no_akun: string;
       debit: number;
       kredit: number;
       keterangan: string;
     }[] = [];
-
     // =========================================================
     // PIUTANG
     // =========================================================
-
     jurnalDetails.push({
       no_akun: "12100",
-
       debit: totalInvoice,
-
       kredit: 0,
-
       keterangan:
         `Piutang Invoice ${nomorInvoice} - Batch ${batch || "-"
         }`,
     });
-
     // =========================================================
     // PPH 23
     // =========================================================
-
     if (pph23 > 0) {
       jurnalDetails.push({
         no_akun: "14001",
-
         debit: pph23,
-
         kredit: 0,
-
         keterangan:
           `PPh 23 Invoice ${nomorInvoice}`,
       });
     }
-
     // =========================================================
     // PENDAPATAN
     // =========================================================
-
     jurnalDetails.push({
       no_akun:
         akunPendapatan,
-
       debit: 0,
-
       kredit: subtotal,
-
       keterangan:
         `Pendapatan Invoice ${nomorInvoice}`,
     });
-
     // =========================================================
     // PPN
     // =========================================================
-
     if (ppn > 0) {
       jurnalDetails.push({
         no_akun: "71106",
-
         debit: 0,
-
         kredit: ppn,
-
         keterangan:
           `PPN Invoice ${nomorInvoice}`,
       });
     }
-
     // =========================================================
     // PNBP
     // =========================================================
-
     if (pnbp > 0) {
       jurnalDetails.push({
         no_akun: "81100",
-
         debit: 0,
-
         kredit: pnbp,
-
         keterangan:
           `PNBP Invoice ${nomorInvoice}`,
       });
     }
-
     // =========================================================
     // 18. VALIDASI BALANCE
     // =========================================================
-
     const totalDebit =
       jurnalDetails.reduce(
         (sum, item) =>
@@ -1667,7 +1473,6 @@ export async function updateInvoice(
           ),
         0
       );
-
     const totalKredit =
       jurnalDetails.reduce(
         (sum, item) =>
@@ -1677,7 +1482,6 @@ export async function updateInvoice(
           ),
         0
       );
-
     if (
       totalDebit !==
       totalKredit
@@ -1686,18 +1490,14 @@ export async function updateInvoice(
         `Jurnal tidak balance. Debit: ${totalDebit}, Kredit: ${totalKredit}`
       );
     }
-
     // =========================================================
     // 19. UPDATE / INSERT HEADER JURNAL
     // =========================================================
-
     let jurnalId: number;
-
     if (oldJurnalId) {
       // =======================================================
       // UPDATE JURNAL LAMA
       // =======================================================
-
       await connection.query(
         `UPDATE tb_jurnal SET
           tanggal = ?,
@@ -1717,25 +1517,20 @@ export async function updateInvoice(
           oldJurnalId,
         ]
       );
-
       jurnalId =
         oldJurnalId;
-
       // =======================================================
       // HAPUS DETAIL JURNAL LAMA
       // =======================================================
-
       await connection.query(
         `DELETE FROM tb_jurnal_item
          WHERE jurnal_id = ?`,
         [jurnalId]
       );
-
     } else {
       // =======================================================
       // INSERT JURNAL BARU
       // =======================================================
-
       const [
         jurnalResult,
       ]: any =
@@ -1760,15 +1555,12 @@ export async function updateInvoice(
             pemohonId,
           ]
         );
-
       jurnalId =
         jurnalResult.insertId;
     }
-
     // =========================================================
     // 20. INSERT DETAIL JURNAL BARU
     // =========================================================
-
     for (const detail of jurnalDetails) {
       await connection.query(
         `INSERT INTO tb_jurnal_item (
@@ -1788,17 +1580,14 @@ export async function updateInvoice(
         ]
       );
     }
-
     // =========================================================
     // 21. HITUNG ULANG SALDO
     // =========================================================
-
     const akunJurnalBaru =
       jurnalDetails.map(
         (detail) =>
           detail.no_akun
       );
-
     await recalculateSaldoAkunList(
       connection,
       [
@@ -1806,61 +1595,46 @@ export async function updateInvoice(
         ...akunJurnalBaru,
       ]
     );
-
     // =========================================================
     // 22. COMMIT
     // =========================================================
-
+    await syncPembayaranInvoice(connection, id);
     await connection.commit();
-
     revalidatePath(
       "/dashboard/finance/invoices"
     );
-
     revalidatePath(
       "/dashboard/finance/jurnal"
     );
-
     revalidatePath(
       "/dashboard/finance/riwayat"
     );
-
     return {
       success: true,
-
       message:
         "Invoice, jurnal, dan saldo berhasil diperbarui.",
-
       id,
-
       jurnalId,
     };
-
   } catch (error: any) {
     await connection.rollback();
-
     console.error(
       "UPDATE_INVOICE_ERROR:",
       error
     );
-
     return {
       success: false,
-
       message:
         error.message ||
         "Gagal memperbarui invoice.",
     };
-
   } finally {
     connection.release();
   }
 }
-
 // =========================================================================
 // 6. FUNGSI: DETEKSI DETAIL INVOICE BY ID
 // =========================================================================
-
 export async function getInvoiceById(
   id: number
 ) {
@@ -1872,11 +1646,9 @@ export async function getInvoiceById(
          WHERE id = ?`,
         [id]
       );
-
     if (!rows[0]) {
       return null;
     }
-
     const [details]: any =
       await db.query(
         `SELECT
@@ -1890,26 +1662,21 @@ export async function getInvoiceById(
          ORDER BY id ASC`,
         [id]
       );
-
     return {
-      ...rows[0],
+      ...hitungPembayaranInvoice(rows[0], await getPembayaranJurnal(db, rows[0].nomor_invoice)),
       items: details,
     };
-
   } catch (error) {
     console.error(
       "GET_INVOICE_BY_ID_ERROR:",
       error
     );
-
     return null;
   }
 }
-
 // =========================================================================
 // 7. FUNGSI: AMBIL SEMUA LIST DATA INVOICE + HITUNG UMUR PIUTANG
 // =========================================================================
-
 export async function getInvoices() {
   try {
     const [rows]: any =
@@ -1927,10 +1694,8 @@ export async function getInvoices() {
           i.id DESC,
           d.id ASC
       `);
-
     const invoiceMap =
       new Map<number, any>();
-
     for (const row of rows) {
       if (
         !invoiceMap.has(row.id)
@@ -1942,7 +1707,6 @@ export async function getInvoices() {
           item_harga,
           ...header
         } = row;
-
         invoiceMap.set(
           row.id,
           {
@@ -1951,7 +1715,6 @@ export async function getInvoices() {
           }
         );
       }
-
       if (
         row.detail_id
       ) {
@@ -1959,19 +1722,16 @@ export async function getInvoices() {
           .get(row.id)
           .items.push({
             id: row.detail_id,
-
             item_deskripsi:
               row.item_deskripsi,
-
             item_jumlah:
               row.item_jumlah,
-
             item_harga:
               row.item_harga,
           });
       }
     }
-
+    const pembayaranJurnal = await getPembayaranJurnal(db);
     const dataLengkap =
       Array.from(
         invoiceMap.values()
@@ -1980,14 +1740,11 @@ export async function getInvoices() {
           new Date(
             inv.tanggal_jatuhtempo
           );
-
         const tglSekarang =
           new Date();
-
         const selisihMilidetik =
           tglSekarang.getTime() -
           tglJatuhTempo.getTime();
-
         const hitungHari =
           Math.floor(
             selisihMilidetik /
@@ -1996,33 +1753,26 @@ export async function getInvoices() {
               60 *
               24)
           );
-
         return {
-          ...inv,
-
+          ...hitungPembayaranInvoice(inv, pembayaranJurnal),
           umur_piutang:
             hitungHari > 0
               ? hitungHari
               : 0,
         };
       });
-
     return dataLengkap;
-
   } catch (error) {
     console.error(
       "Gagal mengambil data:",
       error
     );
-
     return [];
   }
 }
-
 // =========================================================================
 // 8. FUNGSI: UPDATE FILE INVOICE
 // =========================================================================
-
 export async function updateInvoiceFile(
   id: number,
   field:
@@ -2036,7 +1786,6 @@ export async function updateInvoiceFile(
       SET ${field} = ?
       WHERE id = ?
     `;
-
     await db.query(
       query,
       [
@@ -2044,24 +1793,19 @@ export async function updateInvoiceFile(
         id,
       ]
     );
-
     revalidatePath(
       "/dashboard/finance/invoices"
     );
-
     return {
       success: true,
     };
-
   } catch (error: any) {
     console.error(
       "UPDATE_FILE_ERROR:",
       error.message
     );
-
     return {
       success: false,
-
       message:
         error.message,
     };
