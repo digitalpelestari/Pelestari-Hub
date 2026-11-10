@@ -38,6 +38,7 @@ function isNormalDebit(noAkun: string): boolean {
     "41002",
     "71106",
     "81100",
+    "81200", // POS PDP (kredit-normal)
   ]);
 
   if (KREDIT_NORMAL_OVERRIDE.has(akun)) {
