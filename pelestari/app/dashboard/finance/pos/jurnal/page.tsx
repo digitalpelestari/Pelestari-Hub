@@ -24,8 +24,6 @@ import {
   User,
   CheckCircle2,
   AlertTriangle,
-  Pencil,
-  Check,
   Trash2,
   FileText,
   Download,
@@ -39,14 +37,9 @@ import {
 } from "lucide-react"
 import {
   getJurnalList,
-  updateJurnalItem,
   deleteJurnalByHeader,
   exportJurnalToExcel,
-  generateNoRegistrasiOtomatis,
 } from "@/app/actions/jurnal"
-import { getAkunList } from "@/app/actions/akun"
-import { getPenerima } from "@/app/actions/penerima"
-import { getPemohon } from "@/app/actions/pemohon"
 
 import Link from "next/link"
 import { swal } from "@/lib/sweetalert"
@@ -63,15 +56,6 @@ function formatTanggal(tanggal: any) {
 export default function JurnalUmumListPage() {
   const pathname = usePathname()
   const [jurnalList, setJurnalList] = useState<any[]>([])
-  const [akunList, setAkunList] = useState<any[]>([])
-  const [penerimaList, setPenerimaList] = useState<
-    { id: number; nama_penerima: string }[]
-  >([])
-  const [loadingPenerima, setLoadingPenerima] = useState(false)
-  const [pemohonList, setPemohonList] = useState<
-    { id: number; nama_pemohon: string }[]
-  >([])
-  const [loadingPemohon, setLoadingPemohon] = useState(false)
 
   const [searchInput, setSearchInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
@@ -95,10 +79,6 @@ export default function JurnalUmumListPage() {
     kredit: 0,
     isBalanced: false,
   })
-
-  const [editingJurnalId, setEditingJurnalId] = useState<number | null>(null)
-  const [editHeaderForm, setEditHeaderForm] = useState<any>({})
-  const [editItemsForm, setEditItemsForm] = useState<any[]>([])
 
   // BULK DELETE: id jurnal yang dipilih
   const [selectedIds, setSelectedIds] = useState<number[]>([])
@@ -165,7 +145,6 @@ export default function JurnalUmumListPage() {
         searchQuery,
         sortMode
       )
-      const dataAkun = await getAkunList()
 
       if (thisRequestId !== requestIdRef.current) {
         return
@@ -183,8 +162,6 @@ export default function JurnalUmumListPage() {
         kredit: Number(dataJurnal.summary?.totalKredit || 0),
         isBalanced: dataJurnal.summary?.isBalanced || false,
       })
-
-      setAkunList(Array.isArray(dataAkun) ? dataAkun : dataAkun.data || [])
     } catch (error: any) {
       if (thisRequestId !== requestIdRef.current) {
         return
@@ -192,7 +169,6 @@ export default function JurnalUmumListPage() {
 
       console.error("Gagal memuat data pembukuan:", error)
       setJurnalList([])
-      setAkunList([])
       swal.error(error.message || "Gagal memuat data jurnal")
     } finally {
       if (thisRequestId === requestIdRef.current) {
@@ -200,28 +176,6 @@ export default function JurnalUmumListPage() {
       }
     }
   }
-
-  useEffect(() => {
-    const fetchMasterData = async () => {
-      setLoadingPenerima(true)
-      setLoadingPemohon(true)
-      try {
-        const [dataPenerima, dataPemohon] = await Promise.all([
-          getPenerima(),
-          getPemohon(),
-        ])
-        setPenerimaList(Array.isArray(dataPenerima) ? dataPenerima : [])
-        setPemohonList(Array.isArray(dataPemohon) ? dataPemohon : [])
-      } catch (error) {
-        setPenerimaList([])
-        setPemohonList([])
-      } finally {
-        setLoadingPenerima(false)
-        setLoadingPemohon(false)
-      }
-    }
-    fetchMasterData()
-  }, [])
 
   useEffect(() => {
     loadData()
@@ -234,110 +188,6 @@ export default function JurnalUmumListPage() {
     sortMode,
     pathname,
   ])
-
-  const startEditJurnal = (jurnal: any) => {
-    setEditingJurnalId(jurnal.id)
-
-    setEditHeaderForm({
-      tanggal: jurnal.tanggal ? String(jurnal.tanggal).slice(0, 10) : "",
-      no_registrasi: jurnal.no_registrasi || "",
-      no_referensi: jurnal.no_referensi || "",
-      penerimaId: jurnal.penerima_id || "",
-      pemohonId: jurnal.pemohon_id || "",
-      keterangan: jurnal.keterangan || "",
-    })
-
-    setEditItemsForm(JSON.parse(JSON.stringify(jurnal.items || [])))
-  }
-
-  const cancelEditJurnal = () => {
-    setEditingJurnalId(null)
-    setEditHeaderForm({})
-    setEditItemsForm([])
-  }
-
-  const handleHeaderChange = (field: string, value: string) => {
-    setEditHeaderForm((prev: any) => ({ ...prev, [field]: value }))
-  }
-
-  const handleChangePrefixEdit = async (type: "BD" | "BK") => {
-    const res = await generateNoRegistrasiOtomatis(type)
-    if (res.success && res.code) {
-      setEditHeaderForm((prev: any) => ({ ...prev, no_registrasi: res.code }))
-    }
-  }
-
-  const handleItemChange = (itemIndex: number, field: string, value: any) => {
-    setEditItemsForm((prev) => {
-      const updated = [...prev]
-      updated[itemIndex] = { ...updated[itemIndex] }
-
-      if (field === "no_akun") {
-        updated[itemIndex].no_akun = value
-        const targetAkun = akunList.find((a) => a.no_akun === value)
-        updated[itemIndex].nama_akun = targetAkun ? targetAkun.nama_akun : ""
-        updated[itemIndex].nama_kelompok = targetAkun
-          ? targetAkun.kelompok_biaya || targetAkun.nama_kelompok || "General"
-          : ""
-      } else {
-        updated[itemIndex][field] = value
-      }
-
-      return updated
-    })
-  }
-
-  const saveEditJurnal = async (jurnalId: number) => {
-    let totalDebitJurnal = 0
-    let totalKreditJurnal = 0
-
-    editItemsForm.forEach((item) => {
-      totalDebitJurnal += Number(item.debit) || 0
-      totalKreditJurnal += Number(item.kredit) || 0
-    })
-
-    if (totalDebitJurnal !== totalKreditJurnal) {
-      swal.error(
-        `Gagal Simpan: Transaksi Jurnal TIDAK BALANCE!\nTotal Debit: Rp ${totalDebitJurnal.toLocaleString("id-ID")}\nTotal Kredit: Rp ${totalKreditJurnal.toLocaleString("id-ID")}`
-      )
-      return
-    }
-
-    setLoading(true)
-    try {
-      for (const item of editItemsForm) {
-        if (!item.id) {
-          throw new Error("ID baris transaksi hilang.")
-        }
-
-        await updateJurnalItem(item.id, {
-          jurnal_id: jurnalId,
-          tanggal: editHeaderForm.tanggal,
-          no_registrasi: editHeaderForm.no_registrasi,
-          no_referensi: editHeaderForm.no_referensi,
-          penerimaId: editHeaderForm.penerimaId
-            ? Number(editHeaderForm.penerimaId)
-            : null,
-          pemohonId: editHeaderForm.pemohonId
-            ? Number(editHeaderForm.pemohonId)
-            : null,
-          keterangan_umum: editHeaderForm.keterangan,
-          no_akun: item.no_akun,
-          debit: Number(item.debit) || 0,
-          kredit: Number(item.kredit) || 0,
-          keterangan: item.keterangan || "",
-        })
-      }
-
-      swal.success("Perubahan seluruh kolom jurnal berhasil disimpan!")
-      setEditingJurnalId(null)
-      await loadData()
-    } catch (err: any) {
-      swal.error("Gagal menyimpan perubahan: " + err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleRemoveJurnalUtah = async (jurnalId: number, noRegis: string) => {
     if (
@@ -693,7 +543,6 @@ export default function JurnalUmumListPage() {
                     : []
                   const totalItems =
                     itemsArray.length > 0 ? itemsArray.length : 1
-                  const isJurnalEditing = editingJurnalId === jurnal.id
                   const isSelected = selectedIds.includes(jurnal.id)
 
                   const itemsToRender =
@@ -727,7 +576,7 @@ export default function JurnalUmumListPage() {
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => toggleSelectOne(jurnal.id)}
-                                disabled={loading || isJurnalEditing}
+                                disabled={loading}
                                 className="h-4 w-4 cursor-pointer accent-zinc-900"
                               />
                             </TableCell>
@@ -737,24 +586,10 @@ export default function JurnalUmumListPage() {
                               rowSpan={totalItems}
                               className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top font-mono !text-sm text-zinc-600"
                             >
-                              {isJurnalEditing ? (
-                                <Input
-                                  type="date"
-                                  value={editHeaderForm.tanggal || ""}
-                                  onChange={(e) =>
-                                    handleHeaderChange(
-                                      "tanggal",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="h-8 rounded-md border-zinc-300 bg-white font-mono !text-xs"
-                                />
-                              ) : (
-                                <div className="flex items-center gap-1.5 !text-xs whitespace-nowrap">
-                                  <Calendar className="h-3.5 w-3.5 text-zinc-400" />
-                                  {formatTanggal(jurnal.tanggal)}
-                                </div>
-                              )}
+                              <div className="flex items-center gap-1.5 !text-xs whitespace-nowrap">
+                                <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+                                {formatTanggal(jurnal.tanggal)}
+                              </div>
                             </TableCell>
 
                             {/* NO. REGISTRASI */}
@@ -762,53 +597,10 @@ export default function JurnalUmumListPage() {
                               rowSpan={totalItems}
                               className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top font-mono !text-sm font-semibold text-blue-600"
                             >
-                              {isJurnalEditing ? (
-                                <div className="space-y-1.5">
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() =>
-                                        handleChangePrefixEdit("BD")
-                                      }
-                                      className="h-6 px-1.5 text-[10px] font-bold text-blue-600 hover:bg-blue-50"
-                                      title="Generate BD Baru"
-                                    >
-                                      + BD
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() =>
-                                        handleChangePrefixEdit("BK")
-                                      }
-                                      className="h-6 px-1.5 text-[10px] font-bold text-rose-600 hover:bg-rose-50"
-                                      title="Generate BK Baru"
-                                    >
-                                      + BK
-                                    </Button>
-                                  </div>
-                                  <Input
-                                    type="text"
-                                    placeholder="Ketik manual..."
-                                    value={editHeaderForm.no_registrasi || ""}
-                                    onChange={(e) =>
-                                      handleHeaderChange(
-                                        "no_registrasi",
-                                        e.target.value
-                                      )
-                                    }
-                                    className="h-8 rounded-md border-zinc-300 bg-white font-mono text-xs"
-                                  />
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1.5 !text-xs whitespace-nowrap">
-                                  <Hash className="h-3.5 w-3.5 text-zinc-400" />
-                                  {jurnal.no_registrasi || "-"}
-                                </div>
-                              )}
+                              <div className="flex items-center gap-1.5 !text-xs whitespace-nowrap">
+                                <Hash className="h-3.5 w-3.5 text-zinc-400" />
+                                {jurnal.no_registrasi || "-"}
+                              </div>
                             </TableCell>
 
                             {/* NO. REFERENSI */}
@@ -816,24 +608,10 @@ export default function JurnalUmumListPage() {
                               rowSpan={totalItems}
                               className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top font-mono text-emerald-600"
                             >
-                              {isJurnalEditing ? (
-                                <Input
-                                  type="text"
-                                  value={editHeaderForm.no_referensi || ""}
-                                  onChange={(e) =>
-                                    handleHeaderChange(
-                                      "no_referensi",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="h-8 rounded-md border-zinc-300 bg-white font-mono !text-xs"
-                                />
-                              ) : (
-                                <div className="flex items-center gap-1.5 whitespace-nowrap">
-                                  <Bookmark className="h-3.5 w-3.5 text-zinc-400" />
-                                  {jurnal.no_referensi || "-"}
-                                </div>
-                              )}
+                              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                <Bookmark className="h-3.5 w-3.5 text-zinc-400" />
+                                {jurnal.no_referensi || "-"}
+                              </div>
                             </TableCell>
 
                             {/* PENERIMA */}
@@ -841,32 +619,12 @@ export default function JurnalUmumListPage() {
                               rowSpan={totalItems}
                               className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top text-xs text-zinc-700"
                             >
-                              {isJurnalEditing ? (
-                                <select
-                                  value={editHeaderForm.penerimaId || ""}
-                                  onChange={(e) =>
-                                    handleHeaderChange(
-                                      "penerimaId",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="h-8 rounded-md border-zinc-300 bg-white px-2 text-xs focus:outline-none"
-                                >
-                                  <option value="">Pilih Penerima</option>
-                                  {penerimaList.map((p) => (
-                                    <option key={p.id} value={p.id}>
-                                      {p.nama_penerima}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <div className="flex items-center gap-1.5">
-                                  <User className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-                                  <span className="font-semibold break-words text-zinc-800 uppercase">
-                                    {jurnal.penerima || "-"}
-                                  </span>
-                                </div>
-                              )}
+                              <div className="flex items-center gap-1.5">
+                                <User className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                                <span className="font-semibold break-words text-zinc-800 uppercase">
+                                  {jurnal.penerima || "-"}
+                                </span>
+                              </div>
                             </TableCell>
 
                             {/* PEMOHON */}
@@ -874,32 +632,12 @@ export default function JurnalUmumListPage() {
                               rowSpan={totalItems}
                               className="border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top text-xs text-zinc-700"
                             >
-                              {isJurnalEditing ? (
-                                <select
-                                  value={editHeaderForm.pemohonId || ""}
-                                  onChange={(e) =>
-                                    handleHeaderChange(
-                                      "pemohonId",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="h-8 rounded-md border-zinc-300 bg-white px-2 text-xs focus:outline-none"
-                                >
-                                  <option value="">Pilih Pemohon</option>
-                                  {pemohonList.map((pm) => (
-                                    <option key={pm.id} value={pm.id}>
-                                      {pm.nama_pemohon}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <div className="flex items-center gap-1.5">
-                                  <User className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
-                                  <span className="font-semibold break-words text-zinc-800 uppercase">
-                                    {jurnal.pemohon || "-"}
-                                  </span>
-                                </div>
-                              )}
+                              <div className="flex items-center gap-1.5">
+                                <User className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+                                <span className="font-semibold break-words text-zinc-800 uppercase">
+                                  {jurnal.pemohon || "-"}
+                                </span>
+                              </div>
                             </TableCell>
 
                             {/* KETERANGAN */}
@@ -907,58 +645,19 @@ export default function JurnalUmumListPage() {
                               rowSpan={totalItems}
                               className="w-[200px] max-w-[200px] min-w-0 border-r border-zinc-100 bg-zinc-50/30 px-4 py-4 align-top text-xs text-zinc-600"
                             >
-                              {isJurnalEditing ? (
-                                <Input
-                                  type="text"
-                                  value={editHeaderForm.keterangan || ""}
-                                  onChange={(e) =>
-                                    handleHeaderChange(
-                                      "keterangan",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="h-8 rounded-md border-zinc-300 bg-white font-mono text-xs"
-                                />
-                              ) : (
-                                <div className="flex w-full min-w-0 items-start gap-1.5">
-                                  <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400" />
-                                  <span className="min-w-0 flex-1 text-xs [overflow-wrap:anywhere] break-words whitespace-normal uppercase">
-                                    {jurnal.keterangan || "-"}
-                                  </span>
-                                </div>
-                              )}
+                              <div className="flex w-full min-w-0 items-start gap-1.5">
+                                <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                                <span className="min-w-0 flex-1 text-xs [overflow-wrap:anywhere] break-words whitespace-normal uppercase">
+                                  {jurnal.keterangan || "-"}
+                                </span>
+                              </div>
                             </TableCell>
                           </>
                         )}
 
                         {/* DETAIL BARIS AKUN */}
                         <TableCell className="border-r border-zinc-100 px-4 py-3 font-mono whitespace-nowrap text-zinc-600">
-                          {isJurnalEditing ? (
-                            <>
-                              <Input
-                                type="text"
-                                list={`edit-coa-${jurnal.id}-${idx}`}
-                                value={editItemsForm[idx]?.no_akun ?? ""}
-                                onChange={(e) =>
-                                  handleItemChange(
-                                    idx,
-                                    "no_akun",
-                                    e.target.value
-                                  )
-                                }
-                                className="h-8 rounded-md border-zinc-300 bg-white font-mono !text-xs"
-                              />
-                              <datalist id={`edit-coa-${jurnal.id}-${idx}`}>
-                                {akunList.map((a) => (
-                                  <option key={a.id} value={a.no_akun}>
-                                    {a.nama_akun}
-                                  </option>
-                                ))}
-                              </datalist>
-                            </>
-                          ) : (
-                            item.no_akun
-                          )}
+                          {item.no_akun}
                         </TableCell>
 
                         <TableCell
@@ -968,103 +667,38 @@ export default function JurnalUmumListPage() {
                               : "text-zinc-900"
                           }`}
                         >
-                          {isJurnalEditing ? (
-                            <Input
-                              readOnly
-                              type="text"
-                              value={editItemsForm[idx]?.nama_akun ?? ""}
-                              className="h-8 cursor-not-allowed rounded-md border-zinc-200 bg-zinc-100 text-xs text-zinc-400 uppercase"
-                            />
-                          ) : (
-                            item.nama_akun
-                          )}
+                          {item.nama_akun}
                         </TableCell>
 
                         <TableCell className="border-r border-zinc-100 px-4 py-3 whitespace-nowrap">
-                          {isJurnalEditing ? (
-                            <Input
-                              readOnly
-                              type="text"
-                              value={
-                                editItemsForm[idx]?.nama_kelompok ?? "General"
-                              }
-                              className="h-8 cursor-not-allowed rounded-md border-zinc-200 bg-zinc-100 text-xs text-zinc-400 uppercase"
-                            />
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="rounded-md border-zinc-200 bg-zinc-50 px-2 py-0.5 !text-xs font-medium text-zinc-600"
-                            >
-                              {item.nama_kelompok || "General"}
-                            </Badge>
-                          )}
+                          <Badge
+                            variant="outline"
+                            className="rounded-md border-zinc-200 bg-zinc-50 px-2 py-0.5 !text-xs font-medium text-zinc-600"
+                          >
+                            {item.nama_kelompok || "General"}
+                          </Badge>
                         </TableCell>
 
                         <TableCell className="border-r border-zinc-100 px-4 py-3">
-                          {isJurnalEditing ? (
-                            <Input
-                              type="text"
-                              value={editItemsForm[idx]?.keterangan ?? ""}
-                              onChange={(e) =>
-                                handleItemChange(
-                                  idx,
-                                  "keterangan",
-                                  e.target.value
-                                )
-                              }
-                              className="h-8 rounded-md border-zinc-300 bg-white text-xs"
-                            />
-                          ) : (
-                            <span className="text-xs [overflow-wrap:anywhere] break-words whitespace-normal text-zinc-600">
-                              {item.keterangan || "-"}
-                            </span>
-                          )}
+                          <span className="text-xs [overflow-wrap:anywhere] break-words whitespace-normal text-zinc-600">
+                            {item.keterangan || "-"}
+                          </span>
                         </TableCell>
 
                         <TableCell className="border-r border-zinc-100 px-4 py-3 text-right font-mono whitespace-nowrap text-zinc-900">
-                          {isJurnalEditing ? (
-                            <Input
-                              type="number"
-                              value={editItemsForm[idx]?.debit ?? 0}
-                              onChange={(e) =>
-                                handleItemChange(
-                                  idx,
-                                  "debit",
-                                  Number(e.target.value)
-                                )
-                              }
-                              className="h-8 rounded-md border-zinc-300 bg-white text-right font-mono !text-xs"
-                            />
-                          ) : item.debit > 0 ? (
-                            new Intl.NumberFormat("id-ID", {
-                              minimumFractionDigits: 2,
-                            }).format(item.debit)
-                          ) : (
-                            "-"
-                          )}
+                          {item.debit > 0
+                            ? new Intl.NumberFormat("id-ID", {
+                                minimumFractionDigits: 2,
+                              }).format(item.debit)
+                            : "-"}
                         </TableCell>
 
                         <TableCell className="border-r border-zinc-100 px-4 py-3 text-right font-mono whitespace-nowrap text-zinc-900">
-                          {isJurnalEditing ? (
-                            <Input
-                              type="number"
-                              value={editItemsForm[idx]?.kredit ?? 0}
-                              onChange={(e) =>
-                                handleItemChange(
-                                  idx,
-                                  "kredit",
-                                  Number(e.target.value)
-                                )
-                              }
-                              className="h-8 rounded-md border-zinc-300 bg-white text-right font-mono !text-xs"
-                            />
-                          ) : item.kredit > 0 ? (
-                            new Intl.NumberFormat("id-ID", {
-                              minimumFractionDigits: 2,
-                            }).format(item.kredit)
-                          ) : (
-                            "-"
-                          )}
+                          {item.kredit > 0
+                            ? new Intl.NumberFormat("id-ID", {
+                                minimumFractionDigits: 2,
+                              }).format(item.kredit)
+                            : "-"}
                         </TableCell>
 
                         {idx === 0 && (
@@ -1072,55 +706,23 @@ export default function JurnalUmumListPage() {
                             rowSpan={totalItems}
                             className="bg-zinc-50/30 px-3 py-3 text-center align-middle whitespace-nowrap"
                           >
-                            {isJurnalEditing ? (
-                              <div className="mx-auto flex w-24 flex-col gap-1.5">
-                                <Button
-                                  size="sm"
-                                  onClick={() => saveEditJurnal(jurnal.id)}
-                                  disabled={loading}
-                                  className="h-7 gap-1 rounded-md bg-emerald-600 text-[10px] font-bold text-white shadow-sm hover:bg-emerald-700"
-                                >
-                                  <Check className="h-3 w-3" /> SIMPAN
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={cancelEditJurnal}
-                                  disabled={loading}
-                                  className="h-7 rounded-md text-[10px] font-bold text-zinc-500 hover:bg-zinc-200"
-                                >
-                                  Batal
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-center gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => startEditJurnal(jurnal)}
-                                  disabled={loading}
-                                  className="h-8 w-8 rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-                                  title="Edit Jurnal"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() =>
-                                    handleRemoveJurnalUtah(
-                                      jurnal.id,
-                                      jurnal.no_registrasi
-                                    )
-                                  }
-                                  disabled={loading}
-                                  className="h-8 w-8 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700"
-                                  title="Hapus Jurnal"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            )}
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() =>
+                                  handleRemoveJurnalUtah(
+                                    jurnal.id,
+                                    jurnal.no_registrasi
+                                  )
+                                }
+                                disabled={loading}
+                                className="h-8 w-8 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700"
+                                title="Hapus Jurnal"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           </TableCell>
                         )}
                       </TableRow>
