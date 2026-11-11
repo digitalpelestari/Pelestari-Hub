@@ -24,47 +24,67 @@ export interface NeracaData {
   totalPasiva: number;
 }
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
+const bulanMap: { [key: string]: number } = {
+  Januari: 1, Februari: 2, Maret: 3, April: 4, Mei: 5, Juni: 6,
+  Juli: 7, Agustus: 8, September: 9, Oktober: 10, November: 11, Desember: 12,
+};
+
+// Jumlah bulan penyusutan s/d akhir bulan m tahun y (garis lurus)
+const hitungBulan = (
+  tahunP: number,
+  bulanP: number,
+  umurBulan: number,
+  y: number,
+  m: number
+) => {
+  const n = (y - tahunP) * 12 + (m - bulanP);
+  return Math.min(Math.max(0, n), umurBulan);
+};
+
+/**
+ * mode = "mutasi" (bawaan): hanya transaksi di bulan terpilih (Februari tanpa transaksi = 0)
+ * mode = "posisi"        : saldo kumulatif sampai tanggal akhir bulan terpilih
+ * month = "all" -> satu tahun penuh (mutasi) atau posisi per 31 Desember (posisi)
+ */
 export async function getNeracaData(
   year: string = "2026",
-  month: string = "all"
+  month: string = "all",
+  mode: "mutasi" | "posisi" = "mutasi"
 ): Promise<NeracaData> {
   try {
     const selectedYear = parseInt(year);
+    const startMonth = month === "all" ? 1 : parseInt(month);
     const selectedMonth = month === "all" ? 12 : parseInt(month);
 
-    // ----------------------------------------------------------------
-    // 1. HITUNG OMSET & PIUTANG KUMULATIF S/D BULAN TERPILIH
-    // ----------------------------------------------------------------
-    let invoiceQuery = `SELECT SUM(COALESCE(total, 0)) as total_omset FROM tb_invoice WHERE YEAR(created_at) = ?`;
-    let paidInvoiceQuery = `SELECT SUM(COALESCE(bayar_1, 0) + COALESCE(bayar_2, 0)) as total_paid FROM tb_invoice WHERE YEAR(created_at) = ?`;
-    const invoiceParams: any[] = [selectedYear];
-    const paidInvoiceParams: any[] = [selectedYear];
+    const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+    const endDate = `${selectedYear}-${pad(selectedMonth)}-${pad(lastDay)}`;
+    const startDate = `${selectedYear}-${pad(startMonth)}-01`;
+    // Batas awal filter: awal bulan (mutasi) atau sejak awal data (posisi)
+    const batasAwal = mode === "posisi" ? "1900-01-01" : startDate;
 
-    if (month !== "all") {
-      // Hanya ambil transaksi sampai bulan yang dipilih (misal: Januari <= 1)
-      invoiceQuery += ` AND MONTH(created_at) <= ?`;
-      paidInvoiceQuery += ` AND MONTH(created_at) <= ?`;
-      invoiceParams.push(selectedMonth);
-      paidInvoiceParams.push(selectedMonth);
+    // ----------------------------------------------------------------
+    // 1. LABA TAHUN BERJALAN = jumlah laba Januari s/d bulan terpilih
+    //    (getLabaRugiData hanya menghitung satu bulan, jadi dijumlahkan)
+    // ----------------------------------------------------------------
+    let labaBerjalanRealtime = 0;
+    if (month === "all" || mode === "mutasi") {
+      const data = await getLabaRugiData(year, month);
+      labaBerjalanRealtime = Number(data?.labaBersih || 0);
+    } else {
+      const bulanList = Array.from({ length: selectedMonth }, (_, i) => i + 1);
+      const hasil = await Promise.all(
+        bulanList.map((m) => getLabaRugiData(year, String(m)))
+      );
+      labaBerjalanRealtime = hasil.reduce(
+        (s, d) => s + (Number(d?.labaBersih) || 0),
+        0
+      );
     }
 
-    const [invoiceRows]: any = await db.query(invoiceQuery, invoiceParams);
-    const [paidInvoiceRows]: any = await db.query(paidInvoiceQuery, paidInvoiceParams);
-
-    const totalOmsetInvoice = Number(invoiceRows[0]?.total_omset) || 0;
-    const totalUangDiterima = Number(paidInvoiceRows[0]?.total_paid) || 0;
-
-    // Piutang riil per akhir bulan yang dipilih
-    const piutangDagangRealtime = Math.max(0, totalOmsetInvoice - totalUangDiterima);
-
     // ----------------------------------------------------------------
-    // 2. HITUNG LABA BERSIH SESUAI PERIODE DARI getLabaRugiData
-    // ----------------------------------------------------------------
-    const labaRugiData = await getLabaRugiData(year, month);
-    const labaBerjalanRealtime = Number(labaRugiData?.labaBersih || 0);
-
-    // ----------------------------------------------------------------
-    // 3. HITUNG PENYUSUTAN ASET TETAP BERDASARKAN BULAN TERPILIH
+    // 2. ASET TETAP & PENYUSUTAN KUMULATIF s/d AKHIR BULAN TERPILIH
     // ----------------------------------------------------------------
     let totalHargaAset = 0;
     let totalPenyusutanAset = 0;
@@ -81,54 +101,103 @@ export async function getNeracaData(
         WHERE jenis_asset = 'Aset Tetap'
       `);
 
-      const bulanMap: { [key: string]: number } = {
-        Januari: 1, Februari: 2, Maret: 3, April: 4, Mei: 5, Juni: 6,
-        Juli: 7, Agustus: 8, September: 9, Oktober: 10, November: 11, Desember: 12,
-      };
+      const idxAkhir = selectedYear * 12 + selectedMonth;
+      const idxAwal = mode === "posisi" ? 0 : selectedYear * 12 + startMonth;
+      const prevY = startMonth === 1 ? selectedYear - 1 : selectedYear;
+      const prevM = startMonth === 1 ? 12 : startMonth - 1;
 
       (asetRows || []).forEach((asset: any) => {
-        const hargaBeli = Number(asset.harga_beli) || 0;
-        const nilaiPerolehan = hargaBeli;
-        totalHargaAset += nilaiPerolehan;
+        const nilaiPerolehan = Number(asset.harga_beli) || 0;
 
         const umurEkonomis = Number(asset.kelompok_komersial) || 4;
-        const penyusutanTahunan = nilaiPerolehan / umurEkonomis;
-        const penyusutanBulanan = penyusutanTahunan / 12;
+        const penyusutanBulanan = nilaiPerolehan / umurEkonomis / 12;
 
         const bulanPerolehan = bulanMap[asset.bulan_perolehan] || 1;
         const tahunPerolehan = Number(asset.tahun_perolehan) || selectedYear;
+        const umurBulan = umurEkonomis * 12;
 
-        let jumlahBulan = 0;
-
-        if (tahunPerolehan < selectedYear) {
-          jumlahBulan = (selectedYear - tahunPerolehan) * 12 + (selectedMonth - bulanPerolehan);
-        } else if (tahunPerolehan === selectedYear) {
-          jumlahBulan = selectedMonth - bulanPerolehan;
+        // Aset yang sudah diperoleh s/d akhir bulan terpilih
+        const idxPerolehan = tahunPerolehan * 12 + bulanPerolehan;
+        if (idxPerolehan >= idxAwal && idxPerolehan <= idxAkhir) {
+          totalHargaAset += nilaiPerolehan;
         }
 
-        if (
-          tahunPerolehan > selectedYear ||
-          (tahunPerolehan === selectedYear && bulanPerolehan > selectedMonth)
-        ) {
-          jumlahBulan = 0;
-        }
-
-        jumlahBulan = Math.max(0, jumlahBulan);
-        const maksimalBulan = umurEkonomis * 12;
-        jumlahBulan = Math.min(jumlahBulan, maksimalBulan);
-
-        const akumulasiPenyusutan = penyusutanBulanan * jumlahBulan;
-        totalPenyusutanAset += akumulasiPenyusutan;
+        // Penyusutan: kumulatif (posisi) atau hanya yang jatuh di periode (mutasi)
+        const sampaiAkhir = hitungBulan(tahunPerolehan, bulanPerolehan, umurBulan, selectedYear, selectedMonth);
+        const sampaiAwal =
+          mode === "posisi"
+            ? 0
+            : hitungBulan(tahunPerolehan, bulanPerolehan, umurBulan, prevY, prevM);
+        totalPenyusutanAset += penyusutanBulanan * (sampaiAkhir - sampaiAwal);
       });
     } catch (e) {
       console.log("Gagal menghitung penyusutan aset:", e);
     }
 
     // ----------------------------------------------------------------
-    // 4. AMBIL DATA MASTER DARI tb_akun
+    // 3. SALDO JURNAL PER AKUN s/d TANGGAL AKHIR BULAN TERPILIH
+    //    (termasuk piutang usaha 12100, diambil dari tb_jurnal_item)
+    // ----------------------------------------------------------------
+    const [mutasiRows]: any = await db.query(
+      `
+      SELECT
+        ji.no_akun,
+        SUM(COALESCE(ji.debit, 0))  AS debit,
+        SUM(COALESCE(ji.kredit, 0)) AS kredit
+      FROM tb_jurnal_item ji
+      JOIN tb_jurnal j ON j.id = ji.jurnal_id
+      WHERE j.tanggal BETWEEN ? AND ?
+        AND (j.no_registrasi IS NULL OR j.no_registrasi NOT LIKE ?)
+      GROUP BY ji.no_akun
+      `,
+      [batasAwal, endDate, "CL\\_%"]
+    );
+
+    const mutasi = new Map<string, { debit: number; kredit: number }>();
+    (mutasiRows || []).forEach((r: any) => {
+      mutasi.set(String(r.no_akun).trim(), {
+        debit: Number(r.debit) || 0,
+        kredit: Number(r.kredit) || 0,
+      });
+    });
+
+    // ----------------------------------------------------------------
+    // 3b. SALDO KAS & BANK (11xxx) PER TANGGAL AKHIR BULAN TERPILIH
+    //     tb_akun.saldo = saldo terkini (tanpa tanggal), jadi dihitung mundur:
+    //     saldo akhir bulan = saldo terkini - mutasi jurnal SETELAH akhir bulan
+    //     (Kas Petty Cash, Bank Aktif, Bank Pasif)
+    // ----------------------------------------------------------------
+    const [kasBankRows]: any = await db.query(
+      `
+      SELECT
+        a.no_akun,
+        a.saldo - COALESCE(x.mutasi_setelah, 0) AS saldo_akhir
+      FROM tb_akun a
+      LEFT JOIN (
+        SELECT
+          ji.no_akun,
+          SUM(COALESCE(ji.debit, 0)) - SUM(COALESCE(ji.kredit, 0)) AS mutasi_setelah
+        FROM tb_jurnal_item ji
+        JOIN tb_jurnal j ON j.id = ji.jurnal_id
+        WHERE DATE(j.tanggal) > ?
+          AND (j.no_registrasi IS NULL OR j.no_registrasi NOT LIKE ?)
+        GROUP BY ji.no_akun
+      ) x ON x.no_akun = a.no_akun
+      WHERE a.no_akun LIKE '11%'
+      `,
+      [endDate, "CL\\_%"]
+    );
+
+    const saldoKasBank = new Map<string, number>();
+    (kasBankRows || []).forEach((r: any) => {
+      saldoKasBank.set(String(r.no_akun).trim(), Number(r.saldo_akhir) || 0);
+    });
+
+    // ----------------------------------------------------------------
+    // 4. DATA MASTER DARI tb_akun (nama & daftar akun)
     // ----------------------------------------------------------------
     const [akunRows]: any = await db.query(
-      `SELECT no_akun, nama_akun, saldo FROM tb_akun ORDER BY no_akun ASC`
+      `SELECT no_akun, nama_akun FROM tb_akun ORDER BY no_akun ASC`
     );
 
     const aktivaLancar: NeracaItem[] = [];
@@ -146,13 +215,6 @@ export async function getNeracaData(
 
     (akunRows || []).forEach((row: any) => {
       const noAkun = String(row.no_akun).trim();
-      let nominal = Number(row.saldo) || 0;
-
-      // KUNCI PERBAIKAN:
-      // Akun 12100 selalu mengambil nilai realtime hasil filter bulan invoice
-      if (noAkun === "12100") {
-        nominal = piutangDagangRealtime;
-      }
 
       // Abaikan akun nominal laba rugi & akun perantara closing
       if (
@@ -164,22 +226,32 @@ export async function getNeracaData(
         return;
       }
 
+      const m = mutasi.get(noAkun) || { debit: 0, kredit: 0 };
+      const saldoDebit = m.debit - m.kredit; // untuk aktiva
+      const saldoKredit = m.kredit - m.debit; // untuk kewajiban & ekuitas
+
       // 1. Akun Khusus (Investasi & Kendaraan)
       if (noAkun === "16100") {
-        saldoInvestasiProperti = Math.abs(nominal);
+        saldoInvestasiProperti = saldoDebit;
       } else if (noAkun === "16101") {
-        saldoLogamMulia = Math.abs(nominal);
+        saldoLogamMulia = saldoDebit;
       } else if (noAkun === "15300") {
-        saldoKendaraan = Math.abs(nominal);
+        saldoKendaraan = saldoDebit;
       } else if (noAkun === "15400") {
-        saldoPenyusutanKendaraan = nominal > 0 ? -nominal : nominal;
+        saldoPenyusutanKendaraan = saldoDebit; // saldo kredit -> otomatis negatif
       }
       // 2. Aktiva Lancar (Kas/Bank 11xxx, Piutang 12xxx)
+      //    Kas/Bank (11xxx) = kumulatif s/d akhir bulan; Piutang (12xxx) = debit - kredit sesuai mode
       else if (noAkun.startsWith("11") || noAkun.startsWith("12")) {
+        // Kas & Bank (11xxx) selalu kumulatif s/d akhir bulan; piutang (12xxx) ikut mode
+        const saldo = noAkun.startsWith("11")
+          ? saldoKasBank.get(noAkun) || 0
+          : saldoDebit;
+
         const item: NeracaItem = {
           no_akun: noAkun,
           nama_akun: row.nama_akun,
-          saldo: Math.abs(nominal),
+          saldo,
         };
         aktivaLancar.push(item);
         totalAktivaLancar += item.saldo;
@@ -189,7 +261,7 @@ export async function getNeracaData(
         const item: NeracaItem = {
           no_akun: noAkun,
           nama_akun: row.nama_akun,
-          saldo: Math.abs(nominal),
+          saldo: saldoKredit,
         };
         kewajiban.push(item);
         totalKewajiban += item.saldo;
@@ -201,11 +273,10 @@ export async function getNeracaData(
         (noAkun.startsWith("3") && !noAkun.startsWith("33"))
       ) {
         if (noAkun === "13003") return; // Laba tahun berjalan ditambahkan khusus di bawah
-
         const item: NeracaItem = {
           no_akun: noAkun,
           nama_akun: row.nama_akun,
-          saldo: noAkun === "31101" ? -Math.abs(nominal) : Math.abs(nominal),
+          saldo: saldoKredit, // prive (31101) saldo debit -> otomatis negatif
         };
         ekuitas.push(item);
         totalEkuitas += item.saldo;
