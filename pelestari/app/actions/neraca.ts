@@ -47,6 +47,9 @@ const hitungBulan = (
  * mode = "mutasi" (bawaan): hanya transaksi di bulan terpilih (Februari tanpa transaksi = 0)
  * mode = "posisi"        : saldo kumulatif sampai tanggal akhir bulan terpilih
  * month = "all" -> satu tahun penuh (mutasi) atau posisi per 31 Desember (posisi)
+ *
+ * Catatan: Aset Tetap (tb_asset / laporan GA) selalu kumulatif s/d akhir bulan
+ * terpilih, tidak bergantung pada mode.
  */
 export async function getNeracaData(
   year: string = "2026",
@@ -84,7 +87,11 @@ export async function getNeracaData(
     }
 
     // ----------------------------------------------------------------
-    // 2. ASET TETAP & PENYUSUTAN KUMULATIF s/d AKHIR BULAN TERPILIH
+    // 2. ASET TETAP (DATA LAPORAN GA / tb_asset) - KUMULATIF
+    //    Semua aset dengan perolehan <= akhir bulan terpilih ikut tampil
+    //    (contoh: aset 2024 s/d Januari 2026 masuk neraca Januari 2026).
+    //    Penyusutan = akumulasi sejak perolehan s/d akhir bulan terpilih,
+    //    dimulai bulan setelah perolehan & dibatasi umur ekonomis.
     // ----------------------------------------------------------------
     let totalHargaAset = 0;
     let totalPenyusutanAset = 0;
@@ -102,9 +109,6 @@ export async function getNeracaData(
       `);
 
       const idxAkhir = selectedYear * 12 + selectedMonth;
-      const idxAwal = mode === "posisi" ? 0 : selectedYear * 12 + startMonth;
-      const prevY = startMonth === 1 ? selectedYear - 1 : selectedYear;
-      const prevM = startMonth === 1 ? 12 : startMonth - 1;
 
       (asetRows || []).forEach((asset: any) => {
         const nilaiPerolehan = Number(asset.harga_beli) || 0;
@@ -116,19 +120,21 @@ export async function getNeracaData(
         const tahunPerolehan = Number(asset.tahun_perolehan) || selectedYear;
         const umurBulan = umurEkonomis * 12;
 
-        // Aset yang sudah diperoleh s/d akhir bulan terpilih
+        // Aset yang sudah diperoleh s/d akhir bulan terpilih (kumulatif)
         const idxPerolehan = tahunPerolehan * 12 + bulanPerolehan;
-        if (idxPerolehan >= idxAwal && idxPerolehan <= idxAkhir) {
-          totalHargaAset += nilaiPerolehan;
-        }
+        if (idxPerolehan > idxAkhir) return;
 
-        // Penyusutan: kumulatif (posisi) atau hanya yang jatuh di periode (mutasi)
-        const sampaiAkhir = hitungBulan(tahunPerolehan, bulanPerolehan, umurBulan, selectedYear, selectedMonth);
-        const sampaiAwal =
-          mode === "posisi"
-            ? 0
-            : hitungBulan(tahunPerolehan, bulanPerolehan, umurBulan, prevY, prevM);
-        totalPenyusutanAset += penyusutanBulanan * (sampaiAkhir - sampaiAwal);
+        totalHargaAset += nilaiPerolehan;
+
+        // Akumulasi penyusutan sejak perolehan s/d akhir bulan terpilih
+        const bulanDisusutkan = hitungBulan(
+          tahunPerolehan,
+          bulanPerolehan,
+          umurBulan,
+          selectedYear,
+          selectedMonth
+        );
+        totalPenyusutanAset += penyusutanBulanan * bulanDisusutkan;
       });
     } catch (e) {
       console.log("Gagal menghitung penyusutan aset:", e);
@@ -194,10 +200,12 @@ export async function getNeracaData(
     });
 
     // ----------------------------------------------------------------
-    // 4. DATA MASTER DARI tb_akun (nama & daftar akun)
+    // 4. DATA MASTER DARI tb_akun (nama, saldo & daftar akun)
+    //    saldo ikut diambil karena Modal (13001), Laba Ditahan (13002)
+    //    dan Investasi (16100, 16101) memakai saldo master akun
     // ----------------------------------------------------------------
     const [akunRows]: any = await db.query(
-      `SELECT no_akun, nama_akun FROM tb_akun ORDER BY no_akun ASC`
+      `SELECT no_akun, nama_akun, saldo FROM tb_akun ORDER BY no_akun ASC`
     );
 
     const aktivaLancar: NeracaItem[] = [];
@@ -210,8 +218,6 @@ export async function getNeracaData(
 
     let saldoInvestasiProperti = 0;
     let saldoLogamMulia = 0;
-    let saldoKendaraan = 0;
-    let saldoPenyusutanKendaraan = 0;
 
     (akunRows || []).forEach((row: any) => {
       const noAkun = String(row.no_akun).trim();
@@ -230,15 +236,15 @@ export async function getNeracaData(
       const saldoDebit = m.debit - m.kredit; // untuk aktiva
       const saldoKredit = m.kredit - m.debit; // untuk kewajiban & ekuitas
 
-      // 1. Akun Khusus (Investasi & Kendaraan)
+      // 1. Akun Khusus (Investasi)
       if (noAkun === "16100") {
-        saldoInvestasiProperti = saldoDebit;
+        saldoInvestasiProperti = Number(row.saldo) || 0;
       } else if (noAkun === "16101") {
-        saldoLogamMulia = saldoDebit;
-      } else if (noAkun === "15300") {
-        saldoKendaraan = saldoDebit;
-      } else if (noAkun === "15400") {
-        saldoPenyusutanKendaraan = saldoDebit; // saldo kredit -> otomatis negatif
+        saldoLogamMulia = Number(row.saldo) || 0;
+      }
+      // Kendaraan (15300) & Penyusutan Kendaraan (15400) tidak ditampilkan di neraca
+      else if (noAkun === "15300" || noAkun === "15400") {
+        return;
       }
       // 2. Aktiva Lancar (Kas/Bank 11xxx, Piutang 12xxx)
       //    Kas/Bank (11xxx) = kumulatif s/d akhir bulan; Piutang (12xxx) = debit - kredit sesuai mode
@@ -276,7 +282,12 @@ export async function getNeracaData(
         const item: NeracaItem = {
           no_akun: noAkun,
           nama_akun: row.nama_akun,
-          saldo: saldoKredit, // prive (31101) saldo debit -> otomatis negatif
+          // Modal (13001) & Laba Ditahan (13002) diambil dari saldo master akun,
+          // sisanya (misalnya prive 31101) tetap dari jurnal
+          saldo:
+            noAkun === "13001" || noAkun === "13002"
+              ? Number(row.saldo) || 0
+              : saldoKredit,
         };
         ekuitas.push(item);
         totalEkuitas += item.saldo;
@@ -301,7 +312,7 @@ export async function getNeracaData(
     const totalInvestasi = investasi.reduce((sum, item) => sum + item.saldo, 0);
 
     // ----------------------------------------------------------------
-    // 6. HARTA TETAP (15200, 15105, 15300, 15400)
+    // 6. HARTA TETAP (15200 & 15105)
     // ----------------------------------------------------------------
     const hartaTetap: NeracaItem[] = [
       {
@@ -313,16 +324,6 @@ export async function getNeracaData(
         no_akun: "15105",
         nama_akun: "Penyusutan Aset",
         saldo: -Math.round(totalPenyusutanAset),
-      },
-      {
-        no_akun: "15300",
-        nama_akun: "Kendaraan",
-        saldo: saldoKendaraan,
-      },
-      {
-        no_akun: "15400",
-        nama_akun: "Penyusutan Aset Kendaraan",
-        saldo: saldoPenyusutanKendaraan,
       },
     ];
     const totalHartaTetap = hartaTetap.reduce((sum, item) => sum + item.saldo, 0);
