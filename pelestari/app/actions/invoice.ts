@@ -21,7 +21,7 @@ function isNormalDebit(noAkun: string): boolean {
   if (
     akun === "41001" || // Pendapatan Pelatihan
     akun === "41002" || // Pendapatan Konsultan
-    akun === "71106" || // PPN
+    akun === "22102" || // Utang PPN
     akun === "81100"    // PNBP
   ) {
     return false;
@@ -57,7 +57,7 @@ async function recalculateSaldoAkun(
             WHEN no_akun IN (
               '41001',
               '41002',
-              '71106',
+              '22102',
               '81100'
             )
               THEN kredit - debit
@@ -751,11 +751,11 @@ export async function createInvoice(
         `Pendapatan Invoice ${formData.nomor_invoice}`,
     });
     // =========================================================
-    // PPN
+    // PPN (UTANG PPN)
     // =========================================================
     if (ppn > 0) {
       jurnalDetails.push({
-        no_akun: "71106",
+        no_akun: "22102",
         debit: 0,
         kredit: ppn,
         keterangan:
@@ -1438,11 +1438,11 @@ export async function updateInvoice(
         `Pendapatan Invoice ${nomorInvoice}`,
     });
     // =========================================================
-    // PPN
+    // PPN (UTANG PPN)
     // =========================================================
     if (ppn > 0) {
       jurnalDetails.push({
-        no_akun: "71106",
+        no_akun: "22102",
         debit: 0,
         kredit: ppn,
         keterangan:
