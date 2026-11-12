@@ -36,17 +36,25 @@ function isNormalDebit(noAkun: string): boolean {
     "13004",
     "41001",
     "41002",
-    // "71106" dihapus: Biaya Pajak PPN sekarang debit-normal (prefix 7)
-    //   Debit = bertambah, Kredit = berkurang
+    "71106", // Biaya Pajak PPN: Debit = berkurang, Kredit = bertambah
     "81100",
 
     // Utang Pajak (kredit-normal: Kredit = bertambah, Debit = berkurang)
     "22100", // Utang PPh 21
     "22101", // Utang PPh 23
-    "22102", // Utang PPN
+    // 22102 (Utang PPN) sengaja tidak di sini, lihat DEBIT_NORMAL_OVERRIDE
     "22103", // Utang PPh Badan
     "22104", // Utang Pasal 4 (2) Sewa Bangunan
   ]);
+
+  // Akun prefix 2 yang diperlakukan debit-normal (Debit = bertambah, Kredit = berkurang)
+  const DEBIT_NORMAL_OVERRIDE = new Set<string>([
+    "22102", // Utang PPN
+  ]);
+
+  if (DEBIT_NORMAL_OVERRIDE.has(akun)) {
+    return true;
+  }
 
   if (KREDIT_NORMAL_OVERRIDE.has(akun)) {
     return false;
