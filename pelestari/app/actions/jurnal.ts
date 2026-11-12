@@ -38,7 +38,14 @@ function isNormalDebit(noAkun: string): boolean {
     "41002",
     "71106",
     "81100",
-    "81200", // POS PDP (kredit-normal)
+    // "81200" DIHAPUS: POS PDP sekarang debit-normal (prefix 8)
+
+    // Utang Pajak (kredit-normal)
+    "22100", // Utang PPh 21
+    "22101", // Utang PPh 23
+    "22102", // Utang PPN
+    "22103", // Utang PPh Badan
+    "22104", // Utang Pasal 4 (2) Sewa Bangunan
   ]);
 
   if (KREDIT_NORMAL_OVERRIDE.has(akun)) {
@@ -61,7 +68,6 @@ function isNormalDebit(noAkun: string): boolean {
     prefix === "9"
   );
 }
-
 /**
  * Helper: Update saldo akun berdasarkan posisi normal
  */
