@@ -36,11 +36,11 @@ function isNormalDebit(noAkun: string): boolean {
     "13004",
     "41001",
     "41002",
-    "71106",
+    // "71106" dihapus: Biaya Pajak PPN sekarang debit-normal (prefix 7)
+    //   Debit = bertambah, Kredit = berkurang
     "81100",
-    // "81200" DIHAPUS: POS PDP sekarang debit-normal (prefix 8)
 
-    // Utang Pajak (kredit-normal)
+    // Utang Pajak (kredit-normal: Kredit = bertambah, Debit = berkurang)
     "22100", // Utang PPh 21
     "22101", // Utang PPh 23
     "22102", // Utang PPN
@@ -57,6 +57,8 @@ function isNormalDebit(noAkun: string): boolean {
     return true;
   }
 
+  // Catatan: 81200 (POS PDP) tidak ada di override,
+  // sehingga mengikuti prefix 8 => debit-normal (Debit = bertambah)
   const prefix = akun.charAt(0);
 
   return (
@@ -68,6 +70,7 @@ function isNormalDebit(noAkun: string): boolean {
     prefix === "9"
   );
 }
+
 /**
  * Helper: Update saldo akun berdasarkan posisi normal
  */
@@ -2998,21 +3001,6 @@ export async function createJurnalDenganReferensiInvoiceOnly(
      * ========================================================
      * INSERT HEADER
      * ========================================================
-     *
-     * BUG SEBELUMNYA:
-     *
-     * Kolom hanya 7:
-     * tanggal
-     * no_registrasi
-     * no_referensi
-     * invoice_id
-     * po_id
-     * penerima_id
-     * keterangan
-     *
-     * Tetapi value yang dikirim 8.
-     *
-     * Sekarang pemohon_id sudah dimasukkan.
      */
     const headerQuery = `
       INSERT INTO tb_jurnal (
