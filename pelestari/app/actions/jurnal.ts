@@ -28,7 +28,8 @@ interface JurnalPayload {
  * Helper: Cek apakah akun bersaldo normal Debit atau Kredit
  */
 function isNormalDebit(noAkun: string): boolean {
-  const akun = String(noAkun).trim();
+  // Normalisasi: "3-9000" -> "39000"
+  const akun = String(noAkun).trim().replace(/[^0-9A-Za-z]/g, "");
 
   const KREDIT_NORMAL_OVERRIDE = new Set<string>([
     "13002",
@@ -50,6 +51,7 @@ function isNormalDebit(noAkun: string): boolean {
   // Akun prefix 2 yang diperlakukan debit-normal (Debit = bertambah, Kredit = berkurang)
   const DEBIT_NORMAL_OVERRIDE = new Set<string>([
     "22102", // Utang PPN
+    "39000", // Ekuitas (Equity): Debit = bertambah, Kredit = berkurang
   ]);
 
   if (DEBIT_NORMAL_OVERRIDE.has(akun)) {
