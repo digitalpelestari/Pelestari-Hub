@@ -80,6 +80,26 @@ function isNormalDebit(noAkun: string): boolean {
   );
 }
 
+const AKUN_PDP = "81200";
+
+function normalisasiAkun(noAkun: string): string {
+  return String(noAkun).trim().replace(/[^0-9A-Za-z]/g, "");
+}
+
+/**
+ * True jika jurnal punya POS PDP (81200) di sisi Debit.
+ * Berlaku untuk item payload (accountCode) maupun baris DB (no_akun).
+ */
+function jurnalPdpDebit(
+  items: { accountCode?: string; no_akun?: string; debit: any }[]
+): boolean {
+  return items.some(
+    (it) =>
+      normalisasiAkun(it.accountCode ?? it.no_akun ?? "") === AKUN_PDP &&
+      (Number(it.debit) || 0) > 0
+  );
+}
+
 /**
  * Helper: Update saldo akun berdasarkan posisi normal
  */
@@ -88,11 +108,20 @@ async function applySaldoAkun(
   noAkun: string,
   debit: number,
   kredit: number,
-  isRevert: boolean = false
+  isRevert: boolean = false,
+  lawanPdp: boolean = false
 ) {
   const normalDebit = isNormalDebit(noAkun);
 
-  let netDelta = normalDebit ? debit - kredit : kredit - debit;
+  let netDelta: number;
+
+  if (lawanPdp) {
+    // Lawan POS PDP: Kredit selalu menambah saldo.
+    // Debit (jika ada) tetap mengikuti aturan normal akun.
+    netDelta = kredit + (normalDebit ? debit : -debit);
+  } else {
+    netDelta = normalDebit ? debit - kredit : kredit - debit;
+  }
 
   if (isRevert) {
     netDelta = -netDelta;
@@ -1104,315 +1133,6 @@ export async function getJurnalList(
 
 /**
  * ============================================================
- * UPDATE JURNAL ITEM
- * ============================================================
- *
- * Setelah item jurnal diedit:
- *
- * 1. Saldo akun lama di-reversal
- * 2. Item jurnal diperbarui
- * 3. Saldo akun baru diposting
- * 4. Jika invoice -> sinkronisasi invoice
- * 5. Jika PO -> sinkronisasi PO
- */
-export async function updateJurnalItem(
-  itemId: number,
-  payload: {
-    jurnal_id: number;
-    tanggal: string;
-    no_registrasi: string;
-    no_referensi: string;
-    penerimaId?: number | null;
-    pemohonId?: number | null;
-    keterangan_umum: string;
-    no_akun: string;
-    debit: number;
-    kredit: number;
-    keterangan: string;
-  }
-) {
-  const connection = await db.getConnection();
-
-  let invoiceIdToUpdate: number | null = null;
-
-  let poIdToUpdate: number | null = null;
-
-  try {
-    await connection.beginTransaction();
-
-    /**
-     * UPDATE HEADER
-     */
-    await connection.query(
-      `UPDATE tb_jurnal
-       SET
-         tanggal = ?,
-         no_registrasi = ?,
-         no_referensi = ?,
-         penerima_id = ?,
-         pemohon_id = ?,
-         keterangan = ?
-       WHERE id = ?`,
-      [
-        payload.tanggal,
-        payload.no_registrasi,
-        payload.no_referensi,
-        payload.penerimaId ?? null,
-        payload.pemohonId ?? null,
-        payload.keterangan_umum,
-        payload.jurnal_id,
-      ]
-    );
-
-    /**
-     * AMBIL ITEM LAMA
-     */
-    const [oldRows]: any = await connection.query(
-      `SELECT
-         no_akun,
-         debit,
-         kredit
-       FROM tb_jurnal_item
-       WHERE id = ?`,
-      [itemId]
-    );
-
-    if (oldRows.length === 0) {
-      throw new Error("Data detail item transaksi tidak ditemukan di MySQL");
-    }
-
-    const oldData = oldRows[0];
-
-    /**
-     * REVERSAL SALDO LAMA
-     */
-    await applySaldoAkun(
-      connection,
-      oldData.no_akun,
-      Number(oldData.debit) || 0,
-      Number(oldData.kredit) || 0,
-      true
-    );
-
-    /**
-     * UPDATE ITEM
-     */
-    await connection.query(
-      `UPDATE tb_jurnal_item
-       SET
-         no_akun = ?,
-         debit = ?,
-         kredit = ?,
-         keterangan = ?
-       WHERE id = ?`,
-      [
-        payload.no_akun,
-        payload.debit,
-        payload.kredit,
-        payload.keterangan,
-        itemId,
-      ]
-    );
-
-    /**
-     * POSTING SALDO BARU
-     */
-    await applySaldoAkun(
-      connection,
-      payload.no_akun,
-      Number(payload.debit) || 0,
-      Number(payload.kredit) || 0,
-      false
-    );
-
-    /**
-     * CEK REFERENSI
-     */
-    const [jurnalHeaderForUpdate]: any = await connection.query(
-      `SELECT
-         invoice_id,
-         po_id
-       FROM tb_jurnal
-       WHERE id = ?`,
-      [payload.jurnal_id]
-    );
-
-    invoiceIdToUpdate =
-      jurnalHeaderForUpdate.length > 0 && jurnalHeaderForUpdate[0].invoice_id
-        ? Number(jurnalHeaderForUpdate[0].invoice_id)
-        : null;
-
-    poIdToUpdate =
-      jurnalHeaderForUpdate.length > 0 && jurnalHeaderForUpdate[0].po_id
-        ? Number(jurnalHeaderForUpdate[0].po_id)
-        : null;
-
-    /**
-     * ========================================================
-     * SINKRONISASI INVOICE
-     * ========================================================
-     */
-    if (invoiceIdToUpdate) {
-      const [remainingJurnals]: any = await connection.query(
-        `SELECT
-           j.id,
-           j.tanggal,
-           i.no_akun,
-           i.debit,
-           i.kredit
-         FROM tb_jurnal j
-         INNER JOIN tb_jurnal_item i
-           ON i.jurnal_id = j.id
-         WHERE j.invoice_id = ?
-         ORDER BY
-           j.tanggal ASC,
-           j.id ASC`,
-        [invoiceIdToUpdate]
-      );
-
-      const [piutangRows]: any = await connection.query(
-        `SELECT
-           a.no_akun
-         FROM tb_akun a
-         JOIN tb_kelompok_biaya k
-           ON a.kelompok_biaya_id = k.id
-         WHERE
-           k.kelompok_biaya LIKE '%PIUTANG%'
-           AND a.is_aktif = 1`
-      );
-
-      const piutangAccounts = new Set<string>(
-        (piutangRows || []).map((r: any) => String(r.no_akun))
-      );
-
-      const jurnalMap = new Map<number, any[]>();
-
-      for (const row of remainingJurnals) {
-        if (!jurnalMap.has(row.id)) {
-          jurnalMap.set(row.id, []);
-        }
-
-        jurnalMap.get(row.id)!.push(row);
-      }
-
-      let bayar1 = 0;
-      let tglBayar1: string | null = null;
-
-      let bayar2 = 0;
-      let tglBayar2: string | null = null;
-
-      let isFirstPayment = true;
-
-      for (const [, jurnalItems] of jurnalMap) {
-        let piutangDebit = 0;
-        let piutangKredit = 0;
-
-        for (const item of jurnalItems) {
-          if (piutangAccounts.has(String(item.no_akun))) {
-            piutangDebit += Number(item.debit) || 0;
-            piutangKredit += Number(item.kredit) || 0;
-          }
-        }
-
-        const netBayar = piutangKredit - piutangDebit;
-
-        if (netBayar <= 0) {
-          continue;
-        }
-
-        if (isFirstPayment) {
-          bayar1 = netBayar;
-          tglBayar1 = jurnalItems[0].tanggal;
-          isFirstPayment = false;
-        } else {
-          bayar2 += netBayar;
-          tglBayar2 = jurnalItems[0].tanggal;
-        }
-      }
-
-      const [invoiceRows]: any = await connection.query(
-        `SELECT total
-         FROM tb_invoice
-         WHERE id = ?`,
-        [invoiceIdToUpdate]
-      );
-
-      const totalInv = Number(invoiceRows[0]?.total) || 0;
-
-      const totalBayar = bayar1 + bayar2;
-
-      const newStatus =
-        totalBayar >= totalInv
-          ? "Lunas"
-          : totalBayar > 0
-          ? "Sebagian"
-          : "Belum Lunas";
-
-      await connection.query(
-        `UPDATE tb_invoice
-         SET
-           bayar_1 = ?,
-           bayar_2 = ?,
-           tanggal_bayar_1 = ?,
-           tanggal_bayar_2 = ?,
-           status = ?
-         WHERE id = ?`,
-        [bayar1, bayar2, tglBayar1, tglBayar2, newStatus, invoiceIdToUpdate]
-      );
-    }
-
-    /**
-     * ========================================================
-     * SINKRONISASI PO
-     * ========================================================
-     */
-    if (poIdToUpdate) {
-      await syncPembayaranPO(connection, poIdToUpdate);
-    }
-
-    await connection.commit();
-
-    /**
-     * REVALIDATE
-     */
-    revalidatePath("/dashboard/finance/pos/jurnal");
-
-    revalidatePath("/dashboard/finance/riwayat");
-
-    if (invoiceIdToUpdate) {
-      revalidatePath(`/dashboard/finance/invoices/${invoiceIdToUpdate}`);
-
-      revalidatePath("/dashboard/finance/invoices");
-    }
-
-    if (poIdToUpdate) {
-      revalidatePath("/dashboard/ga/purchase-order");
-
-      revalidatePath("/dashboard/finance/pos/kasir");
-    }
-
-    return {
-      success: true,
-      message:
-        "Seluruh kolom transaksi, No Referensi, Penerima, dan saldo master berhasil disesuaikan!",
-    };
-  } catch (error: any) {
-    await connection.rollback();
-
-    console.error("EDIT_JURNAL_ITEM_ERROR:", error.message);
-
-    return {
-      success: false,
-      message:
-        "Terjadi gangguan koneksi. Silakan refresh halaman dan coba kembali.",
-    };
-  } finally {
-    connection.release();
-  }
-}
-
-/**
- * ============================================================
  * DELETE JURNAL BY HEADER
  * ============================================================
  */
@@ -1464,13 +1184,19 @@ export async function deleteJurnalByHeader(jurnalId: number) {
     /**
      * REVERSAL SALDO
      */
+    const adaPdpDebit = jurnalPdpDebit(items);
+
     for (const item of items) {
+      const isLawanPdp =
+        adaPdpDebit && normalisasiAkun(item.no_akun) !== AKUN_PDP;
+
       await applySaldoAkun(
         connection,
         item.no_akun,
         Number(item.debit) || 0,
         Number(item.kredit) || 0,
-        true
+        true,
+        isLawanPdp
       );
     }
 
@@ -1755,6 +1481,8 @@ export async function createJurnalUmum(payload: JurnalPayload) {
       VALUES (?, ?, ?, ?, ?)
     `;
 
+    const adaPdpDebit = jurnalPdpDebit(payload.items);
+
     for (const item of payload.items) {
       const debitVal = Number(item.debit) || 0;
 
@@ -1772,12 +1500,16 @@ export async function createJurnalUmum(payload: JurnalPayload) {
         item.keterangan || "",
       ]);
 
+      const isLawanPdp =
+        adaPdpDebit && normalisasiAkun(item.accountCode) !== AKUN_PDP;
+
       await applySaldoAkun(
         connection,
         item.accountCode,
         debitVal,
         kreditVal,
-        false
+        false,
+        isLawanPdp
       );
     }
 
@@ -2085,6 +1817,8 @@ export async function createJurnalDenganReferensiInvoiceOnly(
       VALUES (?, ?, ?, ?, ?)
     `;
 
+    const adaPdpDebit = jurnalPdpDebit(payload.items);
+
     for (const item of payload.items) {
       const debitVal = Number(item.debit) || 0;
 
@@ -2102,12 +1836,16 @@ export async function createJurnalDenganReferensiInvoiceOnly(
         item.keterangan || "",
       ]);
 
+      const isLawanPdp =
+        adaPdpDebit && normalisasiAkun(item.accountCode) !== AKUN_PDP;
+
       await applySaldoAkun(
         connection,
         item.accountCode,
         debitVal,
         kreditVal,
-        false
+        false,
+        isLawanPdp
       );
     }
 
