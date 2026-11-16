@@ -175,22 +175,26 @@ export async function getNeracaData(
     // ----------------------------------------------------------------
     const [kasBankRows]: any = await db.query(
       `
-      SELECT
-        a.no_akun,
-        a.saldo - COALESCE(x.mutasi_setelah, 0) AS saldo_akhir
-      FROM tb_akun a
-      LEFT JOIN (
-        SELECT
-          ji.no_akun,
-          SUM(COALESCE(ji.debit, 0)) - SUM(COALESCE(ji.kredit, 0)) AS mutasi_setelah
-        FROM tb_jurnal_item ji
-        JOIN tb_jurnal j ON j.id = ji.jurnal_id
-        WHERE DATE(j.tanggal) > ?
-          AND (j.no_registrasi IS NULL OR j.no_registrasi NOT LIKE ?)
-        GROUP BY ji.no_akun
-      ) x ON x.no_akun = a.no_akun
-      WHERE a.no_akun LIKE '11%'
-      `,
+  SELECT
+    a.no_akun,
+    CASE
+      WHEN a.no_akun LIKE '11%'
+        THEN a.saldo - COALESCE(x.mutasi_setelah, 0)   -- akun debit normal
+      ELSE a.saldo + COALESCE(x.mutasi_setelah, 0)     -- akun kredit normal (22102)
+    END AS saldo_akhir
+  FROM tb_akun a
+  LEFT JOIN (
+    SELECT
+      ji.no_akun,
+      SUM(COALESCE(ji.debit, 0)) - SUM(COALESCE(ji.kredit, 0)) AS mutasi_setelah
+    FROM tb_jurnal_item ji
+    JOIN tb_jurnal j ON j.id = ji.jurnal_id
+    WHERE DATE(j.tanggal) > ?
+      AND (j.no_registrasi IS NULL OR j.no_registrasi NOT LIKE ?)
+    GROUP BY ji.no_akun
+  ) x ON x.no_akun = a.no_akun
+  WHERE a.no_akun LIKE '11%' OR a.no_akun = '22102'
+  `,
       [endDate, "CL\\_%"]
     );
 
@@ -267,7 +271,12 @@ export async function getNeracaData(
         const item: NeracaItem = {
           no_akun: noAkun,
           nama_akun: row.nama_akun,
-          saldo: saldoKredit,
+          // Utang PPN (22102) dihitung mundur dari saldo master,
+          // akun kewajiban lain tetap dari jurnal
+          saldo:
+            noAkun === "22102"
+              ? saldoKasBank.get(noAkun) || 0
+              : saldoKredit,
         };
         kewajiban.push(item);
         totalKewajiban += item.saldo;
