@@ -42,7 +42,7 @@ function isNormalDebit(noAkun: string): boolean {
     // Utang Pajak (kredit-normal: Kredit = bertambah, Debit = berkurang)
     "22100", // Utang PPh 21
     "22101", // Utang PPh 23
-    // "22102" (Utang PPN) dipindah ke DEBIT_NORMAL_OVERRIDE
+    "22102", // Utang PPN (dipindah ke DEBIT_NORMAL_OVERRIDE)
     "22103", // Utang PPh Badan
     "22104", // Utang Pasal 4 (2) Sewa Bangunan
   ]);
@@ -50,7 +50,6 @@ function isNormalDebit(noAkun: string): boolean {
   // Akun yang diperlakukan debit-normal (Debit = bertambah, Kredit = berkurang)
   const DEBIT_NORMAL_OVERRIDE = new Set<string>([
     "39000", // Ekuitas
-    "22102", // Utang PPN: Debit = bertambah, Kredit = berkurang
   ]);
 
   if (DEBIT_NORMAL_OVERRIDE.has(akun)) {
