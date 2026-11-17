@@ -302,16 +302,16 @@ function resolveAkunPiutang(
 }
 
 /* ============================================================
- * HELPER: AKUN BEBAN UNTUK PETTY CASH (KK)
+ * HELPER: AKUN LAWAN UNTUK CO DAN PETTY CASH (KK)
  *
- * Di sheet petty cash:
- *   - "Kelompok Biaya" = nama kelompok (mis. Biaya Operasional Kantor)
- *   - "Jenis Biaya"    = nama akun (mis. ATK, Ekspedisi)
+ * "Kelompok Biaya" = nama kelompok (mis. Biaya Operasional Kantor,
+ *                    Utang Pajak, Utang Beban Operasional)
+ * "Jenis Biaya"    = nama akun (mis. ATK, Utang PPh 21)
  *
  * Nama akun yang sama ada di banyak kelompok (ATK, Ekspedisi,
  * Kendaraan dan Transportasi), jadi akun dicari DI DALAM kelompok
- * yang cocok, sama seperti alur CO. Bedanya, tidak ada fallback
- * "ambil yang pertama": kalau tidak cocok, baris dilewati.
+ * yang cocok. Tidak ada fallback "ambil yang pertama": kalau tidak
+ * cocok, baris dilewati.
  * ============================================================ */
 
 const norm = (s: unknown) =>
@@ -470,6 +470,102 @@ async function ambilNoRegistrasiSudahAda(
     }
 
     return hasil;
+}
+
+/* ============================================================
+ * HELPER: CO (JURNAL LENGKAP DEBIT/KREDIT PER BARIS)
+ * ============================================================ */
+
+// Toleransi selisih pembulatan saat membandingkan debit dan kredit.
+const TOLERANSI_SELISIH = 0.005;
+
+// Baris preview + field debit/kredit khusus CO.
+// Didefinisikan di sini supaya import-jurnal.types.ts tidak wajib diubah.
+type BarisPreview = ImportPreviewRow & { debit?: number; kredit?: number };
+
+type EvaluasiJurnalCo =
+    | { status: "seimbang"; totalDebit: number; totalKredit: number }
+    | {
+        status: "bank_otomatis";
+        totalDebit: number;
+        totalKredit: number;
+        noAkunKasBank: string;
+    }
+    | {
+        status: "tidak_valid";
+        totalDebit: number;
+        totalKredit: number;
+        alasan: string;
+    };
+
+/**
+ * Tentukan perlakuan satu jurnal CO (satu nomor register):
+ *  - debit = kredit            -> dipakai apa adanya
+ *  - hanya ada sisi debit      -> baris bank ditambah otomatis di sisi kredit
+ *                                 (akun dari kolom Rekening)
+ *  - selain itu                -> tidak valid, jurnal dilewati
+ */
+function evaluasiJurnalCo(
+    grup: BarisPreview[],
+    noRegistrasi: string
+): EvaluasiJurnalCo {
+    const totalDebit = grup.reduce((s, p) => s + (p.debit ?? 0), 0);
+    const totalKredit = grup.reduce((s, p) => s + (p.kredit ?? 0), 0);
+
+    if (Math.abs(totalDebit - totalKredit) <= TOLERANSI_SELISIH) {
+        return { status: "seimbang", totalDebit, totalKredit };
+    }
+
+    if (totalKredit <= TOLERANSI_SELISIH && totalDebit > 0) {
+        const noAkunKasBank =
+            grup.map((p) => p.noAkunKasBank).find((v) => !!v) ?? null;
+
+        if (!noAkunKasBank) {
+            return {
+                status: "tidak_valid",
+                totalDebit,
+                totalKredit,
+                alasan: `Jurnal ${noRegistrasi} hanya berisi debit sehingga butuh baris bank otomatis, tetapi Rekening kosong / belum dimapping ke akun Kas/Bank`,
+            };
+        }
+
+        return {
+            status: "bank_otomatis",
+            totalDebit,
+            totalKredit,
+            noAkunKasBank,
+        };
+    }
+
+    return {
+        status: "tidak_valid",
+        totalDebit,
+        totalKredit,
+        alasan: `Jurnal ${noRegistrasi} tidak seimbang: total debit ${totalDebit}, total kredit ${totalKredit}`,
+    };
+}
+
+interface CoRaw {
+    sheet: ExcelJS.Worksheet;
+    r: number;
+    noRegistrasi: string;
+    tanggal: string | null;
+    rekeningExcel: string;
+    penerima: string;
+    pemohon: string;
+    debit: number;
+    kredit: number;
+    keterangan: string;
+    kelompokBiaya: string;
+    jenisBiaya: string;
+}
+
+// Nilai pertama yang tidak kosong dalam satu grup nomor register.
+function nilaiPertama(
+    grup: CoRaw[],
+    ambil: (g: CoRaw) => string | null
+): string {
+    return grup.map(ambil).find((v) => !!v && String(v).trim() !== "") ?? "";
 }
 
 /* ============================================================
@@ -695,46 +791,90 @@ export async function previewImportJurnal(
             ciRows.push(preview);
         }
 
-        /* -------- PARSE CO (prefix BK_) -------- */
+        /* -------- PARSE CO (prefix BK_) --------
+         *
+         * Format CO = tiap baris Excel adalah satu baris jurnal dengan
+         * Debit ATAU Kredit. Satu nomor register = satu jurnal.
+         *  - Debit = Kredit : dipakai apa adanya (tanpa baris bank).
+         *  - Hanya Debit    : baris bank ditambah otomatis di sisi kredit,
+         *                     akun dari kolom Rekening.
+         *  - Selain itu     : jurnal dilewati.
+         * Kolom Rekening tidak wajib selama jurnal sudah seimbang.
+         */
 
-        const coRows: ImportPreviewRow[] = [];
+        const coRaw: CoRaw[] = [];
 
         for (const { sheet, headerMap, row, r, noRegistrasi } of barisPerJenis.CO) {
-            const tanggal = toDateString(
-                getCellValue(row, headerMap, "Tanggal")
-            );
+            coRaw.push({
+                sheet,
+                r,
+                noRegistrasi: String(noRegistrasi).trim(),
+                tanggal: toDateString(getCellValue(row, headerMap, "Tanggal")),
+                rekeningExcel: toText(getCellValue(row, headerMap, "Rekening")),
+                penerima: toText(getCellValue(row, headerMap, "Penerima")),
+                pemohon: toText(getCellValue(row, headerMap, "User")),
+                debit: toNumber(getCellValue(row, headerMap, "Debit")),
+                kredit: toNumber(getCellValue(row, headerMap, "Kredit")),
+                keterangan: toText(getCellValue(row, headerMap, "Keterangan")),
+                kelompokBiaya: toText(
+                    getCellValue(row, headerMap, "Kelompok Biaya")
+                ),
+                jenisBiaya: toText(getCellValue(row, headerMap, "Jenis Biaya")),
+            });
+        }
 
-            const rekeningExcel = toText(
-                getCellValue(row, headerMap, "Rekening")
-            );
+        // Fill-down: kolom yang hanya diisi di baris pertama (Penerima,
+        // Keterangan, dst.) dipakai untuk baris lain di nomor register yang sama.
+        const grupCoRaw = new Map<string, CoRaw[]>();
 
-            const penerima = toText(
-                getCellValue(row, headerMap, "Penerima")
-            );
+        for (const raw of coRaw) {
+            if (!grupCoRaw.has(raw.noRegistrasi)) {
+                grupCoRaw.set(raw.noRegistrasi, []);
+            }
+            grupCoRaw.get(raw.noRegistrasi)!.push(raw);
+        }
 
-            const pemohon = toText(
-                getCellValue(row, headerMap, "User")
-            );
+        for (const grup of grupCoRaw.values()) {
+            const tanggalIsi = nilaiPertama(grup, (g) => g.tanggal);
+            const rekeningIsi = nilaiPertama(grup, (g) => g.rekeningExcel);
+            const penerimaIsi = nilaiPertama(grup, (g) => g.penerima);
+            const pemohonIsi = nilaiPertama(grup, (g) => g.pemohon);
+            const keteranganIsi = nilaiPertama(grup, (g) => g.keterangan);
 
-            const kredit = toNumber(
-                getCellValue(row, headerMap, "Kredit")
-            );
+            for (const g of grup) {
+                if (!g.tanggal) g.tanggal = tanggalIsi || null;
+                if (!g.rekeningExcel) g.rekeningExcel = rekeningIsi;
+                if (!g.penerima) g.penerima = penerimaIsi;
+                if (!g.pemohon) g.pemohon = pemohonIsi;
+                if (!g.keterangan) g.keterangan = keteranganIsi;
+            }
+        }
 
-            const keteranganExcel = toText(
-                getCellValue(row, headerMap, "Keterangan")
-            );
+        const coRows: BarisPreview[] = [];
 
-            const kelompokBiaya = toText(
-                getCellValue(row, headerMap, "Kelompok Biaya")
-            );
+        for (const raw of coRaw) {
+            const {
+                sheet,
+                r,
+                noRegistrasi,
+                tanggal,
+                rekeningExcel,
+                penerima,
+                pemohon,
+                debit,
+                kredit,
+                keterangan,
+                kelompokBiaya,
+                jenisBiaya,
+            } = raw;
 
-            const jenisBiaya = toText(
-                getCellValue(row, headerMap, "Jenis Biaya")
-            );
+            // Rekening hanya informasi (tidak wajib).
+            const noAkunKasBank =
+                REKENING_MAPPING[rekeningExcel.toLowerCase()] || null;
 
-            const rekeningKey = rekeningExcel.toLowerCase();
-            const noAkunKasBank = REKENING_MAPPING[rekeningKey] || null;
-
+            // Akun dicari di dalam kelompok yang cocok, tanpa fallback
+            // "ambil yang pertama". Error pencocokan hanya menggagalkan
+            // baris ini (akun kosong -> baris dilewati), bukan seluruh preview.
             let noAkunLawan: string | null = null;
             let namaAkunLawan: string | null = null;
             let skorMatchLawan: number | null = null;
@@ -748,122 +888,29 @@ export async function previewImportJurnal(
                     namaAkunLawan = "Pelatihan";
                     skorMatchLawan = 1;
                 } else {
-                    let matchKelompok: any = null;
+                    const akun = cariAkunBeban(
+                        kelompokBiaya,
+                        jenisBiaya,
+                        kelompokRows,
+                        akunRows,
+                        kandidatKelompok
+                    );
 
-                    if (kelompokBiaya) {
-                        matchKelompok = findBestMatch(
-                            kelompokBiaya,
-                            kandidatKelompok,
-                            0.30,
-                            0.05
-                        );
-                    }
-
-                    if (!matchKelompok && kelompokBiaya) {
-                        const searchK = kelompokBiaya.toLowerCase();
-
-                        const foundK = kelompokRows.find(
-                            (k: any) =>
-                                k &&
-                                k.kelompok_biaya &&
-                                (k.kelompok_biaya
-                                    .toLowerCase()
-                                    .includes(searchK) ||
-                                    searchK.includes(
-                                        k.kelompok_biaya.toLowerCase()
-                                    ))
-                        );
-
-                        if (foundK) {
-                            matchKelompok = {
-                                item: foundK,
-                                score: 0.8,
-                            };
-                        } else if (kelompokRows.length > 0) {
-                            matchKelompok = {
-                                item: kelompokRows[0],
-                                score: 0.4,
-                            };
-                        }
-                    }
-
-                    if (matchKelompok?.item) {
-                        const namaKelompokTarget =
-                            matchKelompok.item.kelompok_biaya;
-
-                        const akunDalamKelompok = akunRows.filter(
-                            (a: any) =>
-                                a && a.nama_kelompok === namaKelompokTarget
-                        );
-
-                        if (akunDalamKelompok.length > 0) {
-                            const kandidatAkun: FuzzyCandidate<any>[] =
-                                akunDalamKelompok.map((a: any) => ({
-                                    item: a,
-                                    label: a.nama_akun || "",
-                                }));
-
-                            let matchAkun: any = null;
-
-                            if (jenisBiaya) {
-                                matchAkun = findBestMatch(
-                                    jenisBiaya,
-                                    kandidatAkun,
-                                    0.30,
-                                    0.05
-                                );
-                            }
-
-                            if (!matchAkun && jenisBiaya) {
-                                const searchJ = jenisBiaya.toLowerCase();
-
-                                const foundA = akunDalamKelompok.find(
-                                    (a: any) =>
-                                        (a.nama_akun &&
-                                            a.nama_akun
-                                                .toLowerCase()
-                                                .includes(searchJ)) ||
-                                        searchJ.includes(
-                                            a.nama_akun
-                                                ? a.nama_akun.toLowerCase()
-                                                : ""
-                                        )
-                                );
-
-                                if (foundA) {
-                                    matchAkun = {
-                                        item: foundA,
-                                        score: 0.7,
-                                    };
-                                }
-                            }
-
-                            if (!matchAkun) {
-                                matchAkun = {
-                                    item: akunDalamKelompok[0],
-                                    score: 0.5,
-                                };
-                            }
-
-                            if (matchAkun?.item) {
-                                noAkunLawan = matchAkun.item.no_akun || null;
-                                namaAkunLawan =
-                                    matchAkun.item.nama_akun || null;
-                                skorMatchLawan = Number(
-                                    (matchAkun.score ?? 0.5).toFixed(2)
-                                );
-                            }
-                        }
-                    }
+                    noAkunLawan = akun?.noAkun ?? null;
+                    namaAkunLawan = akun?.namaAkun ?? null;
+                    skorMatchLawan = akun?.skor ?? null;
                 }
             } catch (matchErr) {
                 console.error("Match error on CO row:", matchErr);
+                noAkunLawan = null;
+                namaAkunLawan = null;
+                skorMatchLawan = null;
             }
 
-            const preview: ImportPreviewRow = {
+            const preview: BarisPreview = {
                 rowKey: `CO-${sheet.id}-${r}`,
                 jenis: "CO",
-                noRegistrasi: String(noRegistrasi).trim(),
+                noRegistrasi,
                 tanggal: tanggal || "",
                 noReferensi: "",
                 rekeningExcel,
@@ -878,26 +925,74 @@ export async function previewImportJurnal(
                 noAkunLawan,
                 namaAkunLawan,
                 skorMatchLawan,
-                nominal: kredit,
-                keterangan: keteranganExcel,
+                nominal: debit > 0 ? debit : kredit,
+                debit,
+                kredit,
+                keterangan,
                 status: "siap",
             };
 
             if (!tanggal) {
                 preview.status = "dilewati";
                 preview.alasanDilewati = "Tanggal tidak valid";
-            } else if (!noAkunKasBank) {
-                preview.status = "dilewati";
-                preview.alasanDilewati = `Rekening "${rekeningExcel}" belum dimapping ke akun Kas/Bank`;
             } else if (!noAkunLawan) {
                 preview.status = "dilewati";
-                preview.alasanDilewati = `Tidak ditemukan akun beban yang cocok untuk kelompok biaya "${kelompokBiaya || "(kosong)"}"`;
-            } else if (kredit <= 0) {
+                preview.alasanDilewati = `Tidak ditemukan akun "${jenisBiaya || "(kosong)"}" di kelompok "${kelompokBiaya || "(kosong)"}"`;
+            } else if (debit <= 0 && kredit <= 0) {
                 preview.status = "dilewati";
-                preview.alasanDilewati = "Nominal kredit kosong / nol";
+                preview.alasanDilewati = "Debit dan kredit kosong / nol";
+            } else if (debit > 0 && kredit > 0) {
+                preview.status = "dilewati";
+                preview.alasanDilewati =
+                    "Debit dan kredit terisi bersamaan pada satu baris";
             }
 
             coRows.push(preview);
+        }
+
+        // Validasi per nomor register: satu jurnal utuh dan seimbang.
+        // Kalau ada satu baris bermasalah / tidak seimbang, seluruh grup dilewati.
+        const grupCoPreview = new Map<string, BarisPreview[]>();
+
+        for (const p of coRows) {
+            if (!grupCoPreview.has(p.noRegistrasi)) {
+                grupCoPreview.set(p.noRegistrasi, []);
+            }
+            grupCoPreview.get(p.noRegistrasi)!.push(p);
+        }
+
+        for (const [no, grup] of grupCoPreview.entries()) {
+            const bermasalah = grup.find((p) => p.status !== "siap");
+
+            if (bermasalah) {
+                for (const p of grup) {
+                    if (p.status === "siap") {
+                        p.status = "dilewati";
+                        p.alasanDilewati = `Baris lain di nomor register ${no} bermasalah (${bermasalah.alasanDilewati}); seluruh jurnal dilewati`;
+                    }
+                }
+                continue;
+            }
+
+            const evaluasi = evaluasiJurnalCo(grup, no);
+
+            if (evaluasi.status === "tidak_valid") {
+                for (const p of grup) {
+                    p.status = "dilewati";
+                    p.alasanDilewati = evaluasi.alasan;
+                }
+            } else if (evaluasi.status === "bank_otomatis") {
+                // Tetap "siap"; beri tahu di preview bahwa baris bank akan ditambah.
+                grup[0].peringatan = `Baris bank otomatis: Kredit ${evaluasi.noAkunKasBank} sebesar ${evaluasi.totalDebit}`;
+            } else {
+                // Jurnal sudah seimbang: tidak ada bank sama sekali.
+                // Kosongkan info rekening agar preview tidak menampilkan bank -> akun.
+                for (const p of grup) {
+                    p.noAkunKasBank = null;
+                    p.skorMatchRekening = null;
+                    p.rekeningExcel = "";
+                }
+            }
         }
 
         /* -------- PARSE PETTY CASH (prefix KK_) -------- */
@@ -1102,7 +1197,7 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
         pesanGagal: [] as string[],
     };
 
-    const groupedMap = new Map<string, ImportPreviewRow[]>();
+    const groupedMap = new Map<string, BarisPreview[]>();
 
     // Cek ulang ke database di server (jangan hanya percaya flag dari klien).
     const sudahAda = await ambilNoRegistrasiSudahAda(
@@ -1116,10 +1211,11 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
             continue;
         }
 
+        // CI dan KK: baris yang tidak siap dihitung gagal per baris (perilaku lama).
+        // CO: validasi dilakukan per grup (jurnal utuh) di bawah.
         if (
-            row.status !== "siap" ||
-            !row.noAkunKasBank ||
-            !row.noAkunLawan
+            row.jenis !== "CO" &&
+            (row.status !== "siap" || !row.noAkunKasBank || !row.noAkunLawan)
         ) {
             hasil.gagal++;
 
@@ -1136,7 +1232,7 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
             groupedMap.set(groupKey, []);
         }
 
-        groupedMap.get(groupKey)!.push(row);
+        groupedMap.get(groupKey)!.push(row as BarisPreview);
     }
 
     // Dihitung per jurnal (per no register), bukan per baris Excel.
@@ -1169,11 +1265,63 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
                 continue;
             }
 
-            const penerimaId = await resolvePihakId(firstRow.namaPihak);
+            // CO: satu jurnal utuh. Semua baris harus siap, lalu jurnal dievaluasi:
+            // seimbang -> apa adanya; hanya debit -> bank otomatis; selain itu gagal.
+            let evaluasiCo: EvaluasiJurnalCo | null = null;
+
+            if (firstRow.jenis === "CO") {
+                const bermasalah = groupRows.find(
+                    (row) => row.status !== "siap" || !row.noAkunLawan
+                );
+
+                if (bermasalah) {
+                    hasil.gagal++;
+
+                    hasil.pesanGagal.push(
+                        `${firstRow.noRegistrasi}: ada baris yang tidak siap (${bermasalah.alasanDilewati || "akun lawan kosong"}); seluruh jurnal tidak diimpor.`
+                    );
+
+                    continue;
+                }
+
+                evaluasiCo = evaluasiJurnalCo(groupRows, firstRow.noRegistrasi);
+
+                if (evaluasiCo.status === "tidak_valid") {
+                    hasil.gagal++;
+
+                    hasil.pesanGagal.push(
+                        `${firstRow.noRegistrasi}: ${evaluasiCo.alasan}.`
+                    );
+
+                    continue;
+                }
+            }
+
+            // Untuk CO, ambil nilai pertama yang terisi dalam grup
+            // (Penerima / Pemohon / Keterangan biasanya hanya ada di baris pertama).
+            const ambilPertama = (f: (r: ImportPreviewRow) => string | undefined | null) =>
+                groupRows.map(f).find((v) => (v ?? "").trim() !== "") ?? "";
+
+            const namaPihak =
+                firstRow.jenis === "CO"
+                    ? ambilPertama((r) => r.namaPihak)
+                    : firstRow.namaPihak;
+
+            const namaPemohon =
+                firstRow.jenis === "CO"
+                    ? ambilPertama((r) => r.namaPemohon)
+                    : firstRow.namaPemohon;
+
+            const keteranganJurnal =
+                firstRow.jenis === "CO"
+                    ? ambilPertama((r) => r.keterangan)
+                    : firstRow.keterangan;
+
+            const penerimaId = await resolvePihakId(namaPihak);
 
             const pemohonId =
                 firstRow.jenis === "CI" || firstRow.jenis === "CO"
-                    ? await resolvePemohonId(firstRow.namaPemohon)
+                    ? await resolvePemohonId(namaPemohon)
                     : null;
 
             const items: any[] = [];
@@ -1199,8 +1347,33 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
                     keterangan:
                         firstRow.keterangan || "Import Pemasukan (CI)",
                 });
+            } else if (firstRow.jenis === "CO") {
+                // Pengeluaran: baris jurnal dipakai apa adanya dari Excel.
+                for (const row of groupRows) {
+                    items.push({
+                        accountCode: row.noAkunLawan,
+                        debit: row.debit ?? 0,
+                        kredit: row.kredit ?? 0,
+                        keterangan:
+                            row.keterangan ||
+                            keteranganJurnal ||
+                            "Import Pengeluaran (CO)",
+                    });
+                }
+
+                // Hanya ada sisi debit: tambah baris bank otomatis di sisi kredit
+                // (akun dari kolom Rekening).
+                if (evaluasiCo && evaluasiCo.status === "bank_otomatis") {
+                    items.push({
+                        accountCode: evaluasiCo.noAkunKasBank,
+                        debit: 0,
+                        kredit: evaluasiCo.totalDebit,
+                        keterangan:
+                            keteranganJurnal || "Import Pengeluaran (CO)",
+                    });
+                }
             } else {
-                // Pengeluaran: akun lawan debit, kas/bank kredit.
+                // Petty cash: akun lawan debit, kas kecil kredit.
                 for (const row of groupRows) {
                     items.push({
                         accountCode: row.noAkunLawan,
@@ -1217,10 +1390,7 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
                     debit: 0,
                     kredit: totalNominal,
                     keterangan:
-                        firstRow.keterangan ||
-                        (firstRow.jenis === "CO"
-                            ? "Import Pengeluaran (CO)"
-                            : "Import Petty Cash (KK)"),
+                        firstRow.keterangan || "Import Petty Cash (KK)",
                 });
             }
 
@@ -1231,7 +1401,7 @@ export async function commitImportJurnal(rows: ImportPreviewRow[]) {
                 penerimaId,
                 pemohonId,
                 keterangan:
-                    firstRow.keterangan ||
+                    keteranganJurnal ||
                     (firstRow.jenis === "CI"
                         ? "Import Pemasukan (CI)"
                         : firstRow.jenis === "CO"
