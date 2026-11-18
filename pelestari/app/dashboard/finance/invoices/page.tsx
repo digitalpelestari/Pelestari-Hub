@@ -74,12 +74,14 @@ import Swal from "sweetalert2"
 
 export default function InvoiceListPage() {
   const [invoices, setInvoices] = useState<any[]>([])
+  const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
 
   // STATE FILTER UTAMA
   const [filterStatus, setFilterStatus] = useState("ALL")
   const [filterBatch, setFilterBatch] = useState("ALL")
+  const [filterJenisKegiatan, setFilterJenisKegiatan] = useState("ALL")
 
   // STATE FILTER DATE RANGE
   const [startDate, setStartDate] = useState("")
@@ -310,6 +312,9 @@ export default function InvoiceListPage() {
         !filterStatus || filterStatus === "ALL" || inv.status === filterStatus
       const matchesBatch =
         !filterBatch || filterBatch === "ALL" || inv.batch === filterBatch
+      const jenisKegiatan = String(inv.jenis_kegiatan || "").trim().toLowerCase()
+      const matchesJenisKegiatan =
+        filterJenisKegiatan === "ALL" || jenisKegiatan === filterJenisKegiatan.toLowerCase()
 
       let matchesDateRange = true
       if (inv.raw_tanggal) {
@@ -320,9 +325,23 @@ export default function InvoiceListPage() {
         matchesDateRange = false
       }
 
-      return matchesSearch && matchesStatus && matchesBatch && matchesDateRange
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesBatch &&
+        matchesJenisKegiatan &&
+        matchesDateRange
+      )
     })
-  }, [invoices, searchQuery, filterStatus, filterBatch, startDate, endDate])
+  }, [
+    invoices,
+    searchQuery,
+    filterStatus,
+    filterBatch,
+    filterJenisKegiatan,
+    startDate,
+    endDate,
+  ])
 
   const ringkasanKeuangan = useMemo(() => {
     let totalInvoice = 0
@@ -354,6 +373,7 @@ export default function InvoiceListPage() {
     setSearchQuery("")
     setFilterStatus("ALL")
     setFilterBatch("ALL")
+    setFilterJenisKegiatan("ALL")
     setStartDate("")
     setEndDate("")
   }
@@ -438,7 +458,10 @@ export default function InvoiceListPage() {
             {isImporting ? "Mengimpor..." : "Import Excel"}
           </Button>
 
-          <ExportInvoiceButton data={filteredInvoices} />
+         <ExportInvoiceButton
+  data={invoices}
+ 
+/>
 
           <Link href="/dashboard/finance/invoices/create">
             <Button className="h-10 gap-2 rounded-lg bg-zinc-900 px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-zinc-800">
@@ -584,6 +607,23 @@ export default function InvoiceListPage() {
               </Select>
 
               <Select
+                value={filterJenisKegiatan}
+                onValueChange={(val) => setFilterJenisKegiatan(val ?? "ALL")}
+              >
+                <SelectTrigger className="h-9 w-[150px] rounded-sm border-zinc-200 bg-white text-xs font-semibold focus:ring-1 focus:ring-black">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-3.5 w-3.5 text-zinc-400" />
+                    <SelectValue placeholder="Jenis Kegiatan" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Semua Jenis</SelectItem>
+                  <SelectItem value="Konsultan">Konsultan</SelectItem>
+                  <SelectItem value="Pelatihan">Pelatihan</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
                 value={filterStatus}
                 onValueChange={(val) => setFilterStatus(val ?? "ALL")}
               >
@@ -608,6 +648,7 @@ export default function InvoiceListPage() {
               {(searchQuery ||
                 filterStatus !== "ALL" ||
                 filterBatch !== "ALL" ||
+                filterJenisKegiatan !== "ALL" ||
                 startDate ||
                 endDate) && (
                 <Button
